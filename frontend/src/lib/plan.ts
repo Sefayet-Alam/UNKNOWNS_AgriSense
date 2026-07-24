@@ -52,22 +52,40 @@ export interface AgriPlan {
 }
 
 const FENCE = /```agrisense-plan\s*([\s\S]*?)```/;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+const TOOL_LINE = /^[ \t]*\[tool\b[^\]\n]*\][ \t]*\^?C?[ \t]*$/gim;
+const TOOL_INLINE = /\[tool\b[^\]\n]*\]\s*\^?C?/gi;
 
-/** Extract the plan (if any) from a message's content, plus the content with the
- *  fenced block stripped for display. Falls back to {plan:null} if absent/invalid. */
+/** Clean assistant text for display: strip control chars and inline tool-call
+ *  narration (`[tool NAME args=… -> …]`) that weaker models sometimes emit as prose
+ *  — the real, structured trace lives in the Agent Trace panel. */
+export function cleanContent(text: string): string {
+  return (text || "")
+    .replace(CONTROL_CHARS, "")
+    .replace(TOOL_LINE, "")
+    .replace(TOOL_INLINE, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Extract the plan (if any) from a message's content, plus cleaned display text
+ *  (fenced plan block + tool narration stripped). {plan:null} if absent/invalid. */
 export function planParse(content: string): {
   plan: AgriPlan | null;
   display: string;
 } {
   const m = content.match(FENCE);
-  if (!m) return { plan: null, display: content };
   let plan: AgriPlan | null = null;
-  try {
-    plan = JSON.parse(m[1]) as AgriPlan;
-  } catch {
-    plan = null;
+  if (m) {
+    try {
+      plan = JSON.parse(m[1]) as AgriPlan;
+    } catch {
+      plan = null;
+    }
   }
-  return { plan, display: content.replace(FENCE, "").trim() };
+  const withoutPlan = m ? content.replace(FENCE, "") : content;
+  return { plan, display: cleanContent(withoutPlan) };
 }
 
 /** Serialize a plan into the fenced block (used by the mock agent + tests). */

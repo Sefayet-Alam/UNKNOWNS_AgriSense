@@ -5,9 +5,11 @@
 // (thinking timeline + tool calls). In M5 the mock emitter is swapped for the live
 // SSE stream — frame handling here is already contract-shaped, so the swap is local.
 
-import { FileText, Leaf, Paperclip, Plus, Send, Square, User, Wrench, X } from "lucide-react";
+import { FileText, Leaf, Lock, Paperclip, Plus, Send, Square, User, Wrench, X } from "lucide-react";
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
+import { WorkingIndicator } from "@/components/chat/WorkingIndicator";
 import { PlanCard } from "@/components/plan/PlanCard";
 import { TracePanel } from "@/components/trace/TracePanel";
 import { DEMO_OPENER, runMockTurn } from "@/lib/mockAgent";
@@ -96,7 +98,11 @@ function AssistantBubble({
         <Leaf size={15} />
       </span>
       <div className="min-w-0 flex-1">
-        {display && <Markdown content={display} />}
+        {display && (
+          <div className="animate-reveal">
+            <Markdown content={display} />
+          </div>
+        )}
         {plan && <PlanCard plan={plan} />}
         {n > 0 && (
           <button
@@ -116,7 +122,7 @@ function AssistantBubble({
   );
 }
 
-export function WorkspaceShell() {
+export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [thinking, setThinking] = useState<ProgressFrame[]>([]);
@@ -228,7 +234,7 @@ export function WorkspaceShell() {
           </span>
           <span className="font-display text-sm font-semibold tracking-tight">AgriSense</span>
           <span className="ml-auto rounded border border-hairline px-1.5 py-0.5 font-mono text-[9px] uppercase text-ink-dim">
-            demo
+            {mode}
           </span>
         </div>
         <div className="px-3 pb-3">
@@ -267,9 +273,20 @@ export function WorkspaceShell() {
 
       {/* Chat column */}
       <div className="flex min-w-0 flex-1 flex-col">
+        {mode === "guest" && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline bg-amber/10 px-5 py-2 text-xs text-ink">
+            <span className="flex items-center gap-1.5">
+              <Lock size={13} className="text-amber" />
+              Guest mode — nothing is saved and no account is needed.
+            </span>
+            <Link href="/register" className="font-medium text-signal hover:underline">
+              Sign up to keep your plans →
+            </Link>
+          </div>
+        )}
         <div className="scrollbar-thin flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-5 py-6">
-            {messages.length === 0 ? (
+            {messages.length === 0 && !streaming ? (
               <div className="mt-16 text-center">
                 <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-signal/30 bg-signal/10 text-signal">
                   <Leaf size={22} />
@@ -294,15 +311,23 @@ export function WorkspaceShell() {
                 </div>
               </div>
             ) : (
-              messages.map((m) => (
-                <div key={m.id} className="animate-stream-in">
-                  {m.role === "user" ? (
-                    <UserBubble text={m.content} attachments={attByMsg[m.id]} />
-                  ) : (
-                    <AssistantBubble message={m} onOpenTrace={openTrace} />
-                  )}
-                </div>
-              ))
+              <>
+                {messages.map((m) => (
+                  <div key={m.id} className="animate-stream-in">
+                    {m.role === "user" ? (
+                      <UserBubble text={m.content} attachments={attByMsg[m.id]} />
+                    ) : (
+                      <AssistantBubble message={m} onOpenTrace={openTrace} />
+                    )}
+                  </div>
+                ))}
+                {streaming && (
+                  <WorkingIndicator
+                    thinking={thinking}
+                    onOpenTrace={() => setTraceCollapsed(false)}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>

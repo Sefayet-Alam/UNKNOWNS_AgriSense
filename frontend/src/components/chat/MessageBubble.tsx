@@ -28,13 +28,21 @@ function MessageBubbleImpl({ message, onOpenTrace }: Props) {
   const { plan, display } = planParse(message.content);
   const n = message.tool_trace.length;
 
+  // Intermediate tool-only steps with no text/plan are noise in the chat — the
+  // trace panel already shows their calls. Don't render an empty bubble.
+  if (!display && !plan && n === 0) return null;
+
   return (
     <div className="flex animate-fade-in gap-3">
       <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-600">
         <Sprout size={18} strokeWidth={1.75} />
       </div>
       <div className="min-w-0 flex-1">
-        {display && <Markdown content={display} />}
+        {display && (
+          <div className="animate-reveal">
+            <Markdown content={display} />
+          </div>
+        )}
         {plan && <PlanCard plan={plan} />}
         {n > 0 && (
           <button

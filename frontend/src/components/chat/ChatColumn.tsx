@@ -163,8 +163,8 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
                 ))}
                 {streaming && (
                   <WorkingIndicator
-                    stage={progress?.stage}
-                    detail={progress?.detail}
+                    thinking={thinking}
+                    onOpenTrace={() => setTraceCollapsed(false)}
                   />
                 )}
                 {streamError && (

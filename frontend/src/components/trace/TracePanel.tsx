@@ -9,7 +9,9 @@
 
 import {
   Activity,
+  Check,
   ChevronRight,
+  Copy,
   PanelRightClose,
   PanelRightOpen,
   Wrench,
@@ -31,9 +33,18 @@ const truncate = (s: string, n = 46) =>
 
 function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    navigator.clipboard?.writeText(call.result || "").then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  };
+
   return (
     <div
-      className={`rounded-lg border bg-panel-2 ${
+      className={`animate-stream-in rounded-lg border bg-panel-2 ${
         newest ? "border-signal/60 animate-glow-pulse" : "border-hairline"
       }`}
     >
@@ -61,7 +72,20 @@ function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
             </pre>
           </div>
           <div>
-            <p className="mb-1 font-mono text-[10px] uppercase tracking-wide text-ink-dim">raw result</p>
+            <div className="mb-1 flex items-center justify-between">
+              <p className="font-mono text-[10px] uppercase tracking-wide text-ink-dim">raw result</p>
+              {call.result && (
+                <button
+                  type="button"
+                  onClick={copy}
+                  aria-label="Copy raw result"
+                  className="flex items-center gap-1 font-mono text-[10px] text-ink-dim transition hover:text-signal"
+                >
+                  {copied ? <Check size={11} /> : <Copy size={11} />}
+                  {copied ? "copied" : "copy"}
+                </button>
+              )}
+            </div>
             <pre className="nums max-h-40 overflow-auto rounded bg-panel p-2 font-mono text-[11px] text-signal-deep">
               {call.result || "—"}
             </pre>
@@ -137,14 +161,13 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle,
   const turns = useMemo(() => buildTurns(messages), [messages]);
   const latestId = turns.length ? turns[turns.length - 1].id : null;
   const totalCalls = turns.reduce((n, t) => n + t.calls.length, 0);
-  const [openMap, setOpenMap] = useState<Record<number, boolean>>({});
-
-  // Auto-open the latest turn.
-  useEffect(() => {
-    if (latestId != null) {
-      setOpenMap((o) => (o[latestId] !== undefined ? o : { ...o, [latestId]: true }));
+  const model = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant" && messages[i].model) return messages[i].model;
     }
-  }, [latestId]);
+    return "";
+  }, [messages]);
+  const [openMap, setOpenMap] = useState<Record<number, boolean>>({});
 
   // A chat bubble's summary was clicked → open + scroll to that turn.
   useEffect(() => {
@@ -180,14 +203,19 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle,
   return (
     <aside className="flex h-full w-[340px] shrink-0 flex-col border-l border-hairline bg-panel">
       <div className="flex items-center justify-between border-b border-hairline px-3 py-3">
-        <span className="font-mono text-xs uppercase tracking-widest text-ink-dim">
-          Agent Trace{totalCalls > 0 ? ` · ${totalCalls}` : ""}
+        <span className="min-w-0">
+          <span className="block font-mono text-xs uppercase tracking-widest text-ink-dim">
+            Agent Trace{totalCalls > 0 ? ` · ${totalCalls}` : ""}
+          </span>
+          {model && (
+            <span className="block truncate font-mono text-[10px] text-signal">{model}</span>
+          )}
         </span>
         <button
           type="button"
           onClick={onToggle}
           aria-label="Hide agent trace"
-          className="text-ink-dim transition hover:text-ink"
+          className="shrink-0 text-ink-dim transition hover:text-ink"
         >
           <PanelRightClose size={16} />
         </button>
@@ -204,7 +232,8 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle,
 
         {shown.map((t, idx) => {
           const isLatest = t.id === latestId;
-          const isOpen = openMap[t.id] ?? isLatest;
+          // Default every turn open so history tool calls are always visible.
+          const isOpen = openMap[t.id] ?? true;
           return (
             <section
               key={t.id}

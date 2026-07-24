@@ -87,6 +87,11 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateY(6px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        reveal: {
+          "0%": { opacity: "0", transform: "translateY(8px)", filter: "blur(6px)" },
+          "60%": { filter: "blur(0)" },
+          "100%": { opacity: "1", transform: "translateY(0)", filter: "blur(0)" },
+        },
         "glow-pulse": {
           "0%": { boxShadow: "0 0 0 0 rgba(21,128,61,0.0)" },
           "35%": { boxShadow: "0 0 0 3px rgba(21,128,61,0.18)" },
@@ -97,6 +102,7 @@ const config: Config = {
         "pulse-dot": "pulse-dot 1.2s ease-in-out infinite",
         "fade-in": "fade-in 0.25s ease-out",
         "stream-in": "stream-in 0.22s ease-out both",
+        reveal: "reveal 0.5s ease-out both",
         "glow-pulse": "glow-pulse 1.4s ease-out 1",
       },
     },
