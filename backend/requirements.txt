@@ -21,6 +21,9 @@ bcrypt>=4.1,<5.0
 # ---- Numerics (fake embeddings) ----
 numpy>=1.26,<3.0
 
+# ---- External data adapters (weather, CZIS) ----
+httpx>=0.27,<1.0
+
 # ---- Agent stack ----
 langgraph>=1.0,<2.0
 langchain>=1.0,<2.0

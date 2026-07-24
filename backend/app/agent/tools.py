@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import ast
+import json
 import operator
 from datetime import datetime, timezone
 
 from langchain_core.tools import tool
 
+from ..adapters import weather as weather_mod
 from ..config import settings
 from ..database import AsyncSessionLocal
 from . import memory as memory_mod
@@ -76,6 +78,63 @@ def calculator(expression: str) -> str:
         return str(result)
     except Exception as exc:
         return f"Error: could not evaluate expression ({exc})."
+
+
+# --------------------------------------------------------------------------- #
+# Weather tool (factory — defaults to the farmer's registered location)
+# --------------------------------------------------------------------------- #
+def build_weather_tool(user):
+    """Return a ``get_weather`` tool bound to the user's registered address.
+
+    The tool calls the real Open-Meteo API (keyless). On any failure it
+    returns a structured WEATHER_UNAVAILABLE message — the agent must relay
+    the outage honestly and never invent forecast values.
+    """
+    default_place = (
+        getattr(user, "upazila_name", "") or getattr(user, "district_name", "") or ""
+    )
+    default_district = getattr(user, "district_name", "") or None
+
+    @tool
+    async def get_weather(location: str = "", days: int = 7) -> str:
+        """Fetch the REAL weather forecast (live Open-Meteo API) for a Bangladesh location.
+
+        Args:
+            location: Place name (upazila/district/town), e.g. "Tanore". Leave
+                empty to use the farmer's registered upazila.
+            days: Forecast horizon in days, 1-16 (Open-Meteo maximum is 16).
+
+        Returns daily min/max temperature (C), rainfall (mm), rain probability
+        (%), FAO ET0 evapotranspiration (mm) and max wind (km/h), plus a
+        summary. These are actual API values — cite them as retrieved data. If
+        this tool reports WEATHER_UNAVAILABLE, tell the farmer live weather is
+        currently unavailable; NEVER invent forecast numbers.
+        """
+        place = (location or "").strip() or default_place
+        _emit("weather", f"geocoding location: {place}")
+        try:
+            geo = await weather_mod.geocode_place(
+                place,
+                district=None if (location or "").strip() else default_district,
+            )
+            _emit(
+                "weather",
+                f"fetching {days}-day forecast for {geo['name']} "
+                f"({geo['latitude']}, {geo['longitude']})",
+            )
+            forecast = await weather_mod.fetch_forecast(
+                geo["latitude"], geo["longitude"], days
+            )
+        except weather_mod.WeatherError as exc:
+            return (
+                f"WEATHER_UNAVAILABLE: {exc}. Live weather could not be "
+                "fetched. Tell the farmer honestly that live weather is "
+                "unavailable right now and do NOT invent forecast values."
+            )
+        payload = {"location": geo, **forecast}
+        return json.dumps(payload, ensure_ascii=False)
+
+    return get_weather
 
 
 # --------------------------------------------------------------------------- #

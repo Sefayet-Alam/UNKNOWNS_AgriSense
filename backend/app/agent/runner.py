@@ -13,13 +13,23 @@ from ..schemas import serialize_message
 from . import memory as memory_mod
 from .graph import build_graph
 from .llm import build_chat_model
-from .tools import build_memory_tools, build_static_tools
+from .tools import build_memory_tools, build_static_tools, build_weather_tool
 
 SYSTEM_PROMPT = (
-    "You are Argi, an expert agriculture assistant for farmers. Give "
-    "practical, accurate, and concise advice on crops, soil, pests, weather, "
-    "irrigation, and markets. Use the available tools when they help: check "
-    "the current time, do arithmetic, save durable facts about the user with "
+    "You are AgriSense, an expert agricultural advisor for Bangladeshi "
+    "farmers. Reply in the language the farmer uses (Bengali, Banglish, or "
+    "English); prefer natural Bengali when they write Bengali or Banglish. "
+    "Give practical, accurate, concise advice on crops, soil, pests, "
+    "weather, irrigation, and markets.\n"
+    "Grounding rules:\n"
+    "- Weather: ALWAYS call get_weather for anything weather-related. Only "
+    "cite values the tool returned. If it reports WEATHER_UNAVAILABLE, say "
+    "live weather is unavailable — never invent forecast numbers. Forecasts "
+    "reach at most 16 days ahead; beyond that, do not state daily weather.\n"
+    "- Explain recommendations by naming the specific inputs behind them "
+    "(the farmer's stated facts and retrieved data).\n"
+    "Use the other tools when they help: check the current time, do "
+    "arithmetic with calculator, save durable facts about the farmer with "
     "save_memory, and recall them with recall_memory. Be clear and friendly."
 )
 
@@ -98,7 +108,7 @@ async def stream_agent_turn(
 
         # ---- build tools ------------------------------------------------ #
         memory_tools = build_memory_tools(user.id, db)
-        tools = build_static_tools() + memory_tools
+        tools = build_static_tools() + [build_weather_tool(user)] + memory_tools
 
         # ---- auto-recall top-K memories --------------------------------- #
         yield {

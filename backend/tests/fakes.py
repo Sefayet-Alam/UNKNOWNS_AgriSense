@@ -68,9 +68,34 @@ def _tool_script() -> List[BaseMessage]:
     ]
 
 
+def _weather_script() -> List[BaseMessage]:
+    return [
+        # Turn 1: call the weather tool for the registered location.
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "get_weather",
+                    "args": {"location": "", "days": 3},
+                    "id": "call_weather_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        # Turn 2: explain using the returned values.
+        AIMessage(
+            content=(
+                "আগামী ৩ দিনে তানোরে বৃষ্টির সম্ভাবনা কম — মোট ০.০ মিমি "
+                "পূর্বাভাস। সেচের পরিকল্পনা সেভাবে করুন।"
+            )
+        ),
+    ]
+
+
 _SCENARIOS: Dict[str, Callable[[], List[BaseMessage]]] = {
     "plain": _plain_script,
     "tool": _tool_script,
+    "weather": _weather_script,
 }
 
 
