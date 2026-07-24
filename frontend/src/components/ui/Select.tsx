@@ -77,7 +77,7 @@ export function Select({
           aria-haspopup="listbox"
           aria-expanded={open}
           onClick={() => !disabled && setOpen((o) => !o)}
-          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-none border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-left text-sm outline-none transition focus:border-river-500 focus:ring-2 focus:ring-river-300/35 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted"
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-left text-sm outline-none transition focus:border-clay-400 focus:ring-0 focus:shadow-[0_8px_24px_-18px_rgba(23,38,28,0.55)] focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted"
         >
           <span className={selected ? "truncate text-text-primary" : "truncate text-text-muted"}>
             {selected?.label ?? placeholder}

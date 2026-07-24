@@ -4,7 +4,7 @@ Last updated by: Codex (Jul 24, 2026).
 
 ## Current branch and rules
 
-- Branch: `feat/agrisense-workspace`.
+- Branch: `features/redesign` (created from `feat/agrisense-workspace` for the finalized redesign).
 - Never commit or push without Sefayet's explicit approval.
 - Browser API base is `NEXT_PUBLIC_API_URL` (`http://localhost:8080` under compose).
 - `docker-compose.yml` and `docs/API_CONTRACT.md` are authoritative.
@@ -22,9 +22,10 @@ Last updated by: Codex (Jul 24, 2026).
 
 - Light-only visual system: rice paper, paddy green, jute, clay, and river blue.
 - The logo and `public/favicon.svg` share the delta-field/rice geometry.
-- Home motion uses GSAP/ScrollTrigger and a dynamically loaded React Three Fiber scene.
-  `FieldAtlasScene` must retain its reduced-motion/no-WebGL `FieldAtlasFallback`; visual QA
-  confirmed that headless Chrome cannot create a WebGL context.
+- The home hero uses a licensed rural Bangladesh paddy photograph with an AgriSense field-brief
+  overlay; the earlier abstract React Three Fiber scene is no longer rendered.
+- The planning route has five steps. Its yellow SVG reveal uses `getTotalLength()` at runtime;
+  do not restore a hard-coded dash length or it will stop before the fifth node.
 - Bangladesh photographs are local under `public/images/`; licensing and source URLs are in
   `public/images/IMAGE_CREDITS.md`.
 - Auth routes share `components/layout/AuthShell.tsx`. Keep each page's existing handlers intact.
@@ -32,9 +33,10 @@ Last updated by: Codex (Jul 24, 2026).
   state because refresh/direct-link persistence is required.
 - History summaries use the existing `/api/chat/sessions` data only. The illustrative fallback is
   shown and labeled only when the endpoint errors or returns no saved sessions.
-- Chat input focus uses river blue and jute; preserve that softer treatment. Interactive buttons,
-  sidebar rows, suggestions, and key cards use restrained lift/floating hover feedback with the
-  global reduced-motion guard.
+- Form controls and chat composers intentionally avoid green/teal outer focus rectangles. Inputs
+  use a subtle clay/neutral border and shadow; buttons/links keep a terracotta keyboard indicator.
+  Interactive buttons, sidebar rows, suggestions, and key cards use restrained lift/floating hover
+  feedback with the global reduced-motion guard.
 
 ## Verification
 

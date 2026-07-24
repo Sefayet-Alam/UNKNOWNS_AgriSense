@@ -7,26 +7,22 @@ import {
   BarChart3,
   CalendarRange,
   CloudSun,
+  CircleDollarSign,
   MapPinned,
   MessageSquareText,
+  RefreshCcw,
   ShieldCheck,
   Sprout,
 } from "lucide-react";
-import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { FieldAtlasFallback } from "@/components/home/FieldAtlasFallback";
+import FieldAtlasScene from "@/components/home/FieldAtlasScene";
 import { Reveal } from "@/components/home/Reveal";
 import { Logo, LogoMark } from "@/components/ui/Logo";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { gsap, motionAllowed, registerGsap } from "@/lib/motion";
 import { getAccess } from "@/lib/tokens";
-
-const FieldAtlasScene = dynamic(
-  () => import("@/components/home/FieldAtlasScene"),
-  { ssr: false, loading: () => <FieldAtlasFallback /> },
-);
 
 const FIELD_NOTES = [
   { value: "7,761", label: "unions mapped" },
@@ -53,6 +49,18 @@ const METHOD = [
     title: "Carry the season",
     body: "Leave with dates, inputs, expected costs, and a plan you can revisit as conditions change.",
     icon: CalendarRange,
+  },
+  {
+    number: "04",
+    title: "Know the numbers",
+    body: "Review input costs, expected revenue, and margin assumptions before committing the field.",
+    icon: CircleDollarSign,
+  },
+  {
+    number: "05",
+    title: "Adjust with confidence",
+    body: "Return when weather, prices, or field conditions shift and refine the plan with the new context.",
+    icon: RefreshCcw,
   },
 ];
 
@@ -90,6 +98,7 @@ function PlanningSequence() {
       media.add("(min-width: 1024px)", () => {
         const steps = gsap.utils.toArray<HTMLElement>("[data-method-step]");
         const line = root.current?.querySelector<SVGPathElement>("[data-route-line]");
+        const lineLength = line?.getTotalLength() ?? 0;
         const timeline = gsap.timeline({
           scrollTrigger: {
             trigger: root.current,
@@ -100,7 +109,11 @@ function PlanningSequence() {
           },
         });
         if (line) {
-          timeline.fromTo(line, { strokeDashoffset: 640 }, { strokeDashoffset: 0, duration: 1 });
+          gsap.set(line, {
+            strokeDasharray: lineLength,
+            strokeDashoffset: lineLength,
+          });
+          timeline.to(line, { strokeDashoffset: 0, duration: 1, ease: "none" });
         }
         timeline.fromTo(
           steps,
@@ -129,11 +142,12 @@ function PlanningSequence() {
             stroke="#D9C28F"
             strokeWidth="5"
             strokeLinecap="round"
-            strokeDasharray="640"
           />
           <g fill="#F7F1DF" stroke="#17351B" strokeWidth="8">
             <circle cx="44" cy="58" r="13" />
+            <circle cx="190" cy="94" r="13" />
             <circle cx="335" cy="198" r="13" />
+            <circle cx="168" cy="296" r="13" />
             <circle cx="312" cy="413" r="13" />
           </g>
         </svg>
@@ -251,10 +265,6 @@ export default function HomePage() {
 
           <div className="relative min-h-[500px] border-t border-jute-300/45 lg:min-h-0 lg:border-t-0">
             <FieldAtlasScene />
-            <div className="pointer-events-none absolute right-5 top-5 border border-paper-50/70 bg-paper-50/85 px-4 py-3 backdrop-blur">
-              <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-500">Field condition</p>
-              <p className="mt-1 font-display text-xl text-field-800">Ready for a plan</p>
-            </div>
           </div>
         </div>
       </section>

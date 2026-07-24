@@ -76,9 +76,13 @@ html {
   }
 }
 
-:focus-visible {
-  outline: 3px solid #43838d;
+:where(a, button, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid rgba(173, 88, 53, 0.72);
   outline-offset: 3px;
+}
+
+:where(input, textarea, select):focus-visible {
+  outline: none;
 }
 
 @layer components {

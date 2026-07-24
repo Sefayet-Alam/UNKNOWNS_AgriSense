@@ -17,7 +17,7 @@ export function TextInput({ label, error, id, ...rest }: Props) {
       <input
         id={inputId}
         aria-invalid={Boolean(error)}
-        className={`min-h-11 w-full rounded-none border bg-paper-50 px-3.5 py-2.5 text-ink-900 outline-none transition placeholder:text-ink-500/55 focus:border-river-500 focus:ring-2 focus:ring-river-300/35 ${
+        className={`min-h-11 w-full rounded-lg border bg-paper-50 px-3.5 py-2.5 text-ink-900 outline-none transition placeholder:text-ink-500/55 focus:border-clay-400 focus:ring-0 focus:shadow-[0_8px_24px_-18px_rgba(23,38,28,0.55)] ${
           error ? "border-status-error" : "border-jute-300/70"
         }`}
         {...rest}

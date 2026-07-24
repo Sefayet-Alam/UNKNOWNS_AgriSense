@@ -671,7 +671,7 @@ function PasswordChange() {
   };
 
   const input =
-    "min-h-11 w-full rounded-none border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-river-500 focus:ring-2 focus:ring-river-300/35";
+    "min-h-11 w-full rounded-lg border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-clay-400 focus:ring-0 focus:shadow-[0_8px_24px_-18px_rgba(23,38,28,0.55)]";
 
   return (
     <section className="atlas-panel p-5 sm:p-7">

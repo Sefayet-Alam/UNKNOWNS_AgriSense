@@ -65,7 +65,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   return (
     <div className="sticky bottom-0 border-t border-jute-300/55 bg-paper-50/92 px-4 py-3 backdrop-blur">
       <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
-        <div className="flex-1 rounded-[1.35rem] border border-jute-300/70 bg-surface shadow-card transition duration-300 focus-within:-translate-y-0.5 focus-within:border-river-500 focus-within:shadow-[0_0_0_4px_rgba(127,182,191,0.16),0_18px_35px_-28px_rgba(23,53,27,0.55)]">
+        <div className="flex-1 rounded-[1.35rem] border border-jute-300/70 bg-surface shadow-card transition duration-300 focus-within:-translate-y-0.5 focus-within:border-clay-400/70 focus-within:shadow-[0_18px_35px_-28px_rgba(23,38,28,0.55)]">
           <textarea
             ref={taRef}
             value={value}

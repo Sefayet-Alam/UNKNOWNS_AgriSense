@@ -366,7 +366,7 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
 
         {/* Composer */}
         <div className="border-t border-hairline bg-panel px-5 py-4">
-          <div className="mx-auto w-full max-w-3xl rounded-[1.35rem] border border-jute-300/70 bg-canvas px-3.5 py-3 shadow-card transition duration-300 focus-within:-translate-y-0.5 focus-within:border-river-500 focus-within:shadow-[0_0_0_4px_rgba(127,182,191,0.16),0_18px_35px_-28px_rgba(23,53,27,0.55)]">
+          <div className="mx-auto w-full max-w-3xl rounded-[1.35rem] border border-jute-300/70 bg-canvas px-3.5 py-3 shadow-card transition duration-300 focus-within:-translate-y-0.5 focus-within:border-clay-400/70 focus-within:shadow-[0_18px_35px_-28px_rgba(23,38,28,0.55)]">
             {attachments.length > 0 && (
               <div className="mb-2.5 flex flex-wrap gap-2">
                 {attachments.map((a) => (

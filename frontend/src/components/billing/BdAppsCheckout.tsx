@@ -159,7 +159,7 @@ export function BdAppsCheckout({
                   setOtp(event.target.value.replace(/\D/g, ""))
                 }
                 placeholder="Enter OTP"
-                className="nums min-h-12 w-full rounded-none border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-center font-mono text-lg tracking-[0.4em] outline-none transition focus:border-river-500 focus:ring-2 focus:ring-river-300/35"
+                className="nums min-h-12 w-full rounded-lg border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-center font-mono text-lg tracking-[0.4em] outline-none transition focus:border-clay-400 focus:ring-0 focus:shadow-[0_8px_24px_-18px_rgba(23,38,28,0.55)]"
               />
               {err && <p className="text-xs text-status-error">{err}</p>}
               <button
