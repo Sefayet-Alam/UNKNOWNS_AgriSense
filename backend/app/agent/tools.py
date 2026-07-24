@@ -23,6 +23,7 @@ from ..adapters import weather as weather_mod
 from ..config import settings
 from ..engines import crop_ranker as crop_ranker_mod
 from ..engines import finance as finance_mod
+from ..engines import scheduler as scheduler_mod
 from ..engines import season_planner as season_planner_mod
 from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
@@ -1847,6 +1848,487 @@ def build_season_plan_tool(user):
         )
 
     return generate_season_plan
+
+
+# --------------------------------------------------------------------------- #
+# Fertilizer & irrigation scheduler (Tier 1): costed, stage-timed, organic
+# alternatives, water balance. Reuses the same live CZIS + BAMIS grounding as
+# the season plan but presents it as an input-management schedule.
+# --------------------------------------------------------------------------- #
+def build_scheduler_tool(user):
+    """Return the fertilizer/irrigation scheduler tool for this farmer."""
+
+    @tool
+    async def generate_input_schedule(
+        crop_name: str,
+        planting_date: str = "",
+        variety_id: Optional[int] = None,
+        effective_rainfall_mm: Optional[float] = None,
+        rainfall_change_percent: float = 0,
+    ) -> str:
+        """Build a costed fertilizer + irrigation schedule for the selected crop.
+
+        Returns, tied to the active farm's crop/soil/area/irrigation: per growth
+        stage chemical fertilizer quantities (from the live CZIS farm-scaled
+        recommendation) with a seeded retail cost; organic alternatives per
+        product sized by transparent nutrient equivalence (FRG IPNS basis, an
+        approximation, not a precise dose); and an irrigation water balance from
+        the BAMIS crop-water requirement minus effective rainfall giving the
+        application count and seeded cost. Supported crops: Wheat, Mustard,
+        Potato, Maize, Boro dhan (Rajshahi focused path).
+
+        Args:
+            crop_name: Selected crop.
+            planting_date: Optional ISO date; empty uses the next sowing window.
+            variety_id: Optional CZIS variety id for the fertilizer point call.
+            effective_rainfall_mm: Optional seasonal effective rainfall override.
+            rainfall_change_percent: What-if scaling of rainfall (e.g. -30).
+        """
+        _emit("scheduler", f"building input schedule for {crop_name}")
+        today = datetime.now(ZoneInfo("Asia/Dhaka")).date()
+        try:
+            canonical = season_planner_mod.canonical_crop_name(crop_name)
+        except ValueError as exc:
+            return json.dumps(
+                {"status": "UNSUPPORTED_CROP", "message": str(exc)},
+                ensure_ascii=False,
+            )
+
+        requested_date: Optional[date] = None
+        if planting_date.strip():
+            try:
+                requested_date = date.fromisoformat(planting_date.strip())
+            except ValueError:
+                return json.dumps(
+                    {"status": "INVALID_PLANTING_DATE", "message": "planting_date must be YYYY-MM-DD"},
+                    ensure_ascii=False,
+                )
+
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+            if missing:
+                return json.dumps(
+                    {
+                        "status": "PROFILE_INCOMPLETE",
+                        "missing_required_fields": missing,
+                        "instruction": "Complete the six farm fields before scheduling.",
+                    },
+                    ensure_ascii=False,
+                )
+            farm_inputs = {
+                "area_decimal": farm.area_decimal,
+                "soil_texture": farm.soil_texture,
+                "land_type": farm.land_type,
+                "irrigation_available": farm.irrigation_available,
+                "season": farm.season,
+                "division": farm.division_name,
+                "location": farm.union_name or farm.upazila_name,
+                "latitude": farm.latitude,
+                "longitude": farm.longitude,
+            }
+
+        if str(farm_inputs["division"] or "").strip().casefold() != "rajshahi":
+            return json.dumps(
+                {
+                    "status": "UNSUPPORTED_CALENDAR_REGION",
+                    "calendar_region": "Rajshahi",
+                    "farm_inputs": farm_inputs,
+                    "message": "The focused deterministic schedules are sourced for Rajshahi division.",
+                },
+                ensure_ascii=False,
+            )
+        if (
+            farm_inputs["irrigation_available"] is False
+            and crop_ranker_mod.CROP_TRAITS[canonical.lower()]["water"] == "high"
+        ):
+            return json.dumps(
+                {
+                    "status": "IRRIGATION_REQUIRED",
+                    "crop": canonical,
+                    "farm_inputs": farm_inputs,
+                    "message": f"{canonical} has high water demand but this farm has no assured irrigation.",
+                },
+                ensure_ascii=False,
+            )
+
+        lat, lon = farm_inputs["latitude"], farm_inputs["longitude"]
+        if lat is None or lon is None:
+            return json.dumps(
+                {"status": "LOCATION_UNRESOLVED", "farm_inputs": farm_inputs},
+                ensure_ascii=False,
+            )
+
+        catalog = sorted(
+            [
+                item
+                for item in czis_mod.list_crops(season=farm_inputs["season"])
+                if str(item["name"]).strip().lower() == canonical.lower()
+            ],
+            key=lambda item: (
+                str(item.get("variety_group") or "").lower() != "favourable environment",
+                int(item["crop_id"]),
+            ),
+        )
+        if not catalog:
+            return json.dumps(
+                {"status": "CROP_SEASON_MISMATCH", "crop": canonical, "farm_season": farm_inputs["season"]},
+                ensure_ascii=False,
+            )
+        selected_crop = {"crop_id": int(catalog[0]["crop_id"]), "name": canonical}
+
+        unavailable: list[str] = []
+        _emit("weather", "fetching forecast for schedule date adjustment")
+        try:
+            weather = await weather_mod.fetch_forecast(lat, lon, 16)
+        except weather_mod.WeatherError as exc:
+            unavailable.append("weather")
+            weather = {"status": "WEATHER_UNAVAILABLE", "error": str(exc), "days": [], "summary": {}}
+
+        selected_variety: Optional[dict] = None
+        fertilizer: dict = {"status": "CZIS_FERTILIZER_UNAVAILABLE", "products": []}
+        _emit("czis", f"fetching farm-scaled fertilizer for crop {selected_crop['crop_id']}")
+        try:
+            context = await czis_mod.get_crop_context(selected_crop["crop_id"], lat, lon)
+            choices = context.get("varieties") or []
+            if variety_id is not None:
+                selected_variety = next(
+                    (item for item in choices if int(item["variety_id"]) == int(variety_id)),
+                    None,
+                )
+                if selected_variety is None:
+                    return json.dumps(
+                        {
+                            "status": "INVALID_VARIETY",
+                            "requested_variety_id": variety_id,
+                            "available_varieties": choices,
+                        },
+                        ensure_ascii=False,
+                    )
+            elif choices:
+                selected_variety = {**choices[0], "selection": "provisional_first_live_option"}
+            if selected_variety is None:
+                raise czis_mod.CzisError("no live variety available at farm point")
+            fertilizer = await czis_mod.get_fertilizer_recommendation(
+                selected_crop["crop_id"],
+                lat,
+                lon,
+                int(selected_variety["variety_id"]),
+                float(farm_inputs["area_decimal"]),
+            )
+        except czis_mod.CzisError as exc:
+            unavailable.append("fertilizer")
+            fertilizer = {"status": "CZIS_FERTILIZER_UNAVAILABLE", "error": str(exc), "products": []}
+
+        calendar = season_planner_mod.build_season_calendar(
+            crop_name=canonical,
+            today=today,
+            planting_date=requested_date,
+            fertilizer_products=fertilizer.get("products") or [],
+            weather=weather,
+            irrigation_available=farm_inputs["irrigation_available"],
+            soil_texture=farm_inputs["soil_texture"] or "",
+            land_type=farm_inputs["land_type"] or "",
+        )
+        fertilizer_events = [e for e in calendar["events"] if e["category"] == "fertilizer"]
+        irrigation_events = [e for e in calendar["events"] if e["category"] == "irrigation"]
+
+        fertilizer_schedule = scheduler_mod.build_fertilizer_schedule(
+            fertilizer_events=fertilizer_events,
+            soil_texture=farm_inputs["soil_texture"] or "",
+        )
+        if not fertilizer_events or not fertilizer_schedule["cost_complete"]:
+            if "fertilizer" not in unavailable and not fertilizer_events:
+                unavailable.append("fertilizer")
+        irrigation_schedule = scheduler_mod.build_irrigation_schedule(
+            crop_name=canonical,
+            irrigation_events=irrigation_events,
+            area_decimal=float(farm_inputs["area_decimal"]),
+            effective_rainfall_mm=effective_rainfall_mm,
+            rainfall_change_percent=rainfall_change_percent,
+        )
+
+        return json.dumps(
+            {
+                "status": "degraded" if unavailable else "ok",
+                "unavailable_sources": unavailable,
+                "selected_crop": selected_crop,
+                "selected_variety": selected_variety,
+                "farm_inputs": farm_inputs,
+                "planting_date": calendar["planting_date"],
+                "fertilizer_schedule": fertilizer_schedule,
+                "irrigation_schedule": irrigation_schedule,
+                "grounding_rule": (
+                    "Fertilizer quantities are the live CZIS farm-scaled result and "
+                    "crop-water requirement is BAMIS-cited; prices, effective "
+                    "rainfall, application depth and organic equivalents are seeded "
+                    "or approximate values that state their provenance. Present "
+                    "organic quantities as IPNS approximations, never precise doses."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return generate_input_schedule
+
+
+# --------------------------------------------------------------------------- #
+# Scenario simulation (Tier 1): "what if rainfall drops 30% / budget is cut
+# 40%?" -> a revised plan with CHANGED NUMBERS, not a generic answer. Reuses the
+# deterministic finance engine (budget/cost/price levers) and the scheduler's
+# BAMIS water balance (rainfall lever), reporting baseline vs revised + deltas.
+# --------------------------------------------------------------------------- #
+def build_scenario_tool(user):
+    """Return the deterministic what-if scenario simulator for this farmer."""
+
+    @tool
+    async def simulate_scenario(
+        crop_name: str,
+        rainfall_change_percent: float = 0,
+        budget_change_percent: float = 0,
+        cost_change_percent: float = 0,
+        price_change_percent: float = 0,
+        expected_yield_t_ha: Optional[float] = None,
+    ) -> str:
+        """Recompute the plan's numbers under a what-if change and show the delta.
+
+        Answers questions like "what if rainfall drops 30%?" or "what if my
+        budget is cut 40%?" with a revised, itemized result rather than a generic
+        answer. Levers (each a signed percent, 0 = unchanged):
+          - rainfall_change_percent: scales effective rainfall -> irrigation
+            water balance, extra applications, added irrigation cost, yield risk.
+          - budget_change_percent: scales the farm's available budget -> new
+            budget-fit / surplus-or-gap.
+          - cost_change_percent: scales non-overridden input costs.
+          - price_change_percent: scales the sale price.
+        Yield comes from live CZIS (or expected_yield_t_ha). All arithmetic is
+        deterministic; provenance is preserved. Supported crops: Wheat, Mustard,
+        Potato, Maize, Boro dhan.
+        """
+        _emit("scenario", f"simulating what-if for {crop_name}")
+        try:
+            canonical = season_planner_mod.canonical_crop_name(crop_name)
+        except ValueError as exc:
+            return json.dumps(
+                {"status": "UNSUPPORTED_CROP", "message": str(exc)},
+                ensure_ascii=False,
+            )
+
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+            if missing:
+                return json.dumps(
+                    {
+                        "status": "PROFILE_INCOMPLETE",
+                        "missing_required_fields": missing,
+                        "instruction": "Complete the six farm fields before simulating.",
+                    },
+                    ensure_ascii=False,
+                )
+            farm_inputs = {
+                "area_decimal": farm.area_decimal,
+                "budget_bdt": farm.budget_bdt,
+                "irrigation_available": farm.irrigation_available,
+                "season": farm.season,
+                "latitude": farm.latitude,
+                "longitude": farm.longitude,
+                "location": farm.union_name or farm.upazila_name,
+            }
+
+        catalog = sorted(
+            [
+                item
+                for item in czis_mod.list_crops(season=farm_inputs["season"])
+                if str(item["name"]).strip().lower() == canonical.lower()
+            ],
+            key=lambda item: (
+                str(item.get("variety_group") or "").lower() != "favourable environment",
+                int(item["crop_id"]),
+            ),
+        )
+        if not catalog:
+            return json.dumps(
+                {"status": "CROP_SEASON_MISMATCH", "crop": canonical, "farm_season": farm_inputs["season"]},
+                ensure_ascii=False,
+            )
+        crop_id = int(catalog[0]["crop_id"])
+
+        # ---- yield (live CZIS or farmer-provided) ----------------------- #
+        selected_variety = None
+        if expected_yield_t_ha is not None:
+            yield_low = yield_high = expected_yield_t_ha
+            yield_source = {"source_type": "farmer_estimate", "value_t_ha": expected_yield_t_ha}
+        else:
+            lat, lon = farm_inputs["latitude"], farm_inputs["longitude"]
+            try:
+                varieties_response = await czis_mod.get_varieties(crop_id)
+                varieties = varieties_response.get("varieties") or []
+                selected_variety = {**varieties[0], "selection": "provisional_first_live_option"} if varieties else None
+                if selected_variety is None:
+                    raise czis_mod.CzisError("no usable CZIS variety yield")
+                yield_low, yield_high = finance_mod.parse_yield_range(
+                    selected_variety.get("yield_t_ha")
+                )
+                yield_source = {
+                    **(varieties_response.get("evidence") or {}),
+                    "source": "CZIS",
+                    "variety": selected_variety.get("name"),
+                }
+            except (czis_mod.CzisError, ValueError, TypeError) as exc:
+                return json.dumps(
+                    {
+                        "status": "YIELD_UNAVAILABLE",
+                        "error": str(exc),
+                        "instruction": "Provide expected_yield_t_ha or retry; nothing was invented.",
+                    },
+                    ensure_ascii=False,
+                )
+
+        area = float(farm_inputs["area_decimal"])
+        budget = farm_inputs["budget_bdt"]
+
+        def _project(*, budget_value, cost_adj, sale_price):
+            return finance_mod.build_financial_projection(
+                crop_name=canonical,
+                area_decimal=area,
+                budget_bdt=budget_value,
+                yield_low_t_ha=yield_low,
+                yield_high_t_ha=yield_high,
+                sale_price_bdt_per_kg=sale_price,
+                cost_adjustment_percent=cost_adj,
+                yield_source=yield_source,
+            )
+
+        try:
+            baseline = _project(budget_value=budget, cost_adj=0, sale_price=None)
+        except (ValueError, TypeError) as exc:
+            return json.dumps(
+                {"status": "INVALID_FINANCIAL_INPUT", "message": str(exc)},
+                ensure_ascii=False,
+            )
+
+        base_price = baseline["price_assumption"]["value_bdt_per_kg"]
+        revised_price = (
+            round(base_price * (1 + price_change_percent / 100), 2)
+            if price_change_percent
+            else None
+        )
+        revised_budget = (
+            round(budget * (1 + budget_change_percent / 100), 2)
+            if budget is not None and budget_change_percent
+            else budget
+        )
+        try:
+            revised = _project(
+                budget_value=revised_budget,
+                cost_adj=cost_change_percent,
+                sale_price=revised_price,
+            )
+        except (ValueError, TypeError) as exc:
+            return json.dumps(
+                {"status": "INVALID_FINANCIAL_INPUT", "message": str(exc)},
+                ensure_ascii=False,
+            )
+
+        # ---- irrigation water balance under the rainfall lever ---------- #
+        base_irr = scheduler_mod.build_irrigation_schedule(
+            crop_name=canonical, irrigation_events=[], area_decimal=area
+        )
+        rev_irr = scheduler_mod.build_irrigation_schedule(
+            crop_name=canonical,
+            irrigation_events=[],
+            area_decimal=area,
+            rainfall_change_percent=rainfall_change_percent,
+        )
+        water_known = base_irr["water_balance"]["status"] == "known"
+        base_irr_cost = base_irr.get("estimated_cost_bdt", 0) if water_known else 0
+        rev_irr_cost = rev_irr.get("estimated_cost_bdt", 0) if water_known else 0
+        extra_irrigation_cost = round(max(0.0, rev_irr_cost - base_irr_cost), 2)
+
+        # ---- compose combined revised economics ------------------------- #
+        revised_total_cost = round(revised["total_cost_bdt"] + extra_irrigation_cost, 2)
+        revised_net = round(revised["expected"]["net_profit_bdt"] - extra_irrigation_cost, 2)
+        baseline_net = baseline["expected"]["net_profit_bdt"]
+        combined_within_budget = (
+            (revised_total_cost <= revised_budget) if revised_budget is not None else None
+        )
+        combined_gap = (
+            round(revised_budget - revised_total_cost, 2) if revised_budget is not None else None
+        )
+
+        # ---- yield risk from a rainfall shortfall ----------------------- #
+        yield_risk = None
+        if rainfall_change_percent < 0 and water_known:
+            extra_apps = rev_irr["recommended_applications"] - base_irr["recommended_applications"]
+            if farm_inputs["irrigation_available"] is False:
+                yield_risk = {
+                    "level": "high",
+                    "reason": (
+                        "Rainfall shortfall with no assured irrigation: the water "
+                        f"deficit rises to {rev_irr['water_balance']['net_irrigation_mm']} mm "
+                        "and cannot be made up, risking yield loss."
+                    ),
+                }
+            elif extra_apps > 0:
+                yield_risk = {
+                    "level": "moderate",
+                    "reason": (
+                        f"Rainfall shortfall needs about {extra_apps} more irrigation "
+                        f"application(s) (+{extra_irrigation_cost} BDT) to protect yield."
+                    ),
+                }
+
+        return json.dumps(
+            {
+                "status": "ok",
+                "crop": canonical,
+                "selected_variety": selected_variety,
+                "scenario": {
+                    "rainfall_change_percent": rainfall_change_percent,
+                    "budget_change_percent": budget_change_percent,
+                    "cost_change_percent": cost_change_percent,
+                    "price_change_percent": price_change_percent,
+                },
+                "baseline": {
+                    "total_cost_bdt": baseline["total_cost_bdt"],
+                    "net_profit_bdt": baseline_net,
+                    "roi_percent": baseline["expected"]["roi_percent"],
+                    "budget_bdt": budget,
+                    "within_budget": baseline["budget"]["within_budget"] if baseline["budget"] else None,
+                    "irrigation_applications": base_irr.get("recommended_applications") if water_known else None,
+                    "irrigation_cost_bdt": base_irr_cost if water_known else None,
+                },
+                "revised": {
+                    "total_cost_bdt": revised_total_cost,
+                    "net_profit_bdt": revised_net,
+                    "roi_percent": revised["expected"]["roi_percent"],
+                    "budget_bdt": revised_budget,
+                    "within_budget": combined_within_budget,
+                    "surplus_or_gap_bdt": combined_gap,
+                    "additional_irrigation_cost_bdt": extra_irrigation_cost,
+                    "irrigation_applications": rev_irr.get("recommended_applications") if water_known else None,
+                    "irrigation_cost_bdt": rev_irr_cost if water_known else None,
+                    "net_irrigation_mm": rev_irr["water_balance"].get("net_irrigation_mm") if water_known else None,
+                },
+                "deltas": {
+                    "total_cost_bdt": round(revised_total_cost - baseline["total_cost_bdt"], 2),
+                    "net_profit_bdt": round(revised_net - baseline_net, 2),
+                    "irrigation_cost_bdt": extra_irrigation_cost,
+                },
+                "yield_risk": yield_risk,
+                "grounding_rule": (
+                    "Yield is CZIS or farmer-provided; crop-water requirement is "
+                    "BAMIS-cited; prices/costs/effective-rainfall are labelled "
+                    "seeded values. All deltas are deterministic recomputations, "
+                    "not estimates. Additional irrigation cost from a rainfall "
+                    "shortfall is added on top of the base itemized cost."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return simulate_scenario
 
 
 def build_czis_tools(user):
