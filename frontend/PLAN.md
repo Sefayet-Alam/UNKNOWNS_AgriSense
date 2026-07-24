@@ -33,7 +33,8 @@ plan artifact + right collapsible trace panel). Branch: `features/redesign`.
 - Registration and profile location dropdowns are generated from `docs/upazilas.csv`
   (8 divisions, 64 districts, 497 upazilas); the stale 7-division CZIS snapshot and its
   metropolitan/thana entries are removed.
-- Backend verification: 12 focused billing tests and all 199 tests pass.
+- Merged-tree verification: all 224 backend tests pass; frontend typecheck and production build
+  pass after merging the latest `origin/main`.
 
 ## Locked decisions
 - Identity: mobile-number auth + address (PR #1, pending merge).
