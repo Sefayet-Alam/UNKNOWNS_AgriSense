@@ -57,6 +57,36 @@ The legacy `BDAPPS_APPLICATION_ID`, `BDAPPS_PASSWORD`,
 single-app migration fallback. New production configuration should use the
 per-plan variables above.
 
+### Automatic development fallback
+
+When `BILLING_PROVIDER=bdapps` but **zero** complete application ID/password
+pairs exist, AgriSense automatically enables development billing for both paid
+plans with OTP `1234` and no mobile charge. The plans API reports provider
+`mock`, so the frontend clearly labels the flow.
+
+As soon as **any** complete BDApps credential pair exists, mock activation is
+disabled globally. The plans API reports provider `bdapps`, and only tariffs
+with their own complete credentials can be selected. This prevents a
+partially provisioned production deployment from silently creating mock
+subscriptions.
+
+Development OTP `1234` can be requested repeatedly without a cooldown. The
+configured `OTP_REQUEST_COOLDOWN_SECONDS` limit applies only to real BDApps
+carrier OTP requests.
+
+### Plus-to-Pro loyalty upgrade
+
+During development, an active Plus user sees Pro at BDT 249/month and can
+upgrade directly with OTP `1234`; the backend replaces Plus with Pro without a
+manual cancellation step.
+
+BDApps subscription tariffs are provisioned per application. The existing BDT
+499 Pro application cannot truthfully process a checkout displayed as BDT 249.
+Before enabling this upgrade on the carrier, provision a separate BDT 249 Pro
+upgrade application and extend the server with its credentials/routing. Until
+then, real BDApps mode keeps the discounted upgrade unavailable rather than
+risking an incorrect or duplicate charge.
+
 ## Deploy
 
 From the production checkout after the feature branch is merged:
@@ -90,7 +120,7 @@ applications.
 Keep `BILLING_PROVIDER=mock` locally when a real Robi-number test is not being
 performed; mock mode uses OTP `1234` and never charges a mobile account.
 
-## Pre-approval sandbox testing
+## Local mock rehearsal (not the BDApps sandbox)
 
 Until BDApps approves the applications and exposes their API passwords, test the
 complete AgriSense checkout locally with `BILLING_PROVIDER=mock`. Rebuild the
@@ -100,14 +130,23 @@ refresh Profile → Billing, and then cancel it. This exercises AgriSense's real
 frontend, API routes, database persistence, and cancellation state without
 calling BDApps or charging a number.
 
-BDApps also publishes a separate Pro Developer Kit and SDK Simulator Guide for
-gateway-level local testing. Use the simulator-provided base URL and credentials
-from that guide; do not guess its host, port, application password, or OTP. If
-the simulator exposes the production-compatible HTTP routes, temporarily set
-`BILLING_PROVIDER=bdapps`, point `BDAPPS_BASE_URL` at the simulator, and put its
-Plus/Pro test credentials in the matching `BDAPPS_*` variables. Revert to
-`BILLING_PROVIDER=mock` afterward.
+This mock provider verifies AgriSense's own UI/API/database flow; it is not the
+BDApps simulator and must not be presented as BDApps sandbox validation.
+
+## Official BDApps local simulator
+
+The currently published English BDApps Pro SDK Simulator Guide is version 1.1.1
+(13 May 2015). It starts a local Java simulator UI at
+`http://localhost:10001/mchoice-tap-sdk` and documents gateway endpoints on port
+7000 for **SMS, USSD, and CaaS only**. It does not document `/otp/request`,
+`/otp/verify`, or any `/subscription/*` endpoint.
+
+Therefore, do not point this subscription adapter at `http://localhost:7000`;
+the published simulator cannot validate AgriSense's OTP/subscription flow. Ask
+`support@bdapps.com` for a current subscription-capable sandbox or test
+credentials. Until they provide one—or approve the applications and issue API
+passwords—use `mock` only as an explicitly labeled AgriSense-local rehearsal.
 
 An application account password is not an application API password. Without
-approved app credentials—or simulator-issued credentials—the real
+approved app credentials—or subscription-capable test credentials—the real
 `https://developer.bdapps.com` OTP flow cannot be authenticated.

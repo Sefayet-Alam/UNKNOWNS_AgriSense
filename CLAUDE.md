@@ -60,6 +60,9 @@ that runs end-to-end in a 4-minute demo.
 - **Auth**: **phone number is the identity** (unique login credential; no email —
   rural farmers have phones). `username` is a non-unique display name. Registration
   captures the farm **address with CZIS/BBS geocodes** down to the **union**
+  using the 8-division, 64-district, 497-upazila hierarchy in
+  `docs/upazilas.csv`; `scripts/data_harvest/build_frontend_geocodes.py`
+  regenerates the frontend dropdown bundle from that canonical source.
   (OPTIONAL — some upazilas list none; a non-empty union_code is validated
   server-side against the bundled gazetteer) → union centroid pins the farm to
   exact lat/lon, else the upazila centroid does. JWT register/login/me +
@@ -198,7 +201,7 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 196 tests: unit (security/phone/tools/weather adapter/czis
+  (or `make test`). 199 tests: unit (security/phone/tools/weather adapter/czis
   adapter/geo
   gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +

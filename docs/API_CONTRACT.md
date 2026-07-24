@@ -79,9 +79,19 @@ Res 200:
 { "results": [BillingPlan], "provider": "mock" | "bdapps",
   "subscribable_plan_ids": ["plus" | "pro"] }
 ```
-In BDApps mode a plan is subscribable only when its own Plus/Pro application
-credentials are complete; the frontend must not start checkout for an
-unconfigured tariff.
+With `BILLING_PROVIDER=bdapps` and zero complete application credential pairs,
+the response reports effective provider `mock`, exposes both paid plans, and
+uses development OTP `1234`. As soon as any Plus/Pro application ID/password
+pair is complete, the response reports `bdapps`, mock activation is disabled
+globally, and only tariffs with their own complete credentials are subscribable.
+The frontend must not start checkout for an unconfigured live tariff.
+
+The catalog is user-aware. For an active Plus subscription, its Pro entry has
+`amount_bdt: 249`; development mode allows direct Plus → Pro OTP activation and
+replaces the existing local record. The user does not manually cancel Plus.
+In real BDApps mode the discounted Pro entry is unavailable until a dedicated
+BDT 249 carrier application is supported; the regular BDT 499 Pro application
+must never be used while displaying BDT 249.
 
 ### GET /api/billing/subscription
 Res 200: `Subscription`. A user without a paid record receives the Free plan.

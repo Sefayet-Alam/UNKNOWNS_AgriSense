@@ -66,12 +66,22 @@ Last updated by: Codex (Jul 24, 2026).
   derives the durable `Thought for …` value from the preceding persisted user timestamp and final
   assistant timestamp; do not replace it with refresh-unsafe component-only timing.
 
+## Registration address hierarchy
+
+- `docs/upazilas.csv` is the source of truth for division, district, and upazila options.
+- `scripts/data_harvest/build_frontend_geocodes.py` regenerates
+  `src/data/bd-geocodes.json`; rerun it whenever the CSV changes.
+- The generated hierarchy currently contains 8 divisions, 64 districts, and 497 upazilas and is
+  shared by registration and profile address editing. Do not restore the older CZIS snapshot,
+  which mixed metropolitan/thana records into the upazila dropdown.
+
 ## Verification
 
 - `npm run typecheck` passes.
 - `npm run build` passes.
 - The production route manifest contains no `/demo`.
-- Full backend suite: 196 tests pass after merging current `origin/main`.
+- Full backend suite: 199 tests pass after merging current `origin/main` and adding
+  persisted-provider cancellation, automatic development fallback, and dev-no-cooldown regressions.
 - Focused streaming/tool-trace suite: 6 tests pass.
 - Direct frontend state assertions cover live-over-persisted precedence, final-turn aggregation,
   and persisted turn-duration formatting.
@@ -85,3 +95,20 @@ Set the per-plan `BDAPPS_PLUS_*` and `BDAPPS_PRO_*` application credentials in r
 `BILLING_PROVIDER=bdapps`, rebuild, then test request/verify/status/cancel with real eligible Robi
 numbers. Plus ID is `APP_139278`; both API passwords and the Pro ID are still external prerequisites.
 Both apps use `/api/bdapps/sms/receive` and `/api/bdapps/subscription/notify`.
+
+`BILLING_PROVIDER=mock` is only AgriSense's deterministic local rehearsal; it is not the official
+BDApps sandbox. The currently published Pro SDK Simulator guide documents SMS/USSD/CaaS endpoints,
+but no OTP or Subscription endpoints, so it cannot validate this checkout. Request a
+subscription-capable sandbox from BDApps support or wait for issued application API passwords.
+Existing subscriptions must always resolve status/cancellation from their stored `provider`,
+independent of the current runtime mode.
+
+When configured mode is `bdapps` but zero complete app ID/password pairs exist, the plans API
+reports effective provider `mock` and enables OTP `1234` for both paid plans. The first complete
+BDApps credential pair disables mock activation globally; only fully credentialed tariffs remain.
+Development OTP requests are intentionally repeatable; cooldown applies only to the carrier.
+
+Plan prices are server-authoritative and personalized. Active Plus users receive a Pro
+`amount_bdt` of 249 and upgrade directly in development mode; do not restore the old
+cancel-before-switch UI. Real BDApps mode intentionally withholds that upgrade until a separate BDT
+249 carrier application is provisioned—the regular BDT 499 Pro app cannot represent the discount.

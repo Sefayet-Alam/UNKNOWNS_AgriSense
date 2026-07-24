@@ -46,11 +46,41 @@ async def test_plan_catalog_identifies_the_provisioned_bdapps_tariff(
     monkeypatch.setattr(settings, "BILLING_PROVIDER", "bdapps")
     monkeypatch.setattr(settings, "BDAPPS_PLUS_APPLICATION_ID", "APP_PLUS")
     monkeypatch.setattr(settings, "BDAPPS_PLUS_PASSWORD", "plus-secret")
+    plus_catalog = (await auth_client.get("/api/billing/plans")).json()
+    assert plus_catalog["provider"] == "bdapps"
+    assert plus_catalog["subscribable_plan_ids"] == ["plus"]
+
     monkeypatch.setattr(settings, "BDAPPS_PRO_APPLICATION_ID", "APP_PRO")
     monkeypatch.setattr(settings, "BDAPPS_PRO_PASSWORD", "pro-secret")
     bdapps_catalog = (await auth_client.get("/api/billing/plans")).json()
     assert bdapps_catalog["provider"] == "bdapps"
     assert bdapps_catalog["subscribable_plan_ids"] == ["plus", "pro"]
+
+
+async def test_bdapps_mode_without_credentials_uses_development_otp(
+    auth_client, monkeypatch
+):
+    monkeypatch.setattr(settings, "BILLING_PROVIDER", "bdapps")
+
+    catalog = (await auth_client.get("/api/billing/plans")).json()
+    assert catalog["provider"] == "mock"
+    assert catalog["subscribable_plan_ids"] == ["plus", "pro"]
+
+    started = await auth_client.post(
+        "/api/billing/otp/request", json={"plan_id": "pro"}
+    )
+    assert started.status_code == 201
+    assert started.json()["demo_otp"] == "1234"
+
+    verified = await auth_client.post(
+        "/api/billing/otp/verify",
+        json={
+            "challenge_id": started.json()["challenge_id"],
+            "otp": "1234",
+        },
+    )
+    assert verified.status_code == 200
+    assert verified.json()["provider"] == "mock"
 
 
 async def test_mock_subscription_persists_and_cancels(auth_client):
@@ -88,10 +118,26 @@ async def test_mock_subscription_persists_and_cancels(auth_client):
     assert persisted.status_code == 200
     assert persisted.json()["plan_id"] == "plus"
 
-    switch_without_cancelling = await auth_client.post(
+    upgrade_catalog = (await auth_client.get("/api/billing/plans")).json()
+    pro = next(
+        plan for plan in upgrade_catalog["results"] if plan["id"] == "pro"
+    )
+    assert pro["amount_bdt"] == 249
+
+    upgrade_started = await auth_client.post(
         "/api/billing/otp/request", json={"plan_id": "pro"}
     )
-    assert switch_without_cancelling.status_code == 409
+    assert upgrade_started.status_code == 201
+    upgraded = await auth_client.post(
+        "/api/billing/otp/verify",
+        json={
+            "challenge_id": upgrade_started.json()["challenge_id"],
+            "otp": "1234",
+        },
+    )
+    assert upgraded.status_code == 200
+    assert upgraded.json()["plan_id"] == "pro"
+    assert upgraded.json()["amount_bdt"] == 249
 
     cancelled = await auth_client.post("/api/billing/subscription/cancel")
     assert cancelled.status_code == 200, cancelled.text
@@ -102,6 +148,30 @@ async def test_mock_subscription_persists_and_cancels(auth_client):
     assert after.json()["status"] == "cancelled"
 
 
+async def test_mock_subscription_can_cancel_after_runtime_switches_to_bdapps(
+    auth_client, monkeypatch
+):
+    started = await auth_client.post(
+        "/api/billing/otp/request", json={"plan_id": "pro"}
+    )
+    verified = await auth_client.post(
+        "/api/billing/otp/verify",
+        json={
+            "challenge_id": started.json()["challenge_id"],
+            "otp": "1234",
+        },
+    )
+    assert verified.status_code == 200
+    assert verified.json()["provider"] == "mock"
+
+    monkeypatch.setattr(settings, "BILLING_PROVIDER", "bdapps")
+    cancelled = await auth_client.post("/api/billing/subscription/cancel")
+
+    assert cancelled.status_code == 200
+    assert cancelled.json()["subscription"]["status"] == "cancelled"
+    assert cancelled.json()["subscription"]["provider"] == "mock"
+
+
 async def test_server_rejects_free_plan_otp(auth_client):
     response = await auth_client.post(
         "/api/billing/otp/request", json={"plan_id": "free"}
@@ -109,7 +179,43 @@ async def test_server_rejects_free_plan_otp(auth_client):
     assert response.status_code == 400
 
 
-async def test_billing_otp_request_has_carrier_cooldown(auth_client):
+async def test_development_otp_has_no_cooldown(auth_client):
+    first = await auth_client.post(
+        "/api/billing/otp/request", json={"plan_id": "plus"}
+    )
+    assert first.status_code == 201
+
+    second = await auth_client.post(
+        "/api/billing/otp/request", json={"plan_id": "plus"}
+    )
+    assert second.status_code == 201
+    assert second.json()["demo_otp"] == "1234"
+
+
+async def test_billing_otp_request_has_carrier_cooldown(
+    auth_client, monkeypatch
+):
+    class FakeBdAppsProvider:
+        name = "bdapps"
+
+        async def request_otp(self, subscriber_id):
+            return OtpStartResult(
+                reference_no=f"carrier-{subscriber_id}",
+                status_code="S1000",
+                status_detail="Success",
+            )
+
+    provider = FakeBdAppsProvider()
+
+    def provider_for(plan_id, provider_name=None):
+        assert plan_id == "plus"
+        assert provider_name is None
+        return provider
+
+    monkeypatch.setattr(
+        billing_router, "get_billing_provider", provider_for
+    )
+
     first = await auth_client.post(
         "/api/billing/otp/request", json={"plan_id": "plus"}
     )
@@ -170,8 +276,9 @@ async def test_bdapps_masked_identity_is_reused_for_status_and_cancel(
     provider = FakeBdAppsProvider()
     monkeypatch.setattr(settings, "BILLING_PROVIDER", "bdapps")
 
-    def provider_for(plan_id):
+    def provider_for(plan_id, provider_name=None):
         assert plan_id == "plus"
+        assert provider_name in (None, "bdapps")
         return provider
 
     monkeypatch.setattr(

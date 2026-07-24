@@ -12,6 +12,7 @@ from ..adapters.billing import (
     BillingProviderError,
     bdapps_subscriber_id,
     configured_bdapps_plan_ids,
+    effective_billing_provider_name,
     get_billing_provider,
 )
 from ..config import settings
@@ -68,6 +69,7 @@ PLANS = {
         ],
     ),
 }
+PRO_UPGRADE_PRICE_BDT = 249
 
 
 def _now() -> datetime:
@@ -121,25 +123,63 @@ def _provider_subscriber_id(
     return stored
 
 
-def _provider_or_502(plan_id: str):
+def _provider_or_502(
+    plan_id: str,
+    provider_name: str | None = None,
+):
     try:
-        return get_billing_provider(plan_id)
+        return get_billing_provider(plan_id, provider_name)
     except BillingProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+def _is_plus_to_pro_upgrade(
+    subscription: Subscription | None,
+    target_plan_id: str,
+) -> bool:
+    return bool(
+        subscription is not None
+        and subscription.status == "active"
+        and subscription.plan_id == "plus"
+        and target_plan_id == "pro"
+    )
+
+
 @router.get("/plans", response_model=BillingPlansOut)
-async def plans(user: User = Depends(get_current_user)):
-    del user
-    provider = settings.BILLING_PROVIDER.strip().lower()
+async def plans(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    subscription = await _subscription_for(db, user.id)
+    is_upgrade = _is_plus_to_pro_upgrade(subscription, "pro")
+    provider = effective_billing_provider_name()
     if provider == "bdapps":
         subscribable_plan_ids = configured_bdapps_plan_ids()
+        # A BDApps subscription application has a fixed recurring tariff.
+        # The regular ৳499 Pro application cannot safely represent a ৳249
+        # Plus-to-Pro upgrade.
+        if is_upgrade:
+            subscribable_plan_ids = [
+                plan_id
+                for plan_id in subscribable_plan_ids
+                if plan_id != "pro"
+            ]
     else:
         subscribable_plan_ids = [
             plan.id for plan in PLANS.values() if plan.id != "free"
         ]
+    results = list(PLANS.values())
+    if is_upgrade:
+        results = [
+            (
+                plan.model_copy(update={"amount_bdt": PRO_UPGRADE_PRICE_BDT})
+                if plan.id == "pro"
+                else plan
+            )
+            for plan in results
+        ]
     return BillingPlansOut(
-        results=list(PLANS.values()),
+        results=results,
         provider=provider,
         subscribable_plan_ids=subscribable_plan_ids,
     )
@@ -158,7 +198,8 @@ async def subscription_status(
     ):
         try:
             result = await get_billing_provider(
-                subscription.plan_id
+                subscription.plan_id,
+                subscription.provider,
             ).get_status(
                 _provider_subscriber_id(subscription, user.phone)
             )
@@ -191,7 +232,12 @@ async def request_billing_otp(
         raise HTTPException(status_code=400, detail="Choose a paid plan.")
 
     current_subscription = await _subscription_for(db, user.id)
-    if current_subscription is not None and current_subscription.status == "active":
+    is_upgrade = _is_plus_to_pro_upgrade(current_subscription, plan.id)
+    if (
+        current_subscription is not None
+        and current_subscription.status == "active"
+        and not is_upgrade
+    ):
         if current_subscription.plan_id == plan.id:
             detail = "This plan is already active."
         else:
@@ -200,28 +246,38 @@ async def request_billing_otp(
             )
         raise HTTPException(status_code=409, detail=detail)
 
-    cooldown_started_at = _now() - timedelta(
-        seconds=settings.OTP_REQUEST_COOLDOWN_SECONDS
-    )
-    recent_challenge_result = await db.execute(
-        select(OtpChallenge.id)
-        .where(
-            OtpChallenge.user_id == user.id,
-            OtpChallenge.purpose == "billing_subscription",
-            OtpChallenge.created_at >= cooldown_started_at,
-        )
-        .limit(1)
-    )
-    if recent_challenge_result.scalar_one_or_none() is not None:
+    provider = _provider_or_502(plan.id)
+    if is_upgrade and provider.name == "bdapps":
         raise HTTPException(
-            status_code=429,
+            status_code=503,
             detail=(
-                "An OTP was requested recently. Wait a minute before "
-                "requesting another."
+                "The discounted Pro upgrade requires a separate ৳249 BDApps "
+                "subscription application. Development upgrade remains available "
+                "until carrier upgrade credentials are configured."
             ),
         )
+    if provider.name == "bdapps":
+        cooldown_started_at = _now() - timedelta(
+            seconds=settings.OTP_REQUEST_COOLDOWN_SECONDS
+        )
+        recent_challenge_result = await db.execute(
+            select(OtpChallenge.id)
+            .where(
+                OtpChallenge.user_id == user.id,
+                OtpChallenge.purpose == "billing_subscription",
+                OtpChallenge.created_at >= cooldown_started_at,
+            )
+            .limit(1)
+        )
+        if recent_challenge_result.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "A carrier OTP was requested recently. Wait a minute "
+                    "before requesting another."
+                ),
+            )
 
-    provider = _provider_or_502(plan.id)
     subscriber_id = bdapps_subscriber_id(user.phone)
     try:
         result = await provider.request_otp(subscriber_id)
@@ -241,9 +297,12 @@ async def request_billing_otp(
         ),
         details={
             "plan_id": plan.id,
-            "amount_bdt": plan.amount_bdt,
+            "amount_bdt": (
+                PRO_UPGRADE_PRICE_BDT if is_upgrade else plan.amount_bdt
+            ),
             "billing_cycle": plan.billing_cycle,
             "subscriber_id": subscriber_id,
+            "upgrade_from": "plus" if is_upgrade else "",
         },
         attempts=0,
         expires_at=_now() + timedelta(seconds=settings.OTP_TTL_SECONDS),
@@ -354,7 +413,10 @@ async def cancel_subscription(
     if subscription is None or subscription.status != "active":
         raise HTTPException(status_code=400, detail="No active paid subscription.")
 
-    provider = _provider_or_502(subscription.plan_id)
+    provider = _provider_or_502(
+        subscription.plan_id,
+        subscription.provider,
+    )
     if provider.name != subscription.provider:
         raise HTTPException(
             status_code=409,
