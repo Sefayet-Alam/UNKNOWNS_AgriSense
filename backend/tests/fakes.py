@@ -1,0 +1,173 @@
+"""Test doubles + small helpers shared across the suite.
+
+- ``FakeChatModel`` — a scripted, offline stand-in for the OpenRouter chat
+  model. It never touches the network. It supports ``.bind_tools(...)`` (a
+  no-op, since we script tool calls directly into the returned ``AIMessage``s)
+  and returns pre-baked responses in order.
+- ``make_fake_llm(scenario)`` — returns a *factory* suitable for monkeypatching
+  ``build_chat_model``: each call yields a fresh ``FakeChatModel`` so the
+  internal response index resets per graph build (i.e. per agent turn).
+- SSE helpers to parse ``text/event-stream`` frames from an httpx response.
+- Auth helpers to register/login users via the phone-auth contract.
+"""
+from __future__ import annotations
+
+import json
+from typing import Any, Callable, Dict, List
+
+from langchain_core.language_models.fake_chat_models import (
+    FakeMessagesListChatModel,
+)
+from langchain_core.messages import AIMessage, BaseMessage
+
+
+class FakeChatModel(FakeMessagesListChatModel):
+    """Deterministic offline chat model returning scripted messages in order.
+
+    ``bind_tools`` is a no-op that returns ``self`` — the graph binds tools to
+    the model, but because we script ``tool_calls`` straight into the AIMessage
+    responses there is nothing to actually bind. Sharing the same instance
+    keeps the response cursor (``i``) consistent across the bound/unbound
+    references the graph holds.
+    """
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "FakeChatModel":  # noqa: D401
+        return self
+
+
+# --------------------------------------------------------------------------- #
+# Scenario scripts
+# --------------------------------------------------------------------------- #
+def _plain_script() -> List[BaseMessage]:
+    return [
+        AIMessage(
+            content=(
+                "Rice grows best in flooded paddies; keep 2-3 cm of standing "
+                "water during the vegetative stage."
+            )
+        )
+    ]
+
+
+def _tool_script() -> List[BaseMessage]:
+    return [
+        # Turn 1: ask to run the calculator tool.
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "calculator",
+                    "args": {"expression": "2+2"},
+                    "id": "call_calc_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        # Turn 2 (after the tool result comes back): the final answer.
+        AIMessage(content="2 + 2 = 4."),
+    ]
+
+
+_SCENARIOS: Dict[str, Callable[[], List[BaseMessage]]] = {
+    "plain": _plain_script,
+    "tool": _tool_script,
+}
+
+
+def make_fake_llm(scenario: str) -> Callable[[], FakeChatModel]:
+    """Return a no-arg factory building a fresh scripted ``FakeChatModel``.
+
+    Monkeypatch this over ``build_chat_model`` in the graph/runner so each
+    ``build_graph`` (one per turn) gets a model whose cursor starts at 0.
+    """
+    if scenario not in _SCENARIOS:
+        raise ValueError(f"unknown fake-llm scenario: {scenario!r}")
+
+    def factory() -> FakeChatModel:
+        return FakeChatModel(responses=_SCENARIOS[scenario]())
+
+    return factory
+
+
+# --------------------------------------------------------------------------- #
+# SSE parsing
+# --------------------------------------------------------------------------- #
+async def read_sse_events(response) -> List[dict]:
+    """Consume an httpx streaming response and return the list of SSE payloads.
+
+    Each frame is ``data: {json}\\n\\n``; we collect ``data:`` lines until a
+    blank line, then json-decode the joined payload.
+    """
+    events: List[dict] = []
+    data_lines: List[str] = []
+    async for line in response.aiter_lines():
+        if line == "":
+            if data_lines:
+                payload = "\n".join(data_lines)
+                events.append(json.loads(payload))
+                data_lines = []
+            continue
+        if line.startswith("data:"):
+            data_lines.append(line[len("data:") :].lstrip())
+    # Flush a trailing frame not followed by a blank line.
+    if data_lines:
+        events.append(json.loads("\n".join(data_lines)))
+    return events
+
+
+async def stream_turn(client, message: str, session_id=None, headers=None) -> List[dict]:
+    """Run one /api/chat/stream turn and return the parsed SSE events."""
+    body: Dict[str, Any] = {"message": message, "session_id": session_id}
+    async with client.stream(
+        "POST", "/api/chat/stream", json=body, headers=headers
+    ) as response:
+        assert response.status_code == 200, await response.aread()
+        return await read_sse_events(response)
+
+
+# --------------------------------------------------------------------------- #
+# Auth helpers (phone-auth contract)
+# --------------------------------------------------------------------------- #
+DEFAULT_PASSWORD = "farm-pass-123"
+
+
+def register_payload(phone: str, password: str = DEFAULT_PASSWORD, **overrides) -> dict:
+    body = {
+        "username": "Test Farmer",
+        "phone": phone,
+        "password1": password,
+        "password2": password,
+        "division_name": "Rajshahi",
+        "division_code": "50",
+        "district_name": "Rajshahi",
+        "district_code": "5081",
+        "upazila_name": "Tanore",
+        "upazila_code": "508194",
+    }
+    body.update(overrides)
+    return body
+
+
+async def register_user(client, phone: str, password: str = DEFAULT_PASSWORD, **overrides):
+    """Register a user; returns the httpx response."""
+    return await client.post(
+        "/api/auth/register", json=register_payload(phone, password, **overrides)
+    )
+
+
+async def login_user(client, phone: str, password: str = DEFAULT_PASSWORD):
+    return await client.post(
+        "/api/auth/login", json={"phone": phone, "password": password}
+    )
+
+
+async def auth_headers_for(
+    client, phone: str = "01712345678", password: str = DEFAULT_PASSWORD, **overrides
+) -> dict:
+    """Register + log in a user, returning a Bearer auth header dict."""
+    reg = await register_user(client, phone, password, **overrides)
+    assert reg.status_code == 201, reg.text
+    login = await login_user(client, phone, password)
+    assert login.status_code == 200, login.text
+    token = login.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
