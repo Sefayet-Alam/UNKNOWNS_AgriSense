@@ -109,7 +109,7 @@ sequence, the node binds normally (`backend/app/agent/graph.py: FORCED_TOOL_SEQU
 
 | Node | Forced sequence (in order) | Effect |
 |------|----------------------------|--------|
-| **recommender** | `rank_crop_candidates` | Cannot recommend a crop without running the deterministic ranking first. |
+| **recommender** | `rank_crop_candidates` (ordered) **+** one `web_search` **and** one `search_wikipedia` (any order) | Cannot recommend without running the deterministic ranking first, then gathering external reference context. The two searches are any-order mandatory (`FORCED_UNORDERED_TOOLS`); they are untrusted reference and never change the ranking. |
 | **planner** | `search_knowledge_base` → `web_search` → `search_wikipedia` | Every season plan is preceded by strict KB → DuckDuckGo → Wikipedia research grounding. |
 | **finance** | `web_search` → `search_knowledge_base` → `search_wikipedia` → `calculate_crop_financials` → `calculator` | Gathers current input-price context, runs the Decimal projection, then independently verifies a headline figure with the calculator. |
 
@@ -279,6 +279,84 @@ is structural — forced by the graph, not left to the model's goodwill."
 
 ---
 
+## 12. Complete data-source register (every URL, every dataset)
+
+This is the full accounting the PDF asks for: what we pulled, from where, what each
+source gave us, and which parts went into RAG.
+
+### 12a. Live external APIs — called at runtime
+
+| # | Source | URL / endpoint | Auth | What we get | Used by |
+|---|--------|----------------|------|-------------|---------|
+| 1 | **Open-Meteo Forecast** | `https://api.open-meteo.com/v1/forecast` | keyless | Daily rainfall, min/max temp, **ET0** (reference evapotranspiration); up to **16 days** ahead + **92 days** past | `get_weather`; season-plan date shift; crop ranking weather risk; scheduler water balance |
+| 2 | **Open-Meteo Geocoding** | `https://geocoding-api.open-meteo.com/v1/search` | keyless | lat/lon for a non-admin place name (last-resort only — admin names resolve offline) | `get_weather` fallback |
+| 3 | **BARC CZIS REST** | `https://czis.cropzoning.gov.bd` — `/crop/{id}/lat/{}/lon/{}`, `/cropvarietylist/{}`, `/var/{}`, `/croppingpattern/{code}`, `/crops/list2` | keyless | Live crop varieties, **yield (t/ha)** & duration; **server-computed fertilizer doses** (Urea/TSP/DAP/MoP/Gypsum/Zinc, relayed verbatim); recorded rotation economics | `czis_crop_context/varieties/fertilizer_recommendation`, `generate_season_plan`, `calculate_crop_financials` |
+| 4 | **BARC CZIS GeoServer (WMS)** | `https://map2.cropzoning.gov.bd/geoserver/wsBARC/wms` — layer `wsBARC:view_biophysics_suite_all` | keyless | **Point land-suitability class** (VS/S/MS/MNS/NS) at exact farm lat/lon, via WMS `GetFeatureInfo` | `rank_crop_candidates` (suitability = 50% of the score) |
+| 5 | **DuckDuckGo** (via `ddgs`) | web search | keyless | Untrusted external reference links/snippets (latest prices, crop notes) | recommender, planner, finance (forced) |
+| 6 | **Wikipedia Action API** | `https://{lang}.wikipedia.org/w/api.php` | keyless (needs descriptive User-Agent) | Untrusted crop-agronomy background summaries | recommender, planner, finance (forced) |
+| 7 | **OpenRouter** | `https://openrouter.ai/api/v1` | key | Chat LLM (Gemini) per node **and** KB embeddings (`openai/text-embedding-3-small`, 1536-d) | whole agent + RAG ingestion |
+| 8 | **BDApps CaaS** | `https://developer.bdapps.com` | app key | Payment: OTP + subscription + callback flow (**Plus = live sandbox**) | `routers/bdapps.py`, `adapters/billing.py` |
+| 9 | **sms.net.bd** | `https://api.sms.net.bd/sendsms` | key | Outbound SMS delivery for proactive weather advisories | `adapters/sms.py`, `weather_alerts` |
+| 10 | **Gemini** | Google Generative AI | key | Voice-note speech→text (Bengali-native), Tier-2 accessibility | `adapters/transcribe.py` |
+
+### 12b. Bundled datasets — harvested from real sources, committed for offline reliability
+
+Government `.gov.bd` endpoints are flaky and some now require login, so we harvested them
+**during the hackathon window** (2026-07-24) and committed offline copies. Harvest scripts
+live in `scripts/data_harvest/` (provenance in its `README.md`).
+
+| Dataset (`backend/app/data/`) | Size | Real source | What it provides |
+|-------------------------------|------|-------------|------------------|
+| `bd_admin.json` | 1.7 MB | CZIS `getAdminByCode.php` (hierarchy: 8 div / 64 dist / 497 upazila / 7,761 union) **+** OCHA COD-AB gazetteer centroids (`data.humdata.org/dataset/cod-ab-bgd`, v03 2023, CC BY 3.0 IGO) | Division→district→upazila→union geocodes + lat/lon centroids → pins a farm to exact coordinates at registration |
+| `bd_soil.json` | 508 KB | CZIS per-upazila **edaphic survey** (480 upazilas) | Soil texture, land type, drainage, pH → **auto-fills the mandatory soil field** as a survey default |
+| `bd_cropping_patterns.json` | 1.3 MB | CZIS `/croppingpattern/{upazila_code}` | Per-upazila recorded rotations + **BCR** (over variable/total cost) + **gross margin Tk/decimal** → the only defensible "rough profit" grounding |
+| `czis_crops.json` | 12 KB | CZIS `/crops/list2` | 129-crop catalog (crop ids, seasons, variety groups) → candidate universe for ranking |
+| `finance_assumptions.json` | 40 KB | **SEEDED demo** (50 Rabi crops); 5 focused-path crops cite BARC FRG 2024 pages, the rest illustrative | Itemized cost rates + sale prices for the finance engine (labelled demo, farmer-overridable) |
+| `crop_disease_int8.tflite` + `class_names.json` | 54 MB | Bundled INT8 TFLite multi-head model (potato/rice/tomato + per-crop disease heads) | On-device leaf-disease classification (no LLM in the path) |
+
+### 12c. BAMIS crop calendars — embedded as sourced constants (not live)
+
+10 **BAMIS Rajshahi crop-weather calendar** PDFs (`bamis.gov.bd`) were transcribed into the
+`season_planner.CROP_PLANS` and `crop_ranker.CROP_TRAITS` constants — growth stages, sowing
+windows, phase-wise water requirements, and weather-risk thresholds. Each crop carries its
+source URL. Focused-path crops: Wheat (`.../5116.pdf`), Maize (`.../5125.pdf`), Boro
+(`.../5105.pdf`), Potato (`.../8864.pdf`), Mustard (`.../10986.pdf`); plus lentil/tomato/
+onion/garlic/brinjal calendars for trait metadata.
+
+### 12d. What went into RAG (and what deliberately did NOT)
+
+**In the knowledge base** (`knowledge_chunks`, pgvector 1536-d):
+- **BARC Fertilizer Recommendation Guide (FRG) 2024** — the full corpus, `app/data/kb_corpus/frg2024.md`
+  (400 KB, pages 10–239, embedded text + **tesseract OCR** for image-only AEZ tables, via
+  `scripts/data_harvest/frg_ocr_pipeline.py`) → **287 chunks**, source label `"FRG 2024"`.
+- Embedded with OpenRouter `text-embedding-3-small`; committed as a zero-API restore seed
+  (`app/data/kb_seed/kb_chunks.jsonl` + row-aligned `kb_embeddings.npy`), restored on startup
+  by `seed_rag_data --if-needed`.
+- **Content:** agronomic *prose* — fertilizer timing/splits, crop practices, soil & nutrient
+  management, AEZ fertility tables, pest basics. Retrieved with an **English** query
+  (cross-lingual), cited by source + page (e.g. "FRG 2024, p. 87").
+
+**Kept OUT of RAG on purpose** — structured numbers live in JSON and are *computed*, never
+retrieved as prose: fertilizer doses (live CZIS), cropping-pattern economics
+(`bd_cropping_patterns.json`), finance rates (`finance_assumptions.json`), soil survey
+(`bd_soil.json`), yields (live CZIS). Retrieved text is **untrusted** — the prompt forbids
+lifting any farmer-facing quantity from it. This is the line that keeps the math honest.
+
+### 12e. Source → problem mapping (how each helped solve the challenge)
+
+| PDF requirement | Sources behind it |
+|-----------------|-------------------|
+| Live weather grounding | Open-Meteo (1) |
+| Crop recommendation (suitability/water/risk/profit) | CZIS GeoServer (4) + CZIS patterns/soil (12b) + Open-Meteo (1) |
+| Season plan (dated calendar) | BAMIS calendars (12c) + FRG timing (RAG) + live CZIS fertilizer (3) + Open-Meteo (1) |
+| Financial projection | `finance_assumptions.json` (12b) + live CZIS yields (3) |
+| Knowledge base + RAG | FRG 2024 (12d) |
+| Intake / farm location & soil | `bd_admin.json` + `bd_soil.json` (12b) |
+| Explainability | every source above carries provenance labels into the tool output |
+| Tier-2 disease / voice / payment | TFLite model (12b) · Gemini (10) · BDApps (8) · sms.net.bd (9) |
+
+---
+
 *Generated as an architecture reference for the AgriSense AI submission. Source of truth
 for scope is [Agentic_AI_Hackathon_Final_Question.pdf](Agentic_AI_Hackathon_Final_Question.pdf);
-implementation state reflects commit `55ea19d`.*
+implementation state reflects commit `84e22fa`.*
