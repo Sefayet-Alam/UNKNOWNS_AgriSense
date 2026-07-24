@@ -7,6 +7,7 @@ module drives the graph and yields contract SSE event dicts.
 from __future__ import annotations
 
 import logging
+import os
 from typing import AsyncGenerator, Optional
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -252,7 +253,7 @@ async def stream_agent_turn(
         total_count = await _message_count(db, session.id)
 
         lc_messages: list = build_system_messages(
-            SYSTEM_PROMPT, session.summary, recalled
+            SYSTEM_PROMPT, session.summary, recalled, farmer_name=user.username
         )
         lc_messages.extend(history_to_lc_messages(history))
 
@@ -282,6 +283,7 @@ async def stream_agent_turn(
 
         # tool_call_id -> (db ChatMessage, index in its tool_trace)
         tool_call_map: dict[str, tuple[ChatMessage, int]] = {}
+        final_assistant_text = ""
 
         async for mode, chunk in graph.astream(
             inputs, stream_mode=["updates", "custom"]
@@ -343,6 +345,7 @@ async def stream_agent_turn(
                                     session.id,
                                     trunc(text, 300),
                                 )
+                            final_assistant_text = text
                         # Persist a bubble (carries text and/or tool_trace).
                         db_msg = ChatMessage(
                             session_id=session.id,
@@ -413,6 +416,25 @@ async def stream_agent_turn(
                     )
                 except Exception:
                     pass
+
+        # ---- auto-extract durable personal facts (best-effort) ---------- #
+        # No tool call required from the primary model — see memory.py's
+        # module doc. Skipped under TESTING to keep the shared scripted
+        # FakeChatModel's response cursor untouched (same discipline as the
+        # classify node's lite-LLM call).
+        if not os.environ.get("TESTING") and final_assistant_text:
+            try:
+                extract_model = build_chat_model(settings.OPENROUTER_MODEL_LITE)
+                await memory_mod.auto_extract_memories(
+                    db,
+                    user.id,
+                    extract_model,
+                    message,
+                    final_assistant_text,
+                    recalled,
+                )
+            except Exception:
+                log.exception("auto memory extraction failed — continuing")
 
         log.info("turn done: session=%s", session.id)
         yield {"type": "done"}
