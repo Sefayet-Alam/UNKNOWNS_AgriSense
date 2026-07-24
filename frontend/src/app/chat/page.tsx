@@ -70,8 +70,10 @@ export default function ChatPage() {
         onSelect={handleSelect}
         onDeleted={handleDeleted}
       />
+      {/* No `key` here: keying by sessionId would unmount ChatColumn (and
+          abort its in-flight stream) the moment its own first turn creates
+          the session. Session switches are handled inside ChatColumn. */}
       <ChatColumn
-        key={sessionId ?? "new"}
         sessionId={sessionId}
         onSessionCreated={handleSessionCreated}
       />

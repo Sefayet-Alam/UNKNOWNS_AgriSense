@@ -28,6 +28,10 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
   const composerRef = useRef<ComposerHandle>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Session id created by THIS component's own in-flight stream. When the
+  // parent echoes it back as the `sessionId` prop we must NOT abort the very
+  // stream that created it (the first-message-no-reply bug).
+  const selfCreatedRef = useRef<number | null>(null);
 
   // Persisted history for the active session.
   const { data: persisted } = useMessages(sessionId);
@@ -46,7 +50,11 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
   }, []);
 
   useEffect(() => {
-    // Session changed: cancel stream and drop the live buffer.
+    // Our own stream just created this session — keep it running.
+    if (sessionId != null && sessionId === selfCreatedRef.current) {
+      return;
+    }
+    // Genuine session switch: cancel stream and drop the live buffer.
     abortRef.current?.abort();
     abortRef.current = null;
     setLive([]);
@@ -89,6 +97,9 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
             case "session": {
               if (turnSessionId == null) {
                 turnSessionId = frame.session_id;
+                // Mark BEFORE notifying the parent so the prop-change effect
+                // knows not to abort this very stream.
+                selfCreatedRef.current = frame.session_id;
                 setStoredSessionId(frame.session_id);
                 onSessionCreated(frame.session_id);
               }
@@ -124,6 +135,8 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
       }
       // Clear live only after refetch settled to avoid flash/dup.
       setLive([]);
+      // Turn is over — future prop changes are genuine switches again.
+      selfCreatedRef.current = null;
     },
     [sessionId, streaming, onSessionCreated, qc],
   );
