@@ -133,6 +133,63 @@ class TokenBlacklist(Base):
     )
 
 
+class OtpChallenge(Base):
+    """Short-lived OTP state for billing and password recovery."""
+
+    __tablename__ = "otp_challenges"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    purpose: Mapped[str] = mapped_column(String(32), index=True)
+    provider: Mapped[str] = mapped_column(String(24), default="mock")
+    provider_reference: Mapped[str] = mapped_column(String(160), default="")
+    otp_hash: Mapped[str] = mapped_column(String(255), default="")
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+
+
+class Subscription(Base):
+    """The application's authoritative subscription record for a user."""
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    plan_id: Mapped[str] = mapped_column(String(24), default="free")
+    status: Mapped[str] = mapped_column(String(24), default="inactive")
+    provider: Mapped[str] = mapped_column(String(24), default="mock")
+    provider_status: Mapped[str] = mapped_column(String(64), default="")
+    subscriber_id: Mapped[str] = mapped_column(String(32), default="")
+    amount_bdt: Mapped[int] = mapped_column(Integer, default=0)
+    billing_cycle: Mapped[str] = mapped_column(String(24), default="monthly")
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utcnow,
+        server_default=func.now(),
+        onupdate=_utcnow,
+    )
+
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 

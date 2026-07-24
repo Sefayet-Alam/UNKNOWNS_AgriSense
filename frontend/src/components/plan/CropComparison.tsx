@@ -26,7 +26,7 @@ export function CropComparison({ crops }: { crops: CropOption[] }) {
         return (
           <div
             key={c.name}
-            className={`rounded-lg border p-2.5 ${
+            className={`border p-2.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-card ${
               top ? "border-signal/40 bg-signal/5" : "border-hairline"
             }`}
           >

@@ -66,7 +66,7 @@ export function Select({
 
   return (
     <div className="w-full" ref={ref}>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-text-primary">
+      <label htmlFor={id} className="mb-1 block text-sm font-semibold text-ink-700">
         {label}
       </label>
       <div className="relative">
@@ -77,7 +77,7 @@ export function Select({
           aria-haspopup="listbox"
           aria-expanded={open}
           onClick={() => !disabled && setOpen((o) => !o)}
-          className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-sm outline-none transition focus:border-signal/60 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted"
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-left text-sm outline-none transition focus:border-clay-400 focus:ring-0 focus:shadow-[0_8px_24px_-18px_rgba(23,38,28,0.55)] focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted"
         >
           <span className={selected ? "truncate text-text-primary" : "truncate text-text-muted"}>
             {selected?.label ?? placeholder}
@@ -93,7 +93,7 @@ export function Select({
             ref={listRef}
             role="listbox"
             aria-label={label}
-            className="scrollbar-thin absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-card"
+            className="scrollbar-thin absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-jute-300/70 bg-surface py-1 shadow-lift"
           >
             {options.length === 0 && (
               <p className="px-3 py-2 text-sm text-text-muted">No options.</p>

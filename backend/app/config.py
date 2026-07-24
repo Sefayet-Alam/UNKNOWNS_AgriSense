@@ -22,6 +22,20 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # ---- Billing / OTP ----
+    # "mock" keeps the local demo deterministic; "bdapps" performs real
+    # server-to-server OTP and subscription calls.
+    BILLING_PROVIDER: str = "mock"
+    MOCK_OTP_CODE: str = "1234"
+    OTP_TTL_SECONDS: int = 300
+    OTP_MAX_ATTEMPTS: int = 5
+    BDAPPS_BASE_URL: str = "https://developer.bdapps.com"
+    BDAPPS_APPLICATION_ID: str = ""
+    BDAPPS_PASSWORD: str = ""
+    BDAPPS_APPLICATION_HASH: str = ""
+    BDAPPS_PLAN_ID: str = "plus"
+    BDAPPS_TIMEOUT_SECONDS: float = 15.0
+
     # ---- LLM: OpenRouter (default chat provider) ----
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "google/gemini-2.5-flash"

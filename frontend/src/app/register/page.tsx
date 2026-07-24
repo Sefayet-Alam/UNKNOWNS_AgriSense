@@ -9,7 +9,7 @@ import { isValidBdPhone } from "@/lib/phone";
 import { getAccess } from "@/lib/tokens";
 import type { Address } from "@/lib/types";
 import { AddressPicker, EMPTY_ADDRESS } from "@/components/address/AddressPicker";
-import { LeafMark } from "@/components/ui/LeafMark";
+import { AuthShell } from "@/components/layout/AuthShell";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { TextInput } from "@/components/ui/TextInput";
 
@@ -103,21 +103,13 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="leaf-vein-bg flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex justify-center">
-          <LeafMark size="lg" />
-        </div>
-
-        <div className="rounded-2xl border border-border bg-surface p-7 shadow-card">
-          <h1 className="mb-1 font-display text-2xl font-semibold tracking-tight text-text-primary">
-            Create your account
-          </h1>
-          <p className="mb-6 text-sm text-text-muted">
-            Start growing with your AgriSense copilot.
-          </p>
-
-          <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+    <AuthShell
+      eyebrow="Open a new field ledger"
+      title="Begin with where you grow."
+      description="Your location gives every later weather, crop, and timing decision a useful starting point."
+      aside={<>Good recommendations begin with a precise place and an honest budget.</>}
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
             <TextInput
               label="Your name"
               value={name}
@@ -140,7 +132,7 @@ export default function RegisterPage() {
             />
 
             <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-text-primary">
+              <span className="text-sm font-semibold text-ink-700">
                 Your location
               </span>
               <AddressPicker
@@ -169,7 +161,7 @@ export default function RegisterPage() {
             />
 
             {formError && (
-              <div className="rounded-lg border border-status-error bg-status-error-chip px-3 py-2 text-sm text-status-error">
+              <div className="border border-status-error bg-status-error-chip px-3 py-2 text-sm text-status-error">
                 {formError}
               </div>
             )}
@@ -177,23 +169,30 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-1 w-full rounded-xl bg-primary-600 px-4 py-2.5 font-medium text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-70"
+              className="atlas-button mt-1 w-full disabled:cursor-not-allowed disabled:opacity-70"
             >
               {submitting ? "Creating account…" : "Create account"}
             </button>
-          </form>
+      </form>
 
-          <p className="mt-6 text-center text-sm text-text-muted">
+          <p className="mt-6 text-sm text-text-muted">
             Already have an account?{" "}
             <Link
               href="/login"
-              className="font-medium text-primary-700 hover:text-primary-800"
+              className="font-semibold text-field-700 transition hover:text-clay-500"
             >
               Sign in
             </Link>
           </p>
-        </div>
-      </div>
-    </main>
+          <p className="mt-2 text-xs text-text-muted">
+            Already registered but cannot sign in?{" "}
+            <Link
+              href="/forgot-password"
+              className="font-semibold text-field-700 transition hover:text-clay-500"
+            >
+              Reset your password
+            </Link>
+          </p>
+    </AuthShell>
   );
 }

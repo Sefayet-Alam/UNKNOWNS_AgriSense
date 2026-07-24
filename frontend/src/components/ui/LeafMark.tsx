@@ -17,12 +17,12 @@ export function LeafMark({
     <Link
       href="/"
       aria-label="AgriSense — home"
-      className="flex flex-col items-center gap-2.5 transition hover:opacity-90"
+      className="flex flex-col items-center gap-2.5 transition hover:-translate-y-0.5"
     >
       <LogoMark size={px} />
       {showWordmark && (
-        <span className={`font-display font-semibold tracking-tight text-primary-700 ${word}`}>
-          AgriSense
+        <span className={`font-display font-semibold tracking-[-0.04em] text-ink-900 ${word}`}>
+          Agri<span className="text-field-600">Sense</span>
         </span>
       )}
     </Link>

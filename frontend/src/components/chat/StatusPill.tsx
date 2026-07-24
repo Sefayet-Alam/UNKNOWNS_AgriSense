@@ -36,7 +36,7 @@ export function StatusPill({ live, calls, thinking, active, onClick }: Props) {
       type="button"
       onClick={onClick}
       title="Toggle this prompt's agent trace"
-      className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition ${
+      className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition duration-200 hover:-translate-y-0.5 hover:shadow-card ${
         active
           ? "border-signal/50 bg-signal/10 text-signal"
           : "border-border bg-surface text-text-muted hover:border-primary-300 hover:text-primary-700"

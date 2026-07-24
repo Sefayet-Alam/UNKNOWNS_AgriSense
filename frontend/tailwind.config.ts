@@ -1,10 +1,7 @@
 import type { Config } from "tailwindcss";
 
-// AgriSense — light / professional theme (see frontend/DESIGN.md).
-// Clean white surfaces, agronomy green as the signal accent, amber for attention.
-// Semantic tokens: instrument names (canvas/panel/ink/signal…) used by the new
-// workspace components; the legacy set (background/surface/primary…) kept for the
-// auth pages. All tuned for a white background.
+// AgriSense — Delta Field Atlas. A light, editorial palette drawn from rice
+// paper, paddy fields, jute fibre, river water, and fired clay.
 const config: Config = {
   darkMode: "class",
   content: [
@@ -15,65 +12,106 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Instrument tokens (new components) — light values
-        canvas: "#FFFFFF",
-        panel: "#F8FAF8",
-        "panel-2": "#EEF3EE",
-        hairline: "#E4EAE4",
-        ink: "#16211B",
-        "ink-dim": "#5E6E63",
-        signal: {
-          DEFAULT: "#15803D",
-          dim: "#4F7D63",
-          glow: "#157F3C",
-          deep: "#0E5C2C",
+        paper: {
+          50: "#FFFDF6",
+          100: "#F7F1DF",
+          200: "#E9DDBD",
         },
-        amber: { DEFAULT: "#C2740B", dim: "#9A5E0A" },
-        danger: { DEFAULT: "#DC2626", dim: "#B91C1C" },
+        field: {
+          50: "#F2F7EE",
+          100: "#DFECD7",
+          200: "#C2D8B6",
+          300: "#96BB84",
+          400: "#689454",
+          500: "#3F6F35",
+          600: "#315C2B",
+          700: "#254A24",
+          800: "#1E3E20",
+          900: "#17351B",
+        },
+        jute: {
+          100: "#F2E9D2",
+          300: "#D9C28F",
+          500: "#AB8B50",
+        },
+        clay: {
+          50: "#FBF1EB",
+          200: "#EDC2A8",
+          400: "#C96F42",
+          500: "#AD5835",
+          700: "#7D3C27",
+        },
+        river: {
+          50: "#EDF7F8",
+          300: "#7FB6BF",
+          500: "#43838D",
+          700: "#2E646D",
+        },
+        ink: {
+          DEFAULT: "#17261C",
+          500: "#58675D",
+          700: "#344338",
+          900: "#17261C",
+        },
+        // Existing semantic names remain aliases so behavior-first components
+        // can be restyled progressively without changing their contracts.
+        canvas: "#FFFDF6",
+        panel: "#FFFEF9",
+        "panel-2": "#F7F1DF",
+        hairline: "#DED8C8",
+        "ink-dim": "#58675D",
+        signal: {
+          DEFAULT: "#315C2B",
+          dim: "#689454",
+          glow: "#3F6F35",
+          deep: "#17351B",
+        },
+        amber: { DEFAULT: "#AB8B50", dim: "#7D663B" },
+        danger: { DEFAULT: "#B74836", dim: "#913628" },
 
         // Legacy semantic names (auth pages) — light
-        background: "#FFFFFF",
-        surface: "#FFFFFF",
-        "surface-muted": "#F4F7F4",
-        border: "#E4EAE4",
-        "text-primary": "#16211B",
-        "text-muted": "#5E6E63",
+        background: "#FFFDF6",
+        surface: "#FFFEF9",
+        "surface-muted": "#F7F1DF",
+        border: "#DED8C8",
+        "text-primary": "#17261C",
+        "text-muted": "#58675D",
         primary: {
           50: "#F0FAF3",
           100: "#DCF3E3",
           200: "#BBE7C9",
           300: "#8AD5A4",
           400: "#52BC7A",
-          500: "#22A55B",
-          600: "#15803D",
-          700: "#136B34",
-          800: "#12572C",
-          900: "#0E4023",
+          500: "#3F6F35",
+          600: "#315C2B",
+          700: "#254A24",
+          800: "#1E3E20",
+          900: "#17351B",
         },
         accent: {
           50: "#FDF6EC",
           100: "#FAEBD3",
           300: "#E3B45C",
-          500: "#C2740B",
-          700: "#8A530A",
+          500: "#AD5835",
+          700: "#7D3C27",
         },
         status: {
-          success: "#15803D",
-          "success-chip": "#E7F5EC",
-          error: "#DC2626",
-          "error-chip": "#FBEAEA",
-          info: "#0E7490",
-          "info-chip": "#E4F3F6",
+          success: "#315C2B",
+          "success-chip": "#E8F1E2",
+          error: "#B74836",
+          "error-chip": "#FBEDEA",
+          info: "#2E646D",
+          "info-chip": "#E8F3F4",
         },
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
-        display: ["var(--font-space-grotesk)", "Space Grotesk", "system-ui", "sans-serif"],
-        mono: ["var(--font-jetbrains-mono)", "JetBrains Mono", "ui-monospace", "monospace"],
+        sans: ["Arial", "Helvetica Neue", "system-ui", "sans-serif"],
+        display: ["Georgia", "Cambria", "Times New Roman", "serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       boxShadow: {
-        card: "0 1px 3px rgba(16, 33, 27, 0.04), 0 10px 28px -10px rgba(16, 33, 27, 0.12)",
-        lift: "0 2px 6px rgba(16, 33, 27, 0.05), 0 20px 44px -14px rgba(16, 33, 27, 0.18)",
+        card: "0 1px 0 rgba(23,53,27,.05), 0 16px 35px -26px rgba(23,53,27,.35)",
+        lift: "0 2px 0 rgba(23,53,27,.05), 0 28px 60px -30px rgba(23,53,27,.42)",
       },
       keyframes: {
         "pulse-dot": {
