@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: #f7faf5;
+  color: #1b2a17;
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+}
+
+/* Dark-mode surfaces via the `dark` class (optional). */
+.dark body {
+  background-color: #10190e;
+  color: #eaf3e4;
+}
+
+@layer utilities {
+  /* Very-subtle leaf-vein background for auth screens (~6% opacity). */
+  .leaf-vein-bg {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%2347823A' stroke-width='1' stroke-opacity='0.06'%3E%3Cpath d='M60 10 C60 40 60 80 60 110'/%3E%3Cpath d='M60 30 C75 25 90 20 105 15'/%3E%3Cpath d='M60 30 C45 25 30 20 15 15'/%3E%3Cpath d='M60 55 C78 50 96 46 112 42'/%3E%3Cpath d='M60 55 C42 50 24 46 8 42'/%3E%3Cpath d='M60 80 C76 76 92 72 106 68'/%3E%3Cpath d='M60 80 C44 76 28 72 14 68'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: repeat;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #dce7d6;
+    border-radius: 9999px;
+  }
+}
