@@ -47,10 +47,23 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "llama3.1"
 
-    # ---- Embeddings ----
-    EMBEDDINGS_PROVIDER: str = "fake"  # "fake" | "ollama"
+    # ---- Embeddings (long-term memory table) ----
+    EMBEDDINGS_PROVIDER: str = "fake"  # "fake" | "ollama" | "openai"
     EMBEDDING_DIM: int = 768
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
+
+    # ---- LLM: OpenAI (embedding provider) ----
+    OPENAI_API_KEY: str = ""
+    OPENAI_EMBED_MODEL: str = "text-embedding-3-small"
+
+    # ---- Knowledge base (RAG) — separate table/provider from memory ----
+    KB_EMBEDDINGS_PROVIDER: str = "openai"  # "openai" | "ollama" | "fake"
+    KB_EMBEDDING_DIM: int = 1536  # text-embedding-3-small native dim
+    KB_TOP_K: int = 5
+    # Recursive chunking: ~1800 chars ≈ 450 tokens/chunk → top-5 ≈ 2.2k tokens
+    # of retrieved context per tool call (decent grounding, no context blowout).
+    KB_CHUNK_SIZE_CHARS: int = 1800
+    KB_CHUNK_OVERLAP_CHARS: int = 200
 
     # ---- Agent memory tuning ----
     HISTORY_LIMIT: int = 40

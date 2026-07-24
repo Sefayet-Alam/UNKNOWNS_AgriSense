@@ -35,7 +35,7 @@ whose crop advice ignores the weather it just fetched will be noticed.
 | 4 | Season plan | Dated calendar: sowing window, fertilizer timing, irrigation, weed/pest checkpoints, harvest | ❌ TODO (Task 6) |
 | 5 | Financial projection | Itemized cost + yield, revenue, net profit, ROI, break-even; internally consistent (change input → outputs change) | ❌ TODO (Task 7) |
 | 6 | Explained reasoning | Every recommendation names the specific farm inputs + retrieved data it rests on | ⚠️ partial (prompt enforces naming inputs; weather cites real values; full grounding lands with Tasks 3-7) |
-| 7 | Knowledge base + RAG | Agronomic data (extension manuals, fertilizer/crop/soil refs) ingested into a KB; agent retrieves; crop/fertilizer/plan advice grounded in retrieval, not model recall | ❌ TODO (Task 4 — FRG 2024 corpus; extraction sanity-checked in [docs/FRG_PDF_EXTRACTION.md](docs/FRG_PDF_EXTRACTION.md)) |
+| 7 | Knowledge base + RAG | Agronomic data (extension manuals, fertilizer/crop/soil refs) ingested into a KB; agent retrieves; crop/fertilizer/plan advice grounded in retrieval, not model recall | ✅ DONE (Task 4) — `backend/app/rag/` (recursive chunker w/ FRG page tracking, pgvector `knowledge_chunks` 1536-dim OpenAI text-embedding-3-small), `search_knowledge_base` tool (English query, `<retrieved_document>` untrusted delimiters, top-5), idempotent `scripts/ingest_kb.py`. Verified: Bengali mustard question → KB chip → FRG p.63 cited answer. Remaining content work: ingest full FRG corpus (test doc ingested now) |
 | 8 | Visible agent trace | UI exposes every tool call, params sent, raw values returned | ✅ DONE (tool-trace chips + `message_update` frames) |
 
 ### Tier 1 — Advanced (differentiators)
@@ -131,6 +131,16 @@ that runs end-to-end in a 4-minute demo.
   computes farmer-facing numbers.
 - **Memory**: long-term semantic recall via pgvector + rolling per-session summary.
   ([backend/app/agent/memory.py](backend/app/agent/memory.py)) Farm facts belong in the farm profile, not memory.
+- **RAG KB (Task 4)**: [backend/app/rag/](backend/app/rag/) — `chunker.py` (recursive splitter,
+  keeps FRG `<!-- Page N -->` page ranges), `store.py` (idempotent per-source
+  ingest + cosine top-k over `knowledge_chunks`, 1536-dim). Embeddings:
+  OpenAI `text-embedding-3-small` via `build_kb_embeddings()` (provider switch
+  `KB_EMBEDDINGS_PROVIDER`; tests force `fake`; memory table stays 768-dim —
+  separate concerns). Tool `search_knowledge_base(query_en, crop?)` wraps hits
+  in `<retrieved_document>` blocks (untrusted; prompt forbids obeying/quoting
+  doses as final numbers). Ingest: `docker cp doc.md argi_backend:/tmp/ &&
+  docker compose exec backend python -m scripts.ingest_kb /tmp/doc.md --source
+  "FRG 2024" [--crop mustard] [--verify "query"]` — re-run replaces the source.
 - **Frontend**: Next.js login/register/chat, agri-green theme, streaming + tool
   chips. ([frontend/src/](frontend/src/)) Gotcha fixed in `0b31359`: never key ChatColumn by
   session id and never abort the stream on the session-frame echo — that killed
@@ -140,8 +150,8 @@ that runs end-to-end in a 4-minute demo.
 
 - **THE ROADMAP is [docs/PLAN.md](docs/PLAN.md)** — locked architecture decisions
   (D1-D5), verified data-source matrix, and the incremental Task 1→10 sequence
-  (Task N only starts when Task N-1 is solid; Tasks 1-3 shipped). Next: Task 4
-  FRG RAG KB → Task 5 crop ranker → Task 6 season plan →
+  (Task N only starts when Task N-1 is solid; Tasks 1-4 shipped). Next: Task 5
+  crop ranker → Task 6 season plan →
   Task 7 finance (= Tier 0 complete checkpoint) → 8 polish → 9 Tier 1 → 10 Tier 2.
 - **New agent tools** (CZIS, KB retrieval, ranking, planning, finance) → add
   `@tool`/factory functions in [backend/app/agent/tools.py](backend/app/agent/tools.py); register in the
@@ -153,10 +163,10 @@ that runs end-to-end in a 4-minute demo.
   in PLAN.md D4 (plain HTTP, no auth, no Playwright).
 - **Deterministic math** → pure functions in [backend/app/engines/](backend/app/engines/) with
   gold-number unit tests; tools are thin wrappers.
-- **RAG knowledge base** → ingest FRG corpus into a new pgvector table
-  (separate from `long_term_memory`), expose a `search_knowledge_base` tool.
-  Query in ENGLISH (cross-lingual Bengali→English retrieval is weak — PLAN.md D3);
-  structured fertilizer tables go to JSON, never RAG (numbers are computed).
+- **RAG knowledge base** → ✅ built (see above). Add corpora via
+  `scripts/ingest_kb.py` with a new `--source`; query in ENGLISH (cross-lingual
+  Bengali→English retrieval is weak — PLAN.md D3); structured fertilizer tables
+  still go to JSON, never RAG (numbers are computed).
 - **Emit progress** from long tools via `get_stream_writer()` (see `_emit` in
   tools.py) → surfaces as `progress` SSE frames in the working indicator.
 - The API + SSE contract is **frozen** in [docs/API_CONTRACT.md](docs/API_CONTRACT.md); honor it so the
@@ -196,9 +206,8 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 187 tests: unit (security/phone/tools/weather adapter/czis
-  adapter/geo
-  gazetteer/unit
+  (or `make test`). 198 tests: unit (security/phone/tools/weather adapter/KB
+  chunker/czis adapter/geo gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
   chip, multi-turn intake via the turn-sequence fake in `tests/fakes.py`). LLM +
