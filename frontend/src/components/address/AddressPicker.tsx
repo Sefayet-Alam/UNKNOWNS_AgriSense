@@ -6,6 +6,7 @@
 // the agent later feeds straight into CZIS + weather tools. Codes are NEVER
 // free-typed — this is the guard against the "HTTP 200 + null" bad-geocode trap.
 
+import { Select, type SelectOption } from "@/components/ui/Select";
 import geo from "@/data/bd-geocodes.json";
 import type { Address } from "@/lib/types";
 
@@ -42,53 +43,13 @@ interface Props {
   error?: string;
 }
 
-function Select({
-  label,
-  value,
-  onChange,
-  onBlur,
-  disabled,
-  placeholder,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (code: string) => void;
-  onBlur?: () => void;
-  disabled?: boolean;
-  placeholder: string;
-  options: { name: string; code: string }[];
-}) {
-  const id = label.toLowerCase().replace(/\s+/g, "-");
-  return (
-    <div className="flex flex-1 flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-text-primary">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-text-primary outline-none transition focus:ring-2 focus:ring-primary-400 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o.code} value={o.code}>
-            {o.name}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
+// Map {name, code} geocode rows → Select's {label, value}.
+const toOpts = (rows: { name: string; code: string }[]): SelectOption[] =>
+  rows.map((r) => ({ label: r.name, value: r.code }));
 
 export function AddressPicker({ value, onChange, onBlur, error }: Props) {
   const division = DIVISIONS.find((d) => d.code === value.division_code);
-  const district = division?.districts.find(
-    (z) => z.code === value.district_code,
-  );
+  const district = division?.districts.find((z) => z.code === value.district_code);
 
   const onDivision = (code: string) => {
     const d = DIVISIONS.find((x) => x.code === code);
@@ -122,26 +83,24 @@ export function AddressPicker({ value, onChange, onBlur, error }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <Select
-          label="Division"
-          placeholder="Select division"
-          value={value.division_code}
-          onChange={onDivision}
-          onBlur={onBlur}
-          options={DIVISIONS}
-        />
-        <Select
-          label="District"
-          placeholder={division ? "Select district" : "Select division first"}
-          value={value.district_code}
-          onChange={onDistrict}
-          onBlur={onBlur}
-          disabled={!division}
-          options={division?.districts ?? []}
-        />
-      </div>
+    <div className="flex flex-col gap-4">
+      <Select
+        label="Division"
+        placeholder="Select division"
+        value={value.division_code}
+        onChange={onDivision}
+        onBlur={onBlur}
+        options={toOpts(DIVISIONS)}
+      />
+      <Select
+        label="District"
+        placeholder={division ? "Select district" : "Select division first"}
+        value={value.district_code}
+        onChange={onDistrict}
+        onBlur={onBlur}
+        disabled={!division}
+        options={toOpts(division?.districts ?? [])}
+      />
       <Select
         label="Upazila"
         placeholder={district ? "Select upazila" : "Select district first"}
@@ -149,7 +108,7 @@ export function AddressPicker({ value, onChange, onBlur, error }: Props) {
         onChange={onUpazila}
         onBlur={onBlur}
         disabled={!district}
-        options={district?.upazilas ?? []}
+        options={toOpts(district?.upazilas ?? [])}
       />
       {error && <p className="text-xs text-status-error">{error}</p>}
     </div>

@@ -113,7 +113,7 @@ export default function RegisterPage() {
             Create your account
           </h1>
           <p className="mb-6 text-sm text-text-muted">
-            Start growing with your Argi copilot.
+            Start growing with your AgriSense copilot.
           </p>
 
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>

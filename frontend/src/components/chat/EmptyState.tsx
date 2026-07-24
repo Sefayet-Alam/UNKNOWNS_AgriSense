@@ -20,7 +20,7 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
         How can I help you grow today?
       </h1>
       <p className="mb-8 max-w-md leading-relaxed text-text-muted">
-        Ask Argi about crops, soil, irrigation, pests, or planning — your
+        Ask AgriSense about crops, soil, irrigation, pests, or planning — your
         agronomy copilot with memory across sessions.
       </p>
       <div className="grid w-full max-w-xl grid-cols-1 gap-2.5 sm:grid-cols-2">

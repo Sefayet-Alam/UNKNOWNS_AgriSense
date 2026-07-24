@@ -2,11 +2,21 @@
 
 import { Sprout } from "lucide-react";
 import { memo } from "react";
-import type { Message } from "@/lib/types";
+import { PlanCard } from "@/components/plan/PlanCard";
+import { planParse } from "@/lib/plan";
+import type { Message, ProgressFrame } from "@/lib/types";
 import { Markdown } from "./Markdown";
-import { ToolTraceChips } from "./ToolTraceChips";
+import { StatusPill } from "./StatusPill";
 
-function MessageBubbleImpl({ message }: { message: Message }) {
+interface Props {
+  message: Message;
+  live?: boolean; // is this the currently-streaming turn?
+  thinking?: ProgressFrame[]; // live turn only
+  activeTrace?: boolean; // panel currently showing this turn
+  onToggleTrace?: (id: number) => void;
+}
+
+function MessageBubbleImpl({ message, live, thinking, activeTrace, onToggleTrace }: Props) {
   if (message.role === "user") {
     return (
       <div className="flex animate-fade-in justify-end">
@@ -17,17 +27,34 @@ function MessageBubbleImpl({ message }: { message: Message }) {
     );
   }
 
+  const { plan, display } = planParse(message.content);
+  const n = message.tool_trace.length;
+
+  // Hide fully-empty intermediate tool steps that aren't the live turn.
+  if (!display && !plan && n === 0 && !live) return null;
+
   return (
     <div className="flex animate-fade-in gap-3">
       <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-600">
         <Sprout size={18} strokeWidth={1.75} />
       </div>
       <div className="min-w-0 flex-1">
-        <Markdown content={message.content} />
-        <ToolTraceChips calls={message.tool_trace} />
-        {message.model && (
-          <p className="mt-1.5 text-xs text-text-muted">{message.model}</p>
+        {display && (
+          <div className="animate-reveal">
+            <Markdown content={display} />
+          </div>
         )}
+        {plan && <PlanCard plan={plan} />}
+        {(n > 0 || live) && (
+          <StatusPill
+            live={!!live}
+            calls={message.tool_trace}
+            thinking={thinking}
+            active={!!activeTrace}
+            onClick={() => onToggleTrace?.(message.id)}
+          />
+        )}
+        {message.model && <p className="mt-1.5 text-xs text-text-muted">{message.model}</p>}
       </div>
     </div>
   );
@@ -40,6 +67,9 @@ export const MessageBubble = memo(MessageBubbleImpl, (prev, next) => {
     a.id === b.id &&
     a.content === b.content &&
     a.tool_trace === b.tool_trace &&
-    a.model === b.model
+    a.model === b.model &&
+    prev.live === next.live &&
+    prev.activeTrace === next.activeTrace &&
+    prev.thinking === next.thinking
   );
 });

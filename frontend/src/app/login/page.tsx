@@ -65,7 +65,7 @@ export default function LoginPage() {
             Welcome back
           </h1>
           <p className="mb-6 text-sm text-text-muted">
-            Sign in to your Argi agronomy copilot.
+            Sign in to your AgriSense agronomy copilot.
           </p>
 
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
@@ -106,7 +106,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-6 text-center text-sm text-text-muted">
-            New to Argi?{" "}
+            New to AgriSense?{" "}
             <Link
               href="/register"
               className="font-medium text-primary-700 hover:text-primary-800"

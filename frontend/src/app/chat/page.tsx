@@ -1,82 +1,41 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useAuth } from "@/lib/auth";
-import { getAccess, getStoredSessionId, setStoredSessionId } from "@/lib/tokens";
-import { ChatColumn } from "@/components/chat/ChatColumn";
+import { useEffect } from "react";
 import { Sidebar } from "@/components/chat/Sidebar";
+import { ChatColumn } from "@/components/chat/ChatColumn";
+import { useAuth } from "@/lib/auth";
+import { useChat } from "@/lib/chat/ChatProvider";
+import { getAccess } from "@/lib/tokens";
 
 export default function ChatPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  // Chat state lives in the app-level ChatProvider so the stream survives
+  // navigation to other pages (#1).
+  const { sessionId, selectSession, newChat } = useChat();
 
-  // null = a new (unsaved) chat.
-  const [sessionId, setSessionId] = useState<number | null>(null);
-  const [ready, setReady] = useState(false);
-
-  // Guard: no token -> login. Restore last active session id.
   useEffect(() => {
-    if (!getAccess()) {
-      router.replace("/login");
-      return;
-    }
-    setSessionId(getStoredSessionId());
-    setReady(true);
+    if (!getAccess()) router.replace("/login");
   }, [router]);
 
-  // If bootstrap resolved with no user (invalid/expired token), bounce to login.
   useEffect(() => {
-    if (!loading && !user && !getAccess()) {
-      router.replace("/login");
-    }
+    if (!loading && !user && !getAccess()) router.replace("/login");
   }, [loading, user, router]);
 
-  const handleNewChat = () => {
-    setSessionId(null);
-    setStoredSessionId(null);
-  };
-
-  const handleSelect = (id: number) => {
-    setSessionId(id);
-    setStoredSessionId(id);
-  };
-
-  const handleSessionCreated = (id: number) => {
-    setSessionId(id);
-    setStoredSessionId(id);
-  };
-
   const handleDeleted = (id: number) => {
-    if (id === sessionId) {
-      setSessionId(null);
-      setStoredSessionId(null);
-    }
+    if (id === sessionId) newChat();
   };
-
-  if (!ready) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background text-text-muted">
-        Loading…
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar
         activeSessionId={sessionId}
-        onNewChat={handleNewChat}
-        onSelect={handleSelect}
+        onNewChat={newChat}
+        onSelect={selectSession}
         onDeleted={handleDeleted}
       />
-      {/* No `key` here: keying by sessionId would unmount ChatColumn (and
-          abort its in-flight stream) the moment its own first turn creates
-          the session. Session switches are handled inside ChatColumn. */}
-      <ChatColumn
-        sessionId={sessionId}
-        onSessionCreated={handleSessionCreated}
-      />
+      <ChatColumn />
     </div>
   );
 }
