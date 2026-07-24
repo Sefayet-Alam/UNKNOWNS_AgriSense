@@ -174,7 +174,7 @@ _INTAKE_WORDS = re.compile(
 )
 _RECOMMEND_WORDS = re.compile(
     r"(recommend|suggest|which crop|what crop|what should i (?:plant|grow|"
-    r"farm)|profitable|kon fosol|ki fosol|kon chash|ki chash|ki lagabo|"
+    r"farm)|what if i (?:plant|grow)|profitable|kon fosol|ki fosol|kon chash|ki chash|ki lagabo|"
     r"konta lagabo|ki bunbo|labjonok|labhjonok|suparish|কোন ফসল|কি ফসল|"
     r"কী ফসল|কি চাষ|কী চাষ|চাষ কর|লাগাব|বুনব|লাভজনক|সুপারিশ|ফলন ভালো)",
     re.IGNORECASE,
@@ -197,7 +197,8 @@ _FINANCE_WORDS = re.compile(
 # What-if scenario questions (rainfall/budget/cost/price change) route to the
 # finance node, which owns simulate_scenario alongside the financial tool.
 _SCENARIO_WORDS = re.compile(
-    r"(what[ -]?if|scenario|simulate|if (?:rainfall|rain|budget|price|cost)"
+    r"(scenario|simulate|(?:what[ -]?if|if).{0,32}"
+    r"(?:rainfall|rain|budget|price|cost|yield)|if (?:rainfall|rain|budget|price|cost)"
     r".{0,20}(?:drop|fall|cut|rise|increase|decrease|less|more|down|up)|"
     r"(?:rainfall|rain|budget|price|cost).{0,20}(?:drops?|falls?|cut|reduced?|"
     r"kome|কমে|less by|down by).{0,6}\d|যদি.{0,20}(?:কমে|বাড়ে))",
