@@ -10,7 +10,7 @@ const SIGNALS = [
 export default function FieldAtlasScene() {
   return (
     <div
-      className="group relative h-full min-h-[500px] overflow-hidden bg-field-900"
+      className="group relative h-full min-h-[430px] overflow-hidden bg-field-900 sm:min-h-[500px]"
       aria-label="Bangladesh paddy field with an AgriSense field-planning preview"
     >
       <Image
@@ -47,13 +47,13 @@ export default function FieldAtlasScene() {
         Field brief · Bangladesh
       </div>
 
-      <div className="absolute right-5 top-20 w-[min(250px,70%)] border border-paper-50/65 bg-paper-50/90 p-4 shadow-2xl backdrop-blur-md transition duration-500 group-hover:-translate-y-1 sm:right-7 sm:top-7">
+      <div className="absolute inset-x-5 top-20 border border-paper-50/65 bg-paper-50/90 p-3.5 shadow-2xl backdrop-blur-md transition duration-500 group-hover:-translate-y-1 sm:inset-x-auto sm:right-7 sm:top-7 sm:w-[min(250px,70%)] sm:p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink-500">
               Planning signals
             </p>
-            <p className="mt-1 font-display text-2xl leading-none text-field-900">
+            <p className="mt-1 font-display text-xl leading-none text-field-900 sm:text-2xl">
               Start with the field
             </p>
           </div>
@@ -61,12 +61,12 @@ export default function FieldAtlasScene() {
         </div>
         <div className="mt-4 divide-y divide-jute-300/50 border-t border-jute-300/50">
           {SIGNALS.map((signal) => (
-            <div key={signal.label} className="flex items-center gap-3 py-2.5">
+            <div key={signal.label} className="flex items-center gap-2 py-2.5 sm:gap-3">
               <signal.icon size={15} className="text-field-600" strokeWidth={1.7} />
-              <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-500">
+              <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-500 sm:tracking-[0.14em]">
                 {signal.label}
               </span>
-              <span className="ml-auto text-xs font-semibold text-ink-800">{signal.value}</span>
+              <span className="ml-auto text-right text-xs font-semibold text-ink-800">{signal.value}</span>
             </div>
           ))}
         </div>
@@ -74,14 +74,14 @@ export default function FieldAtlasScene() {
 
       <div className="absolute inset-x-5 bottom-5 border border-paper-50/65 bg-field-950/85 p-4 text-paper-50 shadow-2xl backdrop-blur-md transition duration-500 group-hover:-translate-y-1 sm:inset-x-auto sm:bottom-7 sm:left-7 sm:w-[340px] sm:p-5">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-jute-300 text-field-900">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-jute-300 text-field-900 sm:h-10 sm:w-10">
             <Sprout size={19} strokeWidth={1.8} />
           </span>
           <div>
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-jute-300">
+            <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-jute-300 sm:tracking-[0.18em]">
               AgriSense planning flow
             </p>
-            <p className="mt-1 font-display text-xl">Crop fit → cost map → field calendar</p>
+            <p className="mt-1 font-display text-lg leading-tight sm:text-xl">Crop fit → cost map → field calendar</p>
           </div>
         </div>
       </div>

@@ -1,10 +1,13 @@
 # Frontend handoff — AgriSense
 
-Last updated by: Codex (Jul 24, 2026).
+Last updated by: Codex (Jul 25, 2026).
 
 ## Current branch and rules
 
-- Branch: `features/redesign` (created from `feat/agrisense-workspace` for the finalized redesign).
+- Branch: `feat/bdapps-plus`, tracking `origin/feat/bdapps-plus` and currently ahead by 13 commits.
+- Current worktree already contains uncommitted billing/profile changes; do not overwrite them.
+- Latest `origin/main` was merged cleanly at `4c0ea17`, bringing in regenerated agent graph docs
+  from `b64b6f5`.
 - Never commit or push without Sefayet's explicit approval.
 - Browser API base is `NEXT_PUBLIC_API_URL` (`http://localhost:8080` under compose).
 - `docker-compose.yml` and `docs/API_CONTRACT.md` are authoritative.
@@ -77,6 +80,22 @@ Last updated by: Codex (Jul 24, 2026).
 
 ## Verification
 
+- Jul 25 push/PR: branch `feat/bdapps-plus` was fetched, confirmed up to date with `origin/main`,
+  committed as `2925629` (`feat: finalize bdapps plus mobile polish`), pushed to origin, and opened
+  as PR #16 into `main`: `https://github.com/abrar-nazib/UNKNOWNS_AgriSense/pull/16`. Verification:
+  frontend typecheck/build pass and focused billing integration test passes with 13 tests.
+- Jul 25 mobile viewport pass: landing/home typography, spacing, photo overlays, and stats were
+  tightened for phones; chat now uses a mobile top bar + drawer session list, floating trace
+  trigger, `100dvh`, and tighter composer; profile/billing rows wrap and scroll safely on narrow
+  screens. Laptop view is preserved through existing `sm`/`lg` classes. Verification passed:
+  `npm run typecheck`, `npm run build`, rebuilt Compose frontend, frontend/backend HTTP 200.
+  Final phone screenshot: `/private/tmp/agrisense-mobile-final-3.png`; desktop reference:
+  `/private/tmp/agrisense-desktop-after.png`.
+- Jul 25 runtime/context pass: Docker Desktop was opened and the existing Compose stack is running.
+  Frontend `http://localhost:3000`, backend docs `http://localhost:8080/docs`, and Postgres
+  `localhost:5433` all responded/healthy. Frontend production logs still show Next standalone
+  `sharp` image-optimization warnings, although the optimized hero image endpoint returned
+  `200 image/jpeg`; revisit during demo hardening if it persists after a fresh rebuild.
 - `npm run typecheck` passes.
 - `npm run build` passes.
 - The production route manifest contains no `/demo`.

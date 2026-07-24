@@ -28,7 +28,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-[100dvh] overflow-hidden bg-background sm:h-screen">
       <Sidebar
         activeSessionId={sessionId}
         onNewChat={newChat}

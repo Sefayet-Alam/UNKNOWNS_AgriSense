@@ -4,7 +4,14 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.adapters.billing import OtpStartResult, SubscriptionResult
+from app.adapters.billing import (
+    BdAppsBillingProvider,
+    BdAppsCredentials,
+    OtpStartResult,
+    SubscriptionResult,
+    bdapps_credentials_for_plan,
+    provider_name_for_plan,
+)
 from app.config import settings
 from app.models import Subscription
 from app.routers import billing as billing_router
@@ -19,12 +26,14 @@ def mock_billing_provider(monkeypatch):
     monkeypatch.setattr(settings, "MOCK_OTP_CODE", "1234")
     for name in (
         "BDAPPS_PLUS_APPLICATION_ID",
+        "BDAPPS_PLUS_API_KEY",
         "BDAPPS_PLUS_PASSWORD",
         "BDAPPS_PLUS_APPLICATION_HASH",
         "BDAPPS_PRO_APPLICATION_ID",
         "BDAPPS_PRO_PASSWORD",
         "BDAPPS_PRO_APPLICATION_HASH",
         "BDAPPS_APPLICATION_ID",
+        "BDAPPS_API_KEY",
         "BDAPPS_PASSWORD",
         "BDAPPS_APPLICATION_HASH",
     ):
@@ -42,19 +51,78 @@ async def test_plan_catalog_identifies_the_provisioned_bdapps_tariff(
 ):
     mock_catalog = (await auth_client.get("/api/billing/plans")).json()
     assert mock_catalog["subscribable_plan_ids"] == ["plus", "pro"]
+    assert {
+        plan["id"]: plan["provider"] for plan in mock_catalog["results"]
+    } == {"free": "internal", "plus": "mock", "pro": "mock"}
 
     monkeypatch.setattr(settings, "BILLING_PROVIDER", "bdapps")
     monkeypatch.setattr(settings, "BDAPPS_PLUS_APPLICATION_ID", "APP_PLUS")
-    monkeypatch.setattr(settings, "BDAPPS_PLUS_PASSWORD", "plus-secret")
+    monkeypatch.setattr(settings, "BDAPPS_PLUS_API_KEY", "plus-api-key")
     plus_catalog = (await auth_client.get("/api/billing/plans")).json()
     assert plus_catalog["provider"] == "bdapps"
-    assert plus_catalog["subscribable_plan_ids"] == ["plus"]
+    # Mixed mode: Plus runs on the real carrier while Pro (no credentials yet)
+    # stays subscribable through the labelled dev mock (OTP 1234) rather than
+    # being blocked as "credentials pending". Every paid plan is subscribable.
+    assert plus_catalog["subscribable_plan_ids"] == ["plus", "pro"]
+    assert {
+        plan["id"]: plan["provider"] for plan in plus_catalog["results"]
+    } == {"free": "internal", "plus": "bdapps", "pro": "mock"}
 
+    # Pro remains mock-only even if stale credentials exist in an environment.
     monkeypatch.setattr(settings, "BDAPPS_PRO_APPLICATION_ID", "APP_PRO")
     monkeypatch.setattr(settings, "BDAPPS_PRO_PASSWORD", "pro-secret")
     bdapps_catalog = (await auth_client.get("/api/billing/plans")).json()
     assert bdapps_catalog["provider"] == "bdapps"
     assert bdapps_catalog["subscribable_plan_ids"] == ["plus", "pro"]
+    assert next(
+        plan for plan in bdapps_catalog["results"] if plan["id"] == "pro"
+    )["provider"] == "mock"
+    assert provider_name_for_plan("pro") == "mock"
+
+
+async def test_api_key_alias_and_official_otp_paths(monkeypatch):
+    monkeypatch.setattr(settings, "BILLING_PROVIDER", "bdapps")
+    monkeypatch.setattr(settings, "BDAPPS_PLUS_APPLICATION_ID", "APP_PLUS")
+    monkeypatch.setattr(settings, "BDAPPS_PLUS_API_KEY", "issued-api-key")
+    monkeypatch.setattr(settings, "BDAPPS_PLUS_PASSWORD", "old-password")
+
+    credentials = bdapps_credentials_for_plan("plus")
+    assert credentials.password == "issued-api-key"
+
+    provider = BdAppsBillingProvider(
+        BdAppsCredentials(
+            plan_id="plus",
+            application_id="APP_PLUS",
+            password="issued-api-key",
+        )
+    )
+    calls: list[tuple[str, dict]] = []
+
+    async def fake_post(path: str, payload: dict) -> dict:
+        calls.append((path, payload))
+        if path == "/otp/request":
+            return {
+                "statusCode": "S1000",
+                "statusDetail": "Success",
+                "referenceNo": "reference-1",
+            }
+        return {
+            "statusCode": "S1000",
+            "statusDetail": "Success",
+            "subscriptionStatus": "REGISTERED",
+            "subscriberId": MASKED_SUBSCRIBER,
+        }
+
+    monkeypatch.setattr(provider, "_post", fake_post)
+    started = await provider.request_otp("tel:8801712345678")
+    verified = await provider.verify_otp(started.reference_no, "5678")
+
+    assert [path for path, _payload in calls] == [
+        "/otp/request",
+        "/otp/verify",
+    ]
+    assert verified.ok
+    assert verified.subscription_status == "REGISTERED"
 
 
 async def test_bdapps_mode_without_credentials_uses_development_otp(
@@ -311,6 +379,7 @@ async def test_bdapps_masked_identity_is_reused_for_status_and_cancel(
 async def test_bdapps_sms_callback_requires_matching_application(client, monkeypatch):
     monkeypatch.setattr(settings, "BDAPPS_PLUS_APPLICATION_ID", "APP_PLUS")
     monkeypatch.setattr(settings, "BDAPPS_PLUS_PASSWORD", "plus-secret")
+    # Pro credentials are intentionally ignored: Pro is mock-only.
     monkeypatch.setattr(settings, "BDAPPS_PRO_APPLICATION_ID", "APP_PRO")
     monkeypatch.setattr(settings, "BDAPPS_PRO_PASSWORD", "pro-secret")
     payload = {
@@ -330,8 +399,8 @@ async def test_bdapps_sms_callback_requires_matching_application(client, monkeyp
     }
 
     payload["applicationId"] = "APP_PRO"
-    accepted_pro = await client.post("/api/bdapps/sms/receive", json=payload)
-    assert accepted_pro.status_code == 200
+    rejected_pro = await client.post("/api/bdapps/sms/receive", json=payload)
+    assert rejected_pro.status_code == 403
 
     payload["applicationId"] = "APP_OTHER"
     rejected = await client.post("/api/bdapps/sms/receive", json=payload)
@@ -384,7 +453,7 @@ async def test_bdapps_notification_synchronizes_subscription(
     assert rejected.status_code == 403
 
 
-async def test_bdapps_pro_callback_uses_pro_tariff_and_ignores_stale_plus_cancel(
+async def test_bdapps_pro_subscription_callback_is_rejected(
     auth_client, monkeypatch
 ):
     monkeypatch.setattr(settings, "BDAPPS_PLUS_APPLICATION_ID", "APP_PLUS")
@@ -401,25 +470,10 @@ async def test_bdapps_pro_callback_uses_pro_tariff_and_ignores_stale_plus_cancel
         "frequency": "monthly",
         "status": "REGISTERED.",
     }
-    registered = await auth_client.post(
+    rejected = await auth_client.post(
         "/api/bdapps/subscription/notify", json=pro_notification
     )
-    assert registered.status_code == 200
+    assert rejected.status_code == 403
     subscription = await auth_client.get("/api/billing/subscription")
-    assert subscription.json()["plan_id"] == "pro"
-    assert subscription.json()["amount_bdt"] == 499
-    assert subscription.json()["status"] == "active"
-
-    stale_plus_cancel = {
-        **pro_notification,
-        "applicationId": "APP_PLUS",
-        "password": "plus-secret",
-        "status": "UNREGISTERED.",
-    }
-    ignored = await auth_client.post(
-        "/api/bdapps/subscription/notify", json=stale_plus_cancel
-    )
-    assert ignored.status_code == 200
-    subscription = await auth_client.get("/api/billing/subscription")
-    assert subscription.json()["plan_id"] == "pro"
+    assert subscription.json()["plan_id"] == "free"
     assert subscription.json()["status"] == "active"

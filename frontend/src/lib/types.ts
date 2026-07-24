@@ -64,6 +64,7 @@ export interface BillingPlan {
   amount_bdt: number;
   billing_cycle: "none" | "monthly";
   features: string[];
+  provider: "internal" | "mock" | "bdapps";
 }
 
 export interface BillingPlansResponse {

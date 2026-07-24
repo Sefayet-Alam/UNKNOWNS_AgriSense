@@ -63,7 +63,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const canSend = value.trim().length > 0 && !disabled;
 
   return (
-    <div className="sticky bottom-0 border-t border-jute-300/55 bg-paper-50/92 px-4 py-3 backdrop-blur">
+    <div className="sticky bottom-0 border-t border-jute-300/55 bg-paper-50/92 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur sm:px-4 sm:py-3 sm:pb-3">
       <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
         <div className="flex-1 rounded-[1.35rem] border border-jute-300/70 bg-surface shadow-card transition duration-300 focus-within:-translate-y-0.5 focus-within:border-clay-400/70 focus-within:shadow-[0_18px_35px_-28px_rgba(23,38,28,0.55)]">
           <textarea
@@ -73,7 +73,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             onKeyDown={onKeyDown}
             rows={1}
             placeholder="Ask about your crops, soil, or plan…"
-            className="max-h-52 min-h-11 w-full resize-none bg-transparent px-4 py-3 text-text-primary outline-none placeholder:text-text-muted"
+            className="max-h-36 min-h-11 w-full resize-none bg-transparent px-4 py-3 text-base text-text-primary outline-none placeholder:text-text-muted sm:max-h-52 sm:text-sm"
           />
         </div>
         <button
@@ -90,7 +90,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           <Send size={18} strokeWidth={1.75} />
         </button>
       </div>
-      <p className="mx-auto mt-1.5 max-w-3xl text-center text-xs text-text-muted">
+      <p className="mx-auto mt-1.5 hidden max-w-3xl text-center text-xs text-text-muted sm:block">
         Enter to send · Shift+Enter for a new line
       </p>
     </div>
