@@ -266,7 +266,14 @@ async def stream_agent_turn(
             + [soil_tool, season_plan_tool, scheduler_tool, financial_tool, scenario_tool]
             + kb_tools
             + research_tools,
-            "finance": static_tools + farm_tools + [financial_tool, scenario_tool],
+            # Finance node: forced price-gathering (web -> KB -> Wikipedia) +
+            # deterministic projection + calculator verification. calculator is
+            # already in static_tools. See FORCED_TOOL_SEQUENCE in graph.py.
+            "finance": static_tools
+            + farm_tools
+            + [financial_tool, scenario_tool]
+            + kb_tools
+            + research_tools,
         }
         all_tool_names = sorted(
             {t.name for group in tool_groups.values() for t in group}

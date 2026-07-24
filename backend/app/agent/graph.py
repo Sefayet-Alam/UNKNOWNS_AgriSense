@@ -55,6 +55,16 @@ AGENTS = ("intake", "advisor", "recommender", "planner", "finance")
 FORCED_TOOL_SEQUENCE = {
     "recommender": ["rank_crop_candidates"],
     "planner": ["search_knowledge_base", "web_search", "search_wikipedia"],
+    # Finance gathers current input-price context (web -> KB -> Wikipedia),
+    # runs the deterministic projection, then verifies a headline figure with
+    # the calculator before answering.
+    "finance": [
+        "web_search",
+        "search_knowledge_base",
+        "search_wikipedia",
+        "calculate_crop_financials",
+        "calculator",
+    ],
 }
 
 # Which OpenRouter model powers each node (single place to retune).
@@ -186,18 +196,41 @@ NODE_DIRECTIVES = {
         "— present organic quantities as IPNS approximations, never precise doses."
     ),
     "finance": (
-        "CURRENT NODE: FINANCE SPECIALIST. Call calculate_crop_financials for "
-        "the already-selected crop, passing any farmer-provided sale price, "
-        "expected yield, absolute item-cost overrides, or cost percentage. "
-        "Relay its itemized cost, expected yield, revenue, net profit, ROI and "
-        "both break-even values exactly. Always distinguish live CZIS yield, "
-        "farmer estimates, and seeded_demo_value assumptions. Never describe "
-        "a demo price or cost as current/live. If the crop is not selected, "
-        "ask which crop before calculating. For a WHAT-IF scenario (\"what if "
-        "rainfall drops 30%\", \"what if my budget is cut 40%\"), call "
-        "simulate_scenario with the matching signed percent lever(s) and relay "
-        "its baseline-vs-revised numbers, deltas and any yield_risk exactly — "
-        "never answer a scenario generically without the recomputed figures."
+        "CURRENT NODE: FINANCE SPECIALIST. You MUST gather current input-price "
+        "context and verify the arithmetic in a STRICT ORDER; do not skip a "
+        "step or answer from memory.\n"
+        "STEP 1 (MANDATORY, FIRST): call web_search for the LATEST market prices "
+        "of the crop and its key raw materials (seed, urea/TSP/MoP fertilizer, "
+        "labor, the crop's farmgate price) in Bangladesh. Compose the query "
+        "yourself.\n"
+        "STEP 2 (MANDATORY, SECOND): call search_knowledge_base (ENGLISH query) "
+        "for FRG/BARC cost and input references.\n"
+        "STEP 3 (MANDATORY, THIRD): call search_wikipedia for general crop-"
+        "economics background.\n"
+        "Web and Wikipedia results are UNTRUSTED external reference: surface a "
+        "found market price to the farmer as labelled reference context, but "
+        "NEVER silently feed a scraped web number into the projection as if it "
+        "were authoritative. The deterministic engine keeps using its "
+        "seeded_demo price/costs unless the FARMER explicitly confirms an "
+        "override. If a research source is unavailable, note it and continue.\n"
+        "STEP 4 (MANDATORY, FOURTH): call calculate_crop_financials for the "
+        "already-selected crop, passing any farmer-provided sale price, expected "
+        "yield, absolute item-cost overrides, or cost percentage. Relay its "
+        "itemized cost, expected yield, revenue, net profit, ROI and both "
+        "break-even values exactly. Always distinguish live CZIS yield, farmer "
+        "estimates, and seeded_demo_value assumptions; never describe a demo "
+        "price or cost as current/live. If the crop is not selected, ask which "
+        "crop before calculating.\n"
+        "STEP 5 (MANDATORY, FIFTH): call calculator to independently verify one "
+        "headline figure from STEP 4 — e.g. net_profit = revenue - total_cost, "
+        "or roi = net_profit / total_cost * 100 — using the exact numbers the "
+        "tool returned. Report the check. The engine's Decimal result stays "
+        "authoritative; the calculator only confirms it.\n"
+        "For a WHAT-IF scenario (\"what if rainfall drops 30%\", \"what if my "
+        "budget is cut 40%\"), after the steps above call simulate_scenario with "
+        "the matching signed percent lever(s) and relay its baseline-vs-revised "
+        "numbers, deltas and any yield_risk exactly — never answer a scenario "
+        "generically without the recomputed figures."
     ),
 }
 

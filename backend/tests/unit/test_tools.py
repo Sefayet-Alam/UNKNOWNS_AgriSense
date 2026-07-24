@@ -105,6 +105,8 @@ def test_forced_tool_sequence_names_are_real_registered_tools():
     research_names = {t.name for t in build_research_tools()}
     kb_names = {t.name for t in tools_mod.build_kb_tools()}
 
+    static_names = {t.name for t in tools_mod.build_static_tools()}
+
     assert FORCED_TOOL_SEQUENCE["recommender"] == ["rank_crop_candidates"]
     # The planner's forced trio: KB retrieval then the two research tools.
     assert FORCED_TOOL_SEQUENCE["planner"] == [
@@ -112,5 +114,14 @@ def test_forced_tool_sequence_names_are_real_registered_tools():
         "web_search",
         "search_wikipedia",
     ]
+    # Finance: price gathering -> deterministic projection -> calculator check.
+    assert FORCED_TOOL_SEQUENCE["finance"] == [
+        "web_search",
+        "search_knowledge_base",
+        "search_wikipedia",
+        "calculate_crop_financials",
+        "calculator",
+    ]
     assert "search_knowledge_base" in kb_names
     assert {"web_search", "search_wikipedia"} <= research_names
+    assert "calculator" in static_names
