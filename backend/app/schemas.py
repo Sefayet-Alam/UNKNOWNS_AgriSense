@@ -195,11 +195,18 @@ class ToolTraceEntry(BaseModel):
     result: str = ""
 
 
+class MessageAttachmentOut(BaseModel):
+    id: int
+    kind: str
+    mime_type: str
+
+
 class MessageOut(BaseModel):
     id: int
     role: str
     content: str
     tool_trace: list[ToolTraceEntry] = Field(default_factory=list)
+    attachments: list[MessageAttachmentOut] = Field(default_factory=list)
     model: str = ""
     created_at: datetime
 
