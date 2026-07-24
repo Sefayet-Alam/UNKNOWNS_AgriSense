@@ -33,6 +33,9 @@ build/
 # Local agent config
 .claude/
 
+# Local Git worktrees
+.worktrees/
+
 # Docker volumes (local)
 pgdata/
 

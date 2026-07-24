@@ -9,47 +9,58 @@
 
 ## 0. Locked architectural decisions (with justification)
 
-### D1 — Tool-based ReAct hybrid, NOT the INSIGHTS StateGraph workflow
+### D1 — Multi-node specialist workflow (REVISED 24 Jul, implemented)
 
-Keep the current single ReAct graph + runner + frozen SSE contract. Add
-**composite deterministic tools**: each `@tool` is a thin LLM-facing wrapper over
-a pure, gold-tested engine. The LLM orchestrates and explains; **numbers only
-ever come from inside a tool**.
+> Rev 2: the original "single ReAct loop" decision was overruled — the graph is
+> now a **supervisor-style multi-node workflow** with dedicated nodes, dedicated
+> toolsets, **a custom LLM per node**, and shared state/memory. Implemented in
+> [backend/app/agent/graph.py](../backend/app/agent/graph.py).
 
-Why (verified against code, not vibes):
+```text
+START → classify ──→ intake  ──┐
+        (lite LLM,   weather ──┼──→ tools (shared executor) ──→ back to the
+         heuristic   advisor ──┘         active agent … → END (no more calls)
+         fallback)   [future: planner / ranker / finance specialists]
+```
 
-- `interrupt()`/`Command(resume)` requires a Postgres checkpointer that is (a) not
-  installed, (b) incompatible with our stateless per-turn runner
-  ([runner.py:150](../backend/app/agent/runner.py)), and (c) needs a `/resume`
-  endpoint + frame type that **breaks the frozen API contract**
-  ([API_CONTRACT.md](API_CONTRACT.md)). Every "human-in-loop" moment in
-  EXAMPLE_FLOW is expressible as *assistant asks a question and ends the turn* —
-  which the runner already implements.
-- `Send` fan-out **crashes as written in INSIGHTS** (`crop_evaluations` has no
-  `operator.add` reducer → `InvalidUpdateError`) and buys nothing for ≤5
-  hardcoded crops. A single node/tool with an internal loop is deterministic and
-  ordered.
-- Pure workflow nodes are **invisible to the judged trace**: tool_trace chips are
-  built exclusively from `AIMessage.tool_calls` + `ToolMessage` results
-  ([runner.py:180-225](../backend/app/agent/runner.py)). A ReAct turn calling 5
-  tools in sequence IS visible multi-step planning — for free, zero frontend
-  change.
-- Judged consistency ("change input → outputs change") is enforced by making
-  every engine **pure over the stored FarmProfile** and versioning plans, plus a
-  system-prompt rule that any profile change requires re-calling the tools.
+| Node | Model | Tools | Job |
+|---|---|---|---|
+| `classify` | **flash-lite** (+ deterministic keyword fallback; fallback-only under TESTING) | none | route the turn from the farmer's LAST message |
+| `intake` | flash | farm tools + static | slot-filling: save stated facts, ask 1-2 targeted questions (flash-lite tried and rejected: ignored language directive, skipped saves) |
+| `weather` | flash | weather + farm + static | forecast grounding, cites tool values only |
+| `advisor` | flash | full set (incl. memory) | general agronomy; graceful catch-all for misroutes |
+| `tools` | — | union of all groups | ONE shared ToolNode; returns control to `state.active_agent` |
 
-Human-in-loop = conversational turn. State machine = `farms.phase` column
-rehydrated each turn. Drop from INSIGHTS: checkpointer, interrupt, Send,
-`/farms/{id}/threads` routes, daily scheduler. Keep from INSIGHTS: deterministic
-engines, evidence/source-labelling discipline, soil-test-vs-AEZ fertilizer split,
-retail-vs-farmgate price rule, precedence policy, "LLM never invents numbers".
+Shared state ([state.py](../backend/app/agent/state.py)): `messages` (full
+conversation memory every node sees), `intent`, `active_agent`, `farm_context`
+(profile snapshot preloaded each turn). Tier 0 Tasks 5-7 add **planner /
+ranker / finance specialist nodes** the same way — each with its
+deterministic-engine tools.
+
+Still true (and still verified against code):
+
+- **No `interrupt()`/checkpointer/`Send`**: human-in-loop = assistant asks and
+  ends the turn; state machine = `farms.phase` + farm rows rehydrated per turn;
+  the frozen SSE contract stays untouched.
+- **Trace visibility preserved**: every specialist emits normal
+  `AIMessage.tool_calls` through the shared ToolNode → the runner's tool_trace
+  chips + `message_update` frames work unchanged; the classify decision surfaces
+  as a `progress` frame (`routing: specialist: X`).
+- **Numbers only from tools/engines** — pure, gold-tested; plans versioned;
+  consistency = re-running engines over the stored FarmProfile.
+- MAX_TURNS budget counts only THIS turn's tool rounds (replayed history ids
+  are `hist_`-prefixed and excluded — else long sessions starve).
+
+Keep from INSIGHTS: deterministic engines, evidence/source-labelling discipline,
+soil-test-vs-AEZ fertilizer split, retail-vs-farmgate price rule, precedence
+policy, "LLM never invents numbers".
 
 ### D2 — Models: single family, no language router
 
 | Role | Model (OpenRouter id) | Why |
 |---|---|---|
-| Chat + explanation | `google/gemini-2.5-flash` ($0.30/$2.50 per 1M) | Strongest documented Bengali investment (Gemini ships Bengali natively; IndicGenBench authors); reliable tool calling via OpenRouter |
-| Extraction / cheap steps (optional) | `google/gemini-2.5-flash-lite` ($0.10/$0.40) | Same family/tokenizer, reasoning-off → fastest TTFT for slot-filling |
+| Specialist nodes (intake/weather/advisor) | `google/gemini-2.5-flash` ($0.30/$2.50 per 1M) | Strongest documented Bengali investment (Gemini ships Bengali natively; IndicGenBench authors); reliable tool calling via OpenRouter. Env: `OPENROUTER_MODEL` |
+| Intent classification (classify node) | `google/gemini-2.5-flash-lite` ($0.10/$0.40) | Same family/tokenizer, reasoning-off → fastest TTFT; deterministic keyword fallback on failure. Env: `OPENROUTER_MODEL_LITE`. NOTE: tested for intake extraction and REJECTED (ignored language directive, skipped profile saves) — lite is routing-only |
 
 - **No language-detection routing.** Banglish code-switches *mid-sentence*
   ("pani ase but beshi na") — a router fails exactly on the inputs it exists for,
@@ -112,6 +123,13 @@ graceful-degradation fallback (scenario #29) in one move.
 
 Estimated wall-clock in parentheses; ~20h remain. Tests accompany each task
 (regression rule), run `make test` before/after.
+
+> Rev 2 note: Tasks 5-7 deliverables land as a dedicated **`planner`
+> specialist node** in the multi-node graph (flash model) whose tools are the
+> deterministic engines (`rank_crops`, `build_season_plan`,
+> `calculate_financials`); the classify node gains a `plan` intent for
+> "কী চাষ করব / plan বানান / what-if" requests. Engines stay pure and
+> gold-tested exactly as specified below.
 
 ### Task 1 — Model switch + real weather tool (≈1.5h) — Tier 0 #2
 

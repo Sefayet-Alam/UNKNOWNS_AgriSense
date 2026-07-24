@@ -10,11 +10,12 @@ from langchain_core.embeddings import Embeddings
 from ..config import settings
 
 
-def build_chat_model():
-    """Build the default OpenRouter chat model.
+def build_chat_model(model: str | None = None):
+    """Build an OpenRouter chat model.
 
-    Uses ``langchain_openrouter.ChatOpenRouter`` (the langchain-openrouter
-    integration package). Raises a clear error when the API key is missing.
+    ``model`` overrides the default — each graph node can run its own LLM
+    (e.g. flash-lite for classification/extraction, flash for advice).
+    Raises a clear error when the API key is missing.
     """
     if not settings.OPENROUTER_API_KEY:
         raise RuntimeError(
@@ -26,7 +27,7 @@ def build_chat_model():
     from langchain_openrouter import ChatOpenRouter
 
     return ChatOpenRouter(
-        model=settings.OPENROUTER_MODEL,
+        model=model or settings.OPENROUTER_MODEL,
         api_key=settings.OPENROUTER_API_KEY,
         base_url=settings.OPENROUTER_BASE_URL,
         temperature=0,

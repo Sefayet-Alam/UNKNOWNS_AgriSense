@@ -93,6 +93,18 @@ async def test_update_fills_slots_and_converts_area(client, db_session):
     assert p2["phase"] == "ready_for_planning"
 
 
+@pytest.mark.parametrize(
+    "raw,expected",
+    [("robi", "rabi"), ("রবি", "rabi"), ("winter", "rabi"), ("Kharif-2", "kharif-2")],
+)
+async def test_season_aliases_normalized(client, db_session, raw, expected):
+    tools = await _tools_for(
+        client, db_session, f"0171234{abs(hash(raw)) % 9000 + 1000}"
+    )
+    p = json.loads(await tools["update_farm_profile"].ainvoke({"season": raw}))
+    assert p["season"] == expected
+
+
 async def test_confirming_factor_alone_reconverts_stored_area(client, db_session):
     # Live-observed model behavior: after "৩ বিঘা" (assumed), the farmer says
     # "৩৩ শতক ধরে নেন" and the model passes ONLY local_unit_factor_decimal.
