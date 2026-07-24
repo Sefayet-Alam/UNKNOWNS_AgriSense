@@ -68,9 +68,98 @@ def _tool_script() -> List[BaseMessage]:
     ]
 
 
+def _weather_script() -> List[BaseMessage]:
+    return [
+        # Turn 1: call the weather tool for the registered location.
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "get_weather",
+                    "args": {"location": "", "days": 3},
+                    "id": "call_weather_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        # Turn 2: explain using the returned values.
+        AIMessage(
+            content=(
+                "আগামী ৩ দিনে তানোরে বৃষ্টির সম্ভাবনা কম — মোট ০.০ মিমি "
+                "পূর্বাভাস। সেচের পরিকল্পনা সেভাবে করুন।"
+            )
+        ),
+    ]
+
+
+def _intake_turn1() -> List[BaseMessage]:
+    """Farmer gave place+area+water; agent checks profile, saves, asks budget."""
+    return [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "get_farm_profile",
+                    "args": {},
+                    "id": "call_profile_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "update_farm_profile",
+                    "args": {
+                        "area_value": 3,
+                        "area_unit": "bigha",
+                        "irrigation_available": True,
+                        "water_source": "shallow tubewell",
+                    },
+                    "id": "call_update_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(content="এই মৌসুমে আপনার আনুমানিক বাজেট কত?"),
+    ]
+
+
+def _intake_turn2() -> List[BaseMessage]:
+    """Farmer gave budget+season; agent saves and confirms the summary."""
+    return [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "update_farm_profile",
+                    "args": {"budget_bdt": 80000, "season": "rabi"},
+                    "id": "call_update_2",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
+            content=(
+                "আমি যা বুঝেছি: তানোরে ৩ বিঘা (৯৯ শতক), সেচ আছে, বাজেট "
+                "৮০,০০০ টাকা, রবি মৌসুম। ঠিক আছে?"
+            )
+        ),
+    ]
+
+
 _SCENARIOS: Dict[str, Callable[[], List[BaseMessage]]] = {
     "plain": _plain_script,
     "tool": _tool_script,
+    "weather": _weather_script,
+}
+
+# Multi-turn scenarios: one script per agent TURN (per graph build). The
+# factory returned by make_fake_llm hands out script N on its N-th call and
+# repeats the last script if called more often.
+_SEQUENCE_SCENARIOS: Dict[str, List[Callable[[], List[BaseMessage]]]] = {
+    "intake": [_intake_turn1, _intake_turn2],
 }
 
 
@@ -79,14 +168,30 @@ def make_fake_llm(scenario: str) -> Callable[[], FakeChatModel]:
 
     Monkeypatch this over ``build_chat_model`` in the graph/runner so each
     ``build_graph`` (one per turn) gets a model whose cursor starts at 0.
+
+    Single-turn scenarios (``_SCENARIOS``) return the same script every call.
+    Multi-turn scenarios (``_SEQUENCE_SCENARIOS``) advance one script per
+    call — i.e. per agent turn — sticking on the last script afterwards.
     """
-    if scenario not in _SCENARIOS:
-        raise ValueError(f"unknown fake-llm scenario: {scenario!r}")
+    if scenario in _SCENARIOS:
 
-    def factory() -> FakeChatModel:
-        return FakeChatModel(responses=_SCENARIOS[scenario]())
+        def factory() -> FakeChatModel:
+            return FakeChatModel(responses=_SCENARIOS[scenario]())
 
-    return factory
+        return factory
+
+    if scenario in _SEQUENCE_SCENARIOS:
+        scripts = _SEQUENCE_SCENARIOS[scenario]
+        calls = {"n": 0}
+
+        def seq_factory() -> FakeChatModel:
+            idx = min(calls["n"], len(scripts) - 1)
+            calls["n"] += 1
+            return FakeChatModel(responses=scripts[idx]())
+
+        return seq_factory
+
+    raise ValueError(f"unknown fake-llm scenario: {scenario!r}")
 
 
 # --------------------------------------------------------------------------- #

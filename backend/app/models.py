@@ -7,7 +7,9 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -47,6 +49,74 @@ class User(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+
+
+class Farm(Base):
+    """A farmer's field. Location is FARM-level, not user-level.
+
+    Registration address only *prefills* the first farm — a user registered in
+    Rajshahi can describe land in Naogaon, and one user can own several farms
+    whose plans must never mix (docs/EXAMPLE_FLOW.md #2, #8).
+    """
+
+    __tablename__ = "farms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), default="")
+    # Exactly one active farm per user drives the conversation context.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Location (BBS/CZIS geocodes; names + codes as at registration).
+    division_name: Mapped[str] = mapped_column(String(80), default="")
+    division_code: Mapped[str] = mapped_column(String(8), default="")
+    district_name: Mapped[str] = mapped_column(String(80), default="")
+    district_code: Mapped[str] = mapped_column(String(8), default="")
+    upazila_name: Mapped[str] = mapped_column(String(80), default="")
+    upazila_code: Mapped[str] = mapped_column(String(12), default="")
+    union_name: Mapped[str] = mapped_column(String(80), default="")
+    union_geocode: Mapped[str] = mapped_column(String(12), default="")
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Area — normalized to decimals (shotok). The original value/unit and any
+    # farmer-confirmed local conversion factor are kept for the audit trail.
+    area_decimal: Mapped[float | None] = mapped_column(Float, nullable=True)
+    original_area_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    original_area_unit: Mapped[str] = mapped_column(String(24), default="")
+    area_conversion_note: Mapped[str] = mapped_column(String(255), default="")
+
+    # Land / soil.
+    land_type: Mapped[str] = mapped_column(String(40), default="")
+    soil_texture: Mapped[str] = mapped_column(String(40), default="")
+    soil_test: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Water.
+    irrigation_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    water_source: Mapped[str] = mapped_column(String(80), default="")
+
+    # Constraints / preferences.
+    budget_bdt: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    season: Mapped[str] = mapped_column(String(20), default="")
+    previous_crop: Mapped[str] = mapped_column(String(60), default="")
+    risk_tolerance: Mapped[str] = mapped_column(String(12), default="")
+    preferred_crops: Mapped[list] = mapped_column(JSON, default=list)
+    excluded_crops: Mapped[list] = mapped_column(JSON, default=list)
+
+    # Workflow phase for the bounded intake -> plan loop.
+    phase: Mapped[str] = mapped_column(String(30), default="intake")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utcnow,
+        server_default=func.now(),
+        onupdate=_utcnow,
     )
 
 
