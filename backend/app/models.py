@@ -46,6 +46,8 @@ class User(Base):
     district_code: Mapped[str] = mapped_column(String(8), default="")
     upazila_name: Mapped[str] = mapped_column(String(80), default="")
     upazila_code: Mapped[str] = mapped_column(String(12), default="")
+    union_name: Mapped[str] = mapped_column(String(80), default="")
+    union_code: Mapped[str] = mapped_column(String(12), default="")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now()

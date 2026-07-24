@@ -59,8 +59,10 @@ that runs end-to-end in a 4-minute demo.
 
 - **Auth**: **phone number is the identity** (unique login credential; no email —
   rural farmers have phones). `username` is a non-unique display name. Registration
-  also captures the farm **address with CZIS/BBS geocodes** (division/district/
-  **upazila_code**) → feeds the weather/CZIS tools directly. JWT register/login/me +
+  captures the farm **address with CZIS/BBS geocodes** down to the **union**
+  (OPTIONAL — some upazilas list none; a non-empty union_code is validated
+  server-side against the bundled gazetteer) → union centroid pins the farm to
+  exact lat/lon, else the upazila centroid does. JWT register/login/me +
   refresh with rotation, jti blacklisting, reuse detection, logout blacklist.
   ([backend/app/routers/auth.py](backend/app/routers/auth.py), [backend/app/security.py](backend/app/security.py), [backend/app/schemas.py](backend/app/schemas.py))
 - **Chat**: SSE streaming, user-scoped sessions/messages, tool-trace display.
@@ -76,10 +78,24 @@ that runs end-to-end in a 4-minute demo.
   trace chips + frozen SSE contract unchanged; routing surfaces as a `progress`
   frame. Tier 0 planning lands as a future `planner` node.
   ([backend/app/agent/graph.py](backend/app/agent/graph.py), [backend/app/agent/state.py](backend/app/agent/state.py), [backend/app/agent/tools.py](backend/app/agent/tools.py), [backend/app/agent/runner.py](backend/app/agent/runner.py), [backend/app/agent/messages.py](backend/app/agent/messages.py))
+- **BD admin gazetteer**: [backend/app/data/bd_admin.json](backend/app/data/bd_admin.json)
+  (1.7MB, committed) — full division>district>upazila>**union** hierarchy (8/64/
+  497/7,761) harvested from CZIS `getAdminByCode.php` + centroids joined from
+  OCHA COD-AB (pcode == BBS geocode; 5,160 union points). Provenance + rebuild
+  scripts: [scripts/data_harvest/](scripts/data_harvest/). Accessors in
+  [backend/app/geo.py](backend/app/geo.py) (`resolve_coords` w/ union→upazila→district fallback,
+  `find_place`/`find_upazila_by_name`/`find_union_by_name`, `union_valid`).
+  Public dropdown endpoint `GET /api/geo/unions/{upazila_code}`
+  ([backend/app/routers/geo.py](backend/app/routers/geo.py)).
 - **Weather (Task 1)**: `get_weather` tool → [backend/app/adapters/weather.py](backend/app/adapters/weather.py)
   (Open-Meteo, keyless, 16-day max, ET0, retry + WEATHER_UNAVAILABLE sentinel,
-  geocoding w/ bundled centroid fallback, evidence metadata). Defaults to the
-  farmer's registered upazila.
+  evidence metadata). **Coordinates-first**: default = the active farm's stored
+  lat/lon (union centroid from registration — no geocoding at all,
+  `geocode_source: farm_profile`); named admin places resolve offline via the
+  gazetteer; the flaky live geocoder only runs for non-admin place names; the
+  model can also pass explicit latitude/longitude. Farm location edits re-resolve
+  codes + coords from the gazetteer in `update_farm_profile`
+  (`_re_resolve_farm_geo`).
 - **Farm profiles + intake (Task 2)**: `farms` table (farm-level location — one
   user, many farms; registration only prefills). Tools: `get_farm_profile`
   (reports `missing_required_fields`: location, farm_size, water_availability,
@@ -157,7 +173,8 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 98 tests: unit (security/phone/tools/weather adapter/unit
+  (or `make test`). 144 tests: unit (security/phone/tools/weather adapter/geo
+  gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
   chip, multi-turn intake via the turn-sequence fake in `tests/fakes.py`). LLM +

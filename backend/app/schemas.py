@@ -41,6 +41,12 @@ class RegisterRequest(BaseModel):
     district_code: str = Field(min_length=1, max_length=8)
     upazila_name: str = Field(min_length=1, max_length=80)
     upazila_code: str = Field(min_length=1, max_length=12)
+    # Union is OPTIONAL — some upazilas have no union rows in the gazetteer
+    # (city corporations etc.). When provided it pins the farm to the union
+    # centroid; when absent, coordinates fall back to the upazila centroid.
+    # If a code IS sent it must be a real union of the chosen upazila.
+    union_name: str = Field(default="", max_length=80)
+    union_code: str = Field(default="", max_length=12)
 
     @field_validator("phone")
     @classmethod
@@ -55,6 +61,8 @@ class Address(BaseModel):
     district_code: str = ""
     upazila_name: str = ""
     upazila_code: str = ""
+    union_name: str = ""
+    union_code: str = ""
 
 
 class UserOut(BaseModel):
@@ -225,6 +233,8 @@ def user_out(user) -> "UserOut":
             district_code=user.district_code,
             upazila_name=user.upazila_name,
             upazila_code=user.upazila_code,
+            union_name=getattr(user, "union_name", "") or "",
+            union_code=getattr(user, "union_code", "") or "",
         ),
     )
 

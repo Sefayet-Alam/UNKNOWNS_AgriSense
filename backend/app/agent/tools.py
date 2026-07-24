@@ -12,6 +12,7 @@ from typing import Optional
 from langchain_core.tools import tool
 from sqlalchemy import select
 
+from .. import geo as geo_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
 from ..database import AsyncSessionLocal
@@ -100,44 +101,116 @@ def calculator(expression: str) -> str:
 def build_weather_tool(user):
     """Return a ``get_weather`` tool bound to the user's registered address.
 
-    The tool calls the real Open-Meteo API (keyless). On any failure it
-    returns a structured WEATHER_UNAVAILABLE message — the agent must relay
+    Coordinate resolution is OFFLINE-FIRST: the farmer's active farm (or
+    registration address) already carries lat/lon from the bundled gazetteer
+    (union centroid), and admin-unit names resolve through the same bundle —
+    the flaky live geocoder is only the last resort for non-admin place names.
+    The forecast itself calls the real Open-Meteo API (keyless). On failure a
+    structured WEATHER_UNAVAILABLE message is returned — the agent must relay
     the outage honestly and never invent forecast values.
     """
-    default_place = (
-        getattr(user, "upazila_name", "") or getattr(user, "district_name", "") or ""
-    )
-    default_district = getattr(user, "district_name", "") or None
+
+    async def _default_location() -> Optional[dict]:
+        """The farmer's own field: farm lat/lon, else gazetteer centroid."""
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+        label = farm.union_name or farm.upazila_name or farm.district_name
+        if farm.latitude is not None and farm.longitude is not None:
+            return {
+                "name": label or "farm",
+                "latitude": farm.latitude,
+                "longitude": farm.longitude,
+                "admin1": farm.division_name,
+                "admin2": farm.district_name,
+                "geocode_source": "farm_profile",
+            }
+        resolved = geo_mod.resolve_coords(
+            union_code=farm.union_geocode or getattr(user, "union_code", ""),
+            upazila_code=farm.upazila_code or getattr(user, "upazila_code", ""),
+            district_code=farm.district_code or getattr(user, "district_code", ""),
+        )
+        if resolved:
+            return {
+                "name": label or resolved["name"],
+                "latitude": resolved["lat"],
+                "longitude": resolved["lon"],
+                "admin1": farm.division_name,
+                "admin2": farm.district_name,
+                "geocode_source": f"gazetteer_{resolved['level']}_centroid",
+            }
+        return None
 
     @tool
-    async def get_weather(location: str = "", days: int = 7) -> str:
+    async def get_weather(
+        location: str = "",
+        days: int = 7,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+    ) -> str:
         """Fetch the REAL weather forecast (live Open-Meteo API) for a Bangladesh location.
 
         Args:
-            location: Place name (upazila/district/town), e.g. "Tanore". Leave
-                empty to use the farmer's registered upazila.
+            location: Place name (union/upazila/district/town), e.g. "Tanore".
+                Leave empty to use the farmer's own farm location — preferred,
+                it always resolves to exact coordinates.
             days: Forecast horizon in days, 1-16 (Open-Meteo maximum is 16).
+            latitude: Optional explicit latitude — overrides location lookup.
+            longitude: Optional explicit longitude — overrides location lookup.
 
         Returns daily min/max temperature (C), rainfall (mm), rain probability
         (%), FAO ET0 evapotranspiration (mm) and max wind (km/h), plus a
         summary. These are actual API values — cite them as retrieved data. If
         this tool reports WEATHER_UNAVAILABLE, tell the farmer live weather is
-        currently unavailable; NEVER invent forecast numbers.
+        currently unavailable; NEVER invent forecast numbers. If a location
+        name is not understood, retry once passing latitude/longitude
+        explicitly.
         """
-        place = (location or "").strip() or default_place
-        _emit("weather", f"geocoding location: {place}")
+        place = (location or "").strip()
+        loc: Optional[dict] = None
         try:
-            geo = await weather_mod.geocode_place(
-                place,
-                district=None if (location or "").strip() else default_district,
-            )
+            if latitude is not None and longitude is not None:
+                loc = {
+                    "name": place or f"({latitude}, {longitude})",
+                    "latitude": float(latitude),
+                    "longitude": float(longitude),
+                    "admin1": "",
+                    "admin2": "",
+                    "geocode_source": "explicit_coordinates",
+                }
+            elif not place:
+                _emit("weather", "resolving farmer's farm coordinates")
+                loc = await _default_location()
+                if loc is None:
+                    return (
+                        "WEATHER_UNAVAILABLE: the farm has no saved location "
+                        "yet. Ask the farmer for their upazila/union first "
+                        "(or pass a location name)."
+                    )
+            else:
+                # Named place: bundled gazetteer first (all unions/upazilas/
+                # districts, offline + exact), live geocoder only after that.
+                row = geo_mod.find_place(place)
+                if row is not None:
+                    loc = {
+                        "name": row.get("name_en") or place,
+                        "latitude": row["lat"],
+                        "longitude": row["lon"],
+                        "admin1": "",
+                        "admin2": "",
+                        "geocode_source": f"gazetteer_{row['level']}_centroid",
+                    }
+                else:
+                    # Explicit place -> no registered-district bias (the whole
+                    # point of naming a place is that it may be elsewhere).
+                    _emit("weather", f"geocoding location: {place}")
+                    loc = await weather_mod.geocode_place(place, district=None)
             _emit(
                 "weather",
-                f"fetching {days}-day forecast for {geo['name']} "
-                f"({geo['latitude']}, {geo['longitude']})",
+                f"fetching {days}-day forecast for {loc['name']} "
+                f"({loc['latitude']}, {loc['longitude']})",
             )
             forecast = await weather_mod.fetch_forecast(
-                geo["latitude"], geo["longitude"], days
+                loc["latitude"], loc["longitude"], days
             )
         except weather_mod.WeatherError as exc:
             return (
@@ -145,7 +218,7 @@ def build_weather_tool(user):
                 "fetched. Tell the farmer honestly that live weather is "
                 "unavailable right now and do NOT invent forecast values."
             )
-        payload = {"location": geo, **forecast}
+        payload = {"location": loc, **forecast}
         return json.dumps(payload, ensure_ascii=False)
 
     return get_weather
@@ -206,6 +279,7 @@ def _farm_payload(farm: Farm, warnings: Optional[list[str]] = None) -> dict:
             "upazila": farm.upazila_name,
             "upazila_code": farm.upazila_code,
             "union": farm.union_name,
+            "union_geocode": farm.union_geocode,
             "latitude": farm.latitude,
             "longitude": farm.longitude,
         },
@@ -232,6 +306,52 @@ def _farm_payload(farm: Farm, warnings: Optional[list[str]] = None) -> dict:
     }
 
 
+def _re_resolve_farm_geo(farm: Farm, warnings: list[str]) -> None:
+    """Re-attach geocodes + centroid coordinates after a name-based location edit.
+
+    Matches farmer-stated names against the bundled CZIS/BBS gazetteer:
+    upazila name -> codes for upazila/district/division; union name (within
+    the upazila) -> union geocode. Then pins lat/lon to the most specific
+    centroid available. Unmatched names keep empty codes — get_weather then
+    falls back to the live geocoder for that place name.
+    """
+    if not farm.upazila_code and farm.upazila_name:
+        row = geo_mod.find_upazila_by_name(
+            farm.upazila_name, farm.district_code or None
+        )
+        if row is None:
+            row = geo_mod.find_upazila_by_name(farm.upazila_name)
+        if row is not None:
+            farm.upazila_code = row["code"]
+            farm.upazila_name = row["name_en"]
+            district = geo_mod.get("district", row["district_code"])
+            if district is not None:
+                farm.district_code = district["code"]
+                farm.district_name = district["name_en"]
+            division = geo_mod.get("division", row["division_code"])
+            if division is not None:
+                farm.division_code = division["code"]
+                farm.division_name = division["name_en"]
+    if not farm.union_geocode and farm.union_name and farm.upazila_code:
+        row = geo_mod.find_union_by_name(farm.union_name, farm.upazila_code)
+        if row is not None:
+            farm.union_geocode = row["code"]
+            farm.union_name = row["name_en"]
+    resolved = geo_mod.resolve_coords(
+        union_code=farm.union_geocode or "",
+        upazila_code=farm.upazila_code or "",
+        district_code=farm.district_code or "",
+    )
+    if resolved:
+        farm.latitude = resolved["lat"]
+        farm.longitude = resolved["lon"]
+    elif farm.latitude is None:
+        warnings.append(
+            "location not found in the gazetteer — weather will fall back to "
+            "live geocoding of the place name; double-check the spelling"
+        )
+
+
 async def _get_or_create_active_farm(session, user) -> Farm:
     result = await session.execute(
         select(Farm)
@@ -243,7 +363,14 @@ async def _get_or_create_active_farm(session, user) -> Farm:
     if farm is not None:
         return farm
     # First contact: prefill from the registration address (a DEFAULT the
-    # agent must confirm — the actual field may be elsewhere).
+    # agent must confirm — the actual field may be elsewhere). The union
+    # centroid from the bundled gazetteer pins the farm to coordinates so
+    # weather never depends on live geocoding.
+    resolved = geo_mod.resolve_coords(
+        union_code=getattr(user, "union_code", "") or "",
+        upazila_code=user.upazila_code or "",
+        district_code=user.district_code or "",
+    )
     farm = Farm(
         user_id=user.id,
         name=f"{user.upazila_name or 'My'} Farm".strip(),
@@ -254,6 +381,10 @@ async def _get_or_create_active_farm(session, user) -> Farm:
         district_code=user.district_code or "",
         upazila_name=user.upazila_name or "",
         upazila_code=user.upazila_code or "",
+        union_name=getattr(user, "union_name", "") or "",
+        union_geocode=getattr(user, "union_code", "") or "",
+        latitude=resolved["lat"] if resolved else None,
+        longitude=resolved["lon"] if resolved else None,
         preferred_crops=[],
         excluded_crops=[],
     )
@@ -347,15 +478,26 @@ def build_farm_tools(user):
                 farm.upazila_name = upazila_name.strip()
                 farm.upazila_code = ""
                 location_changed = True
-            if union_name is not None:
+            union_changed = False
+            if union_name is not None and union_name.strip() != farm.union_name:
                 farm.union_name = union_name.strip()
                 farm.union_geocode = ""
+                union_changed = True
             if location_changed:
-                farm.union_name = farm.union_name  # unions stay if re-stated above
+                # Stale coordinates would silently ground weather/land advice
+                # in the OLD place — clear, then re-resolve from the bundle.
+                farm.latitude = None
+                farm.longitude = None
+                if not union_changed:
+                    # The old union cannot belong to the new upazila.
+                    farm.union_name = ""
+                    farm.union_geocode = ""
                 warnings.append(
                     "farm location changed — stale geocodes cleared; land "
                     "context must be re-fetched"
                 )
+            if location_changed or union_changed:
+                _re_resolve_farm_geo(farm, warnings)
             if latitude is not None:
                 farm.latitude = float(latitude)
             if longitude is not None:

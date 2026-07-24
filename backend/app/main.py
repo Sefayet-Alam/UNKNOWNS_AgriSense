@@ -19,6 +19,7 @@ from . import models  # noqa: F401
 from .routers import auth as auth_router
 from .routers import billing as billing_router
 from .routers import chat as chat_router
+from .routers import geo as geo_router
 
 
 @asynccontextmanager
@@ -43,6 +44,7 @@ app.add_middleware(
 app.include_router(auth_router.router)
 app.include_router(billing_router.router)
 app.include_router(chat_router.router)
+app.include_router(geo_router.router)
 
 
 @app.get("/health")

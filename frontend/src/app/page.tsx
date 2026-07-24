@@ -29,10 +29,10 @@ const FieldAtlasScene = dynamic(
 );
 
 const FIELD_NOTES = [
-  { value: "64", label: "districts mapped" },
-  { value: "84", label: "crops compared" },
-  { value: "2024", label: "FRG guidance" },
-  { value: "৳", label: "costs in local terms" },
+  { value: "7,761", label: "unions mapped" },
+  { value: "16", label: "forecast days" },
+  { value: "64", label: "districts covered" },
+  { value: "2024", label: "FRG grounding" },
 ];
 
 const METHOD = [

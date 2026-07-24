@@ -196,7 +196,10 @@ async def test_weather_tool_turn_traces_real_adapter_values(
     assert filled, "get_weather result never filled"
     assert "total_rain_mm" in filled
     assert "Open-Meteo" in filled
-    assert "Tanore" in filled
+    # Default location = the farm itself: registration union (Badhair)
+    # pinned the farm to coordinates, so no geocoding happened.
+    assert "Badhair" in filled
+    assert "farm_profile" in filled
 
     # Final Bengali assistant answer survives SSE intact.
     finals = [

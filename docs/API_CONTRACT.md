@@ -19,9 +19,14 @@ Req:
   "password1": str, "password2": str,
   "division_name": str, "division_code": str,     // e.g. "Rajshahi", "50"
   "district_name": str, "district_code": str,     // e.g. "Rajshahi", "5081"
-  "upazila_name":  str, "upazila_code":  str }     // e.g. "Tanore", "508194"
+  "upazila_name":  str, "upazila_code":  str,      // e.g. "Tanore", "508194"
+  "union_name":    str, "union_code":    str }     // OPTIONAL, e.g. "Badhair", "50819427"
 ```
-- 400 if `password1 != password2`, weak password, invalid phone, or phone already registered.
+- 400 if `password1 != password2`, weak password, invalid phone, phone already
+  registered, or a NON-EMPTY `union_code` is not a real union of `upazila_code`
+  (validated against the bundled CZIS/BBS gazetteer). Union is optional (some
+  upazilas list none); when given, its centroid pins the farm to exact lat/lon
+  for weather grounding — otherwise the upazila centroid is used.
 Res 201: `UserOut` (see Shapes).
 
 ### POST /api/auth/login
@@ -92,6 +97,13 @@ Res 200: `Subscription`. The server persists the activated subscription.
 Res 200: `{ "subscription": Subscription, "status_code": str, "status_detail": str }`
 BDApps mode calls `/subscription/send` with action `"0"`.
 
+## Gazetteer (public, no auth — used by the register form)
+
+### GET /api/geo/unions/{upazila_code}
+Res 200: `{ "upazila_code": str, "results": [ { "code": str, "name": str, "name_bn": str } ] }`
+- 404 for an unknown upazila code. Paurashava wards are labelled
+  `"<Paurashava> — Ward No-XX"`.
+
 ## Chat (all require Bearer)
 
 ### POST /api/chat/stream  → Server-Sent Events
@@ -123,7 +135,8 @@ UserOut = {
   address: {
     division_name: str, division_code: str,
     district_name: str, district_code: str,
-    upazila_name:  str, upazila_code:  str
+    upazila_name:  str, upazila_code:  str,
+    union_name:    str, union_code:    str
   }
 }
 Session = {
