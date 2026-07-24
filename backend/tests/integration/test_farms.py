@@ -11,7 +11,7 @@ import json
 import pytest
 from sqlalchemy import select
 
-from app.agent.tools import build_farm_tools, build_soil_tool
+from app.agent.tools import build_farm_tools, build_patterns_tool, build_soil_tool
 from app.models import Farm, User
 
 from tests.fakes import auth_headers_for
@@ -29,8 +29,8 @@ async def _tools_for(client, db_session, phone: str, **overrides):
     await auth_headers_for(client, phone=phone, **overrides)
     user = await _db_user(db_session, phone)
     tools = {t.name: t for t in build_farm_tools(user)}
-    soil_tool = build_soil_tool(user)
-    tools[soil_tool.name] = soil_tool
+    for extra in (build_soil_tool(user), build_patterns_tool(user)):
+        tools[extra.name] = extra
     return tools
 
 
@@ -291,6 +291,38 @@ async def test_create_farm_resolves_geo_and_requires_full_intake(
     # And the soil tool now serves the NEW farm's upazila, not the old one's.
     soil_payload = json.loads(await tools["get_soil_context"].ainvoke({}))
     assert soil_payload["upazila_code"] == manda["code"]
+
+
+# --------------------------------------------------------------------------- #
+# Cropping-pattern economics tool (recorded profitability grounding)
+# --------------------------------------------------------------------------- #
+async def test_cropping_patterns_tool_serves_farm_upazila_sorted(
+    client, db_session
+):
+    tools = await _tools_for(client, db_session, "01712345025")
+    payload = json.loads(await tools["get_cropping_patterns"].ainvoke({}))
+    assert payload["upazila_code"] == "508194"  # Tanore (registration prefill)
+    assert payload["count"] >= 1
+    margins = [
+        float(p["gm_tk_per_decimal"])
+        for p in payload["patterns"]
+        if p.get("gm_tk_per_decimal") is not None
+    ]
+    assert margins == sorted(margins, reverse=True)
+    assert "gm_tk_per_decimal" in payload["units"]
+    assert "CZIS" in payload["source"]
+
+
+async def test_cropping_patterns_unknown_location_returns_sentinel(
+    client, db_session
+):
+    tools = await _tools_for(client, db_session, "01712345026")
+    await tools["update_farm_profile"].ainvoke(
+        {"upazila_name": "Nowhereville", "district_name": "Nowhere"}
+    )
+    result = await tools["get_cropping_patterns"].ainvoke({})
+    assert result.startswith("PATTERNS_UNKNOWN")
+    assert "invent" in result.lower()
 
 
 async def test_union_change_within_upazila_resolves_geocode(client, db_session):

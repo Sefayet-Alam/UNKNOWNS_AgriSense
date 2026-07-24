@@ -32,6 +32,7 @@ from .tools import (
     build_farm_tools,
     build_kb_tools,
     build_memory_tools,
+    build_patterns_tool,
     build_soil_tool,
     build_static_tools,
     build_weather_tool,
@@ -190,6 +191,7 @@ async def stream_agent_turn(
         weather_tool = build_weather_tool(user)
         farm_tools = build_farm_tools(user)
         soil_tool = build_soil_tool(user)
+        patterns_tool = build_patterns_tool(user)
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
@@ -200,17 +202,18 @@ async def stream_agent_turn(
             "advisor": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool]
+            + [soil_tool, patterns_tool]
             + czis_tools
             + kb_tools
             + memory_tools,
             # Dedicated crop-recommendation specialist: everything needed to
-            # ground a ranked shortlist (profile + soil survey + CZIS catalog/
-            # varieties + weather), same hard six-field gate.
+            # ground a ranked shortlist (profile + soil survey + recorded
+            # pattern economics + CZIS catalog/varieties + weather), same
+            # hard six-field gate.
             "recommender": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool]
+            + [soil_tool, patterns_tool]
             + czis_tools,
         }
         all_tool_names = sorted(

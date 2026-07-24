@@ -13,6 +13,7 @@ from langchain_core.tools import tool
 from sqlalchemy import select
 
 from .. import geo as geo_mod
+from .. import patterns as patterns_mod
 from .. import soil as soil_mod
 from ..adapters import czis as czis_mod
 from ..adapters import weather as weather_mod
@@ -933,6 +934,63 @@ def build_soil_tool(user):
             return json.dumps(payload, ensure_ascii=False)
 
     return get_soil_context
+
+
+def build_patterns_tool(user):
+    """``get_cropping_patterns`` — recorded per-upazila rotation economics."""
+
+    @tool
+    async def get_cropping_patterns(season: str = "", crop: str = "") -> str:
+        """Get the RECORDED cropping patterns for the active farm's upazila
+        with real economics: rabi/kharif-1/kharif-2 rotation, benefit-cost
+        ratio (bcr_vc over variable cost, bcr_tc over total cost) and gross
+        margin in Taka PER DECIMAL of land (gm_tk_per_decimal), sorted most
+        profitable first.
+
+        Args:
+            season: optional filter — "rabi", "kharif-1" or "kharif-2" keeps
+                patterns actually cropped (not Fallow) in that season.
+            crop: optional crop-name filter (e.g. "Boro dhan", "Potato").
+
+        Use for profitability grounding: gm_tk_per_decimal x the farm's
+        area_decimal = the gross-margin estimate for that rotation (use the
+        calculator tool for the multiplication). Cite BCR/margin values as
+        recorded CZIS reference data for this upazila — never invent them.
+        If this returns PATTERNS_UNKNOWN, say recorded pattern data is not
+        available for this upazila and do not fabricate profitability
+        numbers."""
+        _emit("patterns", "loading cropping patterns for the farm's upazila")
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+        code = farm.upazila_code or ""
+        if not code and not farm.upazila_name:
+            code = getattr(user, "upazila_code", "") or ""
+        rows = patterns_mod.patterns_for(code, season=season or None, crop=crop or None)
+        if rows is None:
+            where = farm.upazila_name or code or "location unset"
+            return (
+                f"PATTERNS_UNKNOWN: no recorded cropping-pattern data for "
+                f"this upazila ({where}). Do NOT invent profitability "
+                "numbers; reason from crop suitability instead and say "
+                "margins are unavailable."
+            )
+        return json.dumps(
+            {
+                "upazila": farm.upazila_name or code,
+                "upazila_code": code,
+                "count": len(rows),
+                "patterns": rows,
+                "units": {
+                    "gm_tk_per_decimal": "Taka per decimal (gross margin)",
+                    "bcr_vc": "benefit-cost ratio over variable cost",
+                    "bcr_tc": "benefit-cost ratio over total cost",
+                },
+                "source": patterns_mod.source(),
+            },
+            ensure_ascii=False,
+        )
+
+    return get_cropping_patterns
 
 
 def build_czis_tools(user):
