@@ -214,8 +214,9 @@ def _patch_farm(monkeypatch, farm):
 
 
 def _forecast_stub(captured):
-    async def fake_forecast(lat, lon, days, client=None):
+    async def fake_forecast(lat, lon, days, past_days=0, client=None):
         captured["lat"], captured["lon"], captured["days"] = lat, lon, days
+        captured["past_days"] = past_days
         return {
             "source": "Open-Meteo forecast API",
             "fetched_at": "2026-07-24T00:00:00+00:00",
@@ -336,3 +337,108 @@ async def test_tool_failure_returns_unavailable_not_invented(monkeypatch):
     raw = await tool_obj.ainvoke({"location": "Nowhere Bazar", "days": 7})
     assert raw.startswith("WEATHER_UNAVAILABLE")
     assert "network down" in raw
+
+
+# --------------------------------------------------------------------------- #
+# past weather (past_days)
+# --------------------------------------------------------------------------- #
+def _past_forecast_payload():
+    """2 past days + 2 forecast days in one series (Open-Meteo shape).
+
+    Past rows have null precipitation probability, as the live API returns.
+    """
+    return {
+        "timezone": "Asia/Dhaka",
+        "daily": {
+            "time": ["2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25"],
+            "temperature_2m_max": [30.0, 35.5, 33.1, 34.0],
+            "temperature_2m_min": [25.0, 26.0, 26.4, 26.9],
+            "precipitation_sum": [8.4, 0.0, 0.0, 12.5],
+            "precipitation_probability_max": [None, None, 10, 85],
+            "et0_fao_evapotranspiration": [3.9, 4.4, 4.2, 3.1],
+            "wind_speed_10m_max": [10.0, 11.0, 12.0, 18.5],
+        },
+    }
+
+
+async def test_forecast_past_days_marks_rows_and_splits_summaries():
+    seen_params = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_params.update(dict(request.url.params))
+        return httpx.Response(200, json=_past_forecast_payload())
+
+    async with make_client(handler) as client:
+        result = await weather_mod.fetch_forecast(
+            24.588, 88.581, 2, past_days=2, client=client
+        )
+
+    assert seen_params["past_days"] == "2"
+    assert seen_params["forecast_days"] == "2"
+
+    kinds = [r["kind"] for r in result["days"]]
+    assert kinds == ["past", "past", "forecast", "forecast"]
+
+    past = result["past_summary"]
+    assert past["past_days"] == 2
+    assert past["total_rain_mm"] == pytest.approx(8.4)
+    assert past["rainy_day_count"] == 1
+    assert past["max_temp_c"] == 35.5
+
+    # Forecast summary must EXCLUDE past rows.
+    summary = result["summary"]
+    assert summary["forecast_days"] == 2
+    assert summary["total_rain_mm"] == pytest.approx(12.5)
+    assert summary["first_rainy_date"] == "2026-07-25"
+    assert "kind=past" in result["note"]
+
+
+async def test_forecast_without_past_days_is_unchanged_shape():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "past_days" not in dict(request.url.params)
+        return httpx.Response(200, json=_forecast_payload())
+
+    async with make_client(handler) as client:
+        result = await weather_mod.fetch_forecast(24.588, 88.581, 3, client=client)
+
+    assert "past_summary" not in result
+    assert all("kind" not in r for r in result["days"])
+
+
+async def test_forecast_clamps_past_days_to_92_and_allows_zero_forecast():
+    seen_params = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_params.update(dict(request.url.params))
+        return httpx.Response(200, json=_past_forecast_payload())
+
+    async with make_client(handler) as client:
+        await weather_mod.fetch_forecast(24.5, 88.5, 0, past_days=500, client=client)
+    assert seen_params["past_days"] == "92"
+    assert seen_params["forecast_days"] == "0"
+
+
+async def test_tool_passes_past_days_through(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(weather_mod, "fetch_forecast", _forecast_stub(captured))
+
+    tool_obj = build_weather_tool(_fake_user())
+    await tool_obj.ainvoke(
+        {"location": "", "days": 7, "past_days": 10,
+         "latitude": 23.9, "longitude": 90.1}
+    )
+    assert captured["days"] == 7
+    assert captured["past_days"] == 10
+
+
+async def test_tool_negative_days_means_past_only(monkeypatch):
+    """The -N convention: days=-7 -> past 7 days, zero forecast days."""
+    captured = {}
+    monkeypatch.setattr(weather_mod, "fetch_forecast", _forecast_stub(captured))
+
+    tool_obj = build_weather_tool(_fake_user())
+    await tool_obj.ainvoke(
+        {"location": "", "days": -7, "latitude": 23.9, "longitude": 90.1}
+    )
+    assert captured["days"] == 0
+    assert captured["past_days"] == 7

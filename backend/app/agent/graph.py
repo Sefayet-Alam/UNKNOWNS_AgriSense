@@ -43,7 +43,7 @@ MAX_TURNS = 8  # tool rounds per REQUEST turn (history rounds excluded)
 
 log = logging.getLogger("agrisense.agent.graph")
 
-AGENTS = ("intake", "advisor")
+AGENTS = ("intake", "advisor", "recommender")
 
 # Which OpenRouter model powers each node (single place to retune).
 # NOTE: intake initially ran on MODEL_LITE — live test showed flash-lite
@@ -54,6 +54,7 @@ def _node_models() -> dict[str, str]:
         "classify": settings.OPENROUTER_MODEL_LITE,
         "intake": settings.OPENROUTER_MODEL,
         "advisor": settings.OPENROUTER_MODEL,
+        "recommender": settings.OPENROUTER_MODEL,
     }
 
 
@@ -79,19 +80,42 @@ NODE_DIRECTIVES = {
         "weather-related, fetch the real forecast with get_weather and "
         "answer grounded in the returned values only, relating it to the "
         "farmer's crops/plans when profile context is available. "
-        "For crop choice, varieties and fertilizer, GROUND the answer in the "
-        "CZIS tools: czis_list_crops (by season) -> czis_crop_varieties "
-        "(yield/duration) -> czis_crop_context (gets the variety_id at the "
-        "farm) -> czis_fertilizer_recommendation (server-computed doses). "
-        "Never invent variety yields or fertilizer amounts; if CZIS is "
-        "unavailable, say so and use the knowledge base. HARD GATE: check "
-        "get_farm_profile first — while ANY of the six mandatory fields "
-        "(location, farm_size, soil_type, water_availability, budget, "
-        "season) is missing, do NOT give crop recommendations or plans; "
-        "ask for at most TWO missing fields per turn (never a numbered "
-        "list of 3+ questions). Soil usually auto-fills from the survey "
-        "(soil_source=survey_default_confirm_with_farmer) — mention it as "
-        "an assumption to confirm rather than asking for it."
+        "For variety or fertilizer specifics on an ALREADY-CHOSEN crop, "
+        "ground the answer in the CZIS tools (czis_crop_varieties / "
+        "czis_crop_context -> czis_fertilizer_recommendation, "
+        "server-computed doses relayed verbatim). Never invent variety "
+        "yields or fertilizer amounts; if CZIS is unavailable, say so. "
+        "Choosing WHICH crop to grow is the recommender specialist's job — "
+        "you may answer general questions, but a proper ranked "
+        "recommendation should follow its flow."
+    ),
+    "recommender": (
+        "CURRENT NODE: CROP RECOMMENDER. Your ONLY job: recommend crops "
+        "for the ACTIVE farm, grounded in tools — never model memory. "
+        "HARD GATE: call get_farm_profile FIRST — while ANY of the six "
+        "mandatory fields (location, farm_size, soil_type, "
+        "water_availability, budget, season) is missing, do NOT recommend; "
+        "ask for at most TWO missing fields (never a numbered list of 3+ "
+        "questions). Soil usually auto-fills from the survey "
+        "(soil_source=survey_default_confirm_with_farmer) — present it as "
+        "an assumption to confirm, don't ask for it.\n"
+        "When the profile is complete, follow this flow: "
+        "(1) czis_list_crops filtered by the farm's season -> candidate "
+        "pool (the CZIS catalog itself only knows season; matching soil, "
+        "water, budget and area against candidates is YOUR reasoning job "
+        "using the profile + survey data); "
+        "(2) get_soil_context for the full soil breakdown (texture, land "
+        "type, drainage, pH) and match candidates against it; "
+        "(3) czis_crop_varieties for the top candidates -> real yield "
+        "(t/ha) and duration (days); "
+        "(4) get_weather when near-term conditions matter for "
+        "sowing/water; "
+        "(5) present a ranked shortlist of 3-5 crops. For EVERY pick, "
+        "name the specific farm inputs (soil texture, land type, "
+        "irrigation, budget, area, season) and the retrieved values "
+        "(variety yields/durations) it rests on. Numbers come ONLY from "
+        "tool results. Keep farm facts saved via update_farm_profile when "
+        "the farmer states new ones."
     ),
 }
 
@@ -108,21 +132,34 @@ _INTAKE_WORDS = re.compile(
     r"kani|budget|taka|sech|mati|soil|acre|hectare|lakh|হাজার|লাখ)",
     re.IGNORECASE,
 )
+_RECOMMEND_WORDS = re.compile(
+    r"(recommend|suggest|which crop|what crop|what should i (?:plant|grow|"
+    r"farm)|profitable|kon fosol|ki fosol|kon chash|ki chash|ki lagabo|"
+    r"konta lagabo|ki bunbo|labjonok|labhjonok|suparish|কোন ফসল|কি ফসল|"
+    r"কী ফসল|কি চাষ|কী চাষ|চাষ কর|লাগাব|বুনব|লাভজনক|সুপারিশ|ফলন ভালো)",
+    re.IGNORECASE,
+)
 
 _CLASSIFY_PROMPT = (
     "You route a Bangladeshi farmer's message to ONE specialist. Reply with "
     "exactly one word:\n"
+    "- recommender : asking WHICH crop to plant / crop suggestions / what "
+    "would be profitable to grow\n"
     "- intake  : stating or correcting farm facts (land size, budget, "
     "irrigation, soil, season, location)\n"
-    "- advisor : anything else (crop advice, weather questions, pests, "
-    "prices, greetings)\n"
+    "- advisor : anything else (weather questions, pests, fertilizer for a "
+    "chosen crop, prices, greetings)\n"
 )
 
 
 def classify_heuristic(text: str) -> str:
+    # Crop-choice questions go to the dedicated recommender — checked first
+    # so "kon fosol labjonok hobe?" outranks generic advice routing.
+    if _RECOMMEND_WORDS.search(text or ""):
+        return "recommender"
     # Weather questions go to the advisor (it owns the get_weather tool) —
-    # checked first so "brishti + jomi" turns get grounded weather answers
-    # instead of slot-filling.
+    # checked before intake so "brishti + jomi" turns get grounded weather
+    # answers instead of slot-filling.
     if _WEATHER_WORDS.search(text or ""):
         return "advisor"
     if _INTAKE_WORDS.search(text or ""):
@@ -236,12 +273,14 @@ def build_graph(tool_groups: dict[str, list]):
             # Reply language comes from graph STATE (set by classify each
             # user message); fall back to detecting from the last human
             # message when the graph is driven without a classify pass.
+            # Placed LAST so recency keeps it authoritative even in long
+            # conversations.
             lang = state.get("reply_language") or detect_reply_language(
                 _last_human_text(messages)
             )
             lang_directive = language_directive(lang)
             response = await active.ainvoke(
-                [directive, lang_directive] + list(messages)
+                [directive] + list(messages) + [lang_directive]
             )
             return {"messages": [response], "active_agent": name}
 

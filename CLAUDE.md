@@ -69,9 +69,15 @@ that runs end-to-end in a 4-minute demo.
   ([backend/app/routers/chat.py](backend/app/routers/chat.py), [backend/app/agent/runner.py](backend/app/agent/runner.py))
 - **Agent**: **multi-node specialist workflow** (PLAN.md D1 rev 2):
   `classify` (flash-lite + keyword fallback; heuristic-only under TESTING) routes
-  each turn to a specialist — `intake` (slot-filling, farm tools), `weather`
-  (forecast grounding), `advisor` (general, full toolset) — all sharing ONE
-  ToolNode that returns control to `state.active_agent`. **Per-node LLMs** via
+  each turn to a specialist — `intake` (slot-filling, farm+soil tools),
+  `advisor` (general/weather/fertilizer, full toolset), `recommender`
+  (dedicated crop-choice node: profile gate -> soil survey -> CZIS
+  catalog/varieties -> ranked, input-named shortlist; Task 5's deterministic
+  ranker plugs in here) — all sharing ONE ToolNode that returns control to
+  `state.active_agent`. `state.reply_language` is refreshed by classify from
+  EVERY user message (Bengali script/Banglish->bengali, else english); each
+  node appends the language directive LAST (recency-authoritative), and the
+  routing progress frame surfaces it (`specialist: X · reply: bengali`). **Per-node LLMs** via
   `build_chat_model(model)` (`OPENROUTER_MODEL` = gemini-2.5-flash for
   specialists, `OPENROUTER_MODEL_LITE` = flash-lite for routing only — lite was
   tested and rejected for extraction). Still NO interrupt()/checkpointer/Send;
@@ -182,7 +188,7 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 158 tests: unit (security/phone/tools/weather adapter/czis
+  (or `make test`). 180 tests: unit (security/phone/tools/weather adapter/czis
   adapter/geo
   gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +

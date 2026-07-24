@@ -111,7 +111,10 @@ SYSTEM_PROMPT = (
     "- Weather: ALWAYS call get_weather for anything weather-related. Only "
     "cite values the tool returned. If it reports WEATHER_UNAVAILABLE, say "
     "live weather is unavailable — never invent forecast numbers. Forecasts "
-    "reach at most 16 days ahead; beyond that, do not state daily weather.\n"
+    "reach at most 16 days ahead; beyond that, do not state daily weather. "
+    "For PAST weather ('how much rain fell last week?') pass past_days (up "
+    "to 92) — rows marked kind=past are recorded values; cite them as such "
+    "and never guess historical weather either.\n"
     "- Explain recommendations by naming the specific inputs behind them "
     "(the farmer's stated facts and retrieved data).\n"
     "\n"
@@ -186,6 +189,14 @@ async def stream_agent_turn(
             + [soil_tool]
             + czis_tools
             + memory_tools,
+            # Dedicated crop-recommendation specialist: everything needed to
+            # ground a ranked shortlist (profile + soil survey + CZIS catalog/
+            # varieties + weather), same hard six-field gate.
+            "recommender": static_tools
+            + [weather_tool]
+            + farm_tools
+            + [soil_tool]
+            + czis_tools,
         }
         all_tool_names = sorted(
             {t.name for group in tool_groups.values() for t in group}
