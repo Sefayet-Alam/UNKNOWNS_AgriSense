@@ -72,6 +72,25 @@ class FakeEmbeddings(Embeddings):
 def _build_embeddings_provider(provider: str, dim: int) -> Embeddings:
     """Shared provider switch — each table picks its own provider + dim."""
     provider = (provider or "").lower()
+    if provider == "openrouter":
+        if not settings.OPENROUTER_API_KEY:
+            raise RuntimeError(
+                "OPENROUTER_API_KEY is not set. OpenRouter embeddings require "
+                "the same key as the chat models (see .env.example) — or "
+                "switch the provider to 'fake'."
+            )
+        from langchain_openai import OpenAIEmbeddings
+
+        # OpenRouter's /embeddings is OpenAI-compatible but takes raw strings
+        # (no client-side tiktoken token arrays) and vendor-prefixed slugs.
+        # Native dim of text-embedding-3-small is 1536 — don't pass
+        # `dimensions`; not all routed providers honor it.
+        return OpenAIEmbeddings(
+            model=settings.KB_EMBED_MODEL,
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url=settings.OPENROUTER_BASE_URL,
+            check_embedding_ctx_length=False,
+        )
     if provider == "openai":
         if not settings.OPENAI_API_KEY:
             raise RuntimeError(
@@ -103,7 +122,10 @@ def build_embeddings() -> Embeddings:
 
 
 def build_kb_embeddings() -> Embeddings:
-    """Embeddings for the knowledge-base table (1536-dim OpenAI by default).
+    """Embeddings for the knowledge-base table.
+
+    Default: OpenRouter-routed ``openai/text-embedding-3-small`` (1536-dim) —
+    same API key as the chat models.
 
     Kept separate from memory embeddings: the two pgvector tables have
     different dimensions and may use different providers (PLAN.md D3).

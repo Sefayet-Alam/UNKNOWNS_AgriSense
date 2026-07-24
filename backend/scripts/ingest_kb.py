@@ -32,7 +32,7 @@ async def _run(args: argparse.Namespace) -> None:
     print(
         f"Ingesting {path.name} as source={source!r} "
         f"(provider={settings.KB_EMBEDDINGS_PROVIDER}, "
-        f"model={settings.OPENAI_EMBED_MODEL}, "
+        f"model={settings.KB_EMBED_MODEL}, "
         f"chunk={settings.KB_CHUNK_SIZE_CHARS}c/"
         f"{settings.KB_CHUNK_OVERLAP_CHARS}c overlap)"
     )

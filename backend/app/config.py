@@ -57,7 +57,10 @@ class Settings(BaseSettings):
     OPENAI_EMBED_MODEL: str = "text-embedding-3-small"
 
     # ---- Knowledge base (RAG) — separate table/provider from memory ----
-    KB_EMBEDDINGS_PROVIDER: str = "openai"  # "openai" | "ollama" | "fake"
+    # "openrouter" | "openai" | "ollama" | "fake"
+    KB_EMBEDDINGS_PROVIDER: str = "openrouter"
+    # OpenRouter model slug (vendor-prefixed); routed to OpenAI upstream.
+    KB_EMBED_MODEL: str = "openai/text-embedding-3-small"
     KB_EMBEDDING_DIM: int = 1536  # text-embedding-3-small native dim
     KB_TOP_K: int = 5
     # Recursive chunking: ~1800 chars ≈ 450 tokens/chunk → top-5 ≈ 2.2k tokens

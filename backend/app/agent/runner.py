@@ -214,7 +214,8 @@ async def stream_agent_turn(
             + [weather_tool]
             + farm_tools
             + [soil_tool, patterns_tool]
-            + czis_tools,
+            + czis_tools
+            + kb_tools,
         }
         all_tool_names = sorted(
             {t.name for group in tool_groups.values() for t in group}

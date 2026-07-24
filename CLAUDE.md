@@ -35,7 +35,7 @@ whose crop advice ignores the weather it just fetched will be noticed.
 | 4 | Season plan | Dated calendar: sowing window, fertilizer timing, irrigation, weed/pest checkpoints, harvest | ❌ TODO (Task 6) |
 | 5 | Financial projection | Itemized cost + yield, revenue, net profit, ROI, break-even; internally consistent (change input → outputs change) | ❌ TODO (Task 7) |
 | 6 | Explained reasoning | Every recommendation names the specific farm inputs + retrieved data it rests on | ⚠️ partial (prompt enforces naming inputs; weather cites real values; full grounding lands with Tasks 3-7) |
-| 7 | Knowledge base + RAG | Agronomic data (extension manuals, fertilizer/crop/soil refs) ingested into a KB; agent retrieves; crop/fertilizer/plan advice grounded in retrieval, not model recall | ✅ DONE (Task 4) — `backend/app/rag/` (recursive chunker w/ FRG page tracking, pgvector `knowledge_chunks` 1536-dim OpenAI text-embedding-3-small), `search_knowledge_base` tool (English query, `<retrieved_document>` untrusted delimiters, top-5), idempotent `scripts/ingest_kb.py`. Verified: Bengali mustard question → KB chip → FRG p.63 cited answer. Remaining content work: ingest full FRG corpus (test doc ingested now) |
+| 7 | Knowledge base + RAG | Agronomic data (extension manuals, fertilizer/crop/soil refs) ingested into a KB; agent retrieves; crop/fertilizer/plan advice grounded in retrieval, not model recall | ✅ DONE (Task 4) — `backend/app/rag/` (recursive chunker w/ FRG page tracking, pgvector `knowledge_chunks` 1536-dim), embeddings via **OpenRouter** `openai/text-embedding-3-small` (same key as chat; provider switch in `llm.py`), `search_knowledge_base` tool on advisor + recommender (English query, `<retrieved_document>` untrusted delimiters, top-5). FULL FRG 2024 corpus ingested: 287 chunks from [backend/app/data/kb_corpus/frg2024.md](backend/app/data/kb_corpus/frg2024.md) (Rahi's OCR pipeline, pages 10-239 incl. tesseract'd AEZ tables). Committed vector backup [backend/app/data/kb_seed/](backend/app/data/kb_seed/) (`kb_chunks.jsonl` + row-aligned `kb_embeddings.npy`) — restore on any fresh db with `python -m scripts.seed_rag_data` (zero API calls); re-ingest only after corpus edits (`scripts.ingest_kb` then `scripts.backup_kb`). Verified live: urea-split question → KB chip → FRG 2024 pp. 61/63/87 cited answer |
 | 8 | Visible agent trace | UI exposes every tool call, params sent, raw values returned | ✅ DONE (tool-trace chips + `message_update` frames) |
 
 ### Tier 1 — Advanced (differentiators)
@@ -136,11 +136,20 @@ that runs end-to-end in a 4-minute demo.
   ingest + cosine top-k over `knowledge_chunks`, 1536-dim). Embeddings:
   OpenAI `text-embedding-3-small` via `build_kb_embeddings()` (provider switch
   `KB_EMBEDDINGS_PROVIDER`; tests force `fake`; memory table stays 768-dim —
-  separate concerns). Tool `search_knowledge_base(query_en, crop?)` wraps hits
+  separate concerns). Default provider is **openrouter** — routes
+  `KB_EMBED_MODEL=openai/text-embedding-3-small` through the existing
+  `OPENROUTER_API_KEY` (verified live; raw-string inputs, no tiktoken
+  pre-tokenizing). Tool `search_knowledge_base(query_en, crop?)` wraps hits
   in `<retrieved_document>` blocks (untrusted; prompt forbids obeying/quoting
-  doses as final numbers). Ingest: `docker cp doc.md argi_backend:/tmp/ &&
-  docker compose exec backend python -m scripts.ingest_kb /tmp/doc.md --source
-  "FRG 2024" [--crop mustard] [--verify "query"]` — re-run replaces the source.
+  doses as final numbers); registered on advisor AND recommender (step 5b of
+  its directive). Corpus: [backend/app/data/kb_corpus/frg2024.md](backend/app/data/kb_corpus/frg2024.md)
+  (Rahi's `frg_ocr_pipeline.py` output — embedded text + tesseract OCR,
+  pages 10-239) → 287 chunks. **Seeding a fresh db**: `docker compose exec
+  backend python -m scripts.seed_rag_data` restores from the committed
+  backup ([backend/app/data/kb_seed/](backend/app/data/kb_seed/): `kb_chunks.jsonl` + row-aligned
+  `kb_embeddings.npy`) with zero embedding calls. Only after corpus edits:
+  `python -m scripts.ingest_kb app/data/kb_corpus/frg2024.md --source "FRG
+  2024"` then `python -m scripts.backup_kb` (refresh + commit the seed).
 - **Frontend**: Next.js login/register/chat, agri-green theme, streaming + tool
   chips. ([frontend/src/](frontend/src/)) Gotcha fixed in `0b31359`: never key ChatColumn by
   session id and never abort the stream on the session-frame echo — that killed
@@ -206,7 +215,7 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 198 tests: unit (security/phone/tools/weather adapter/KB
+  (or `make test`). 208 tests: unit (security/phone/tools/weather adapter/KB
   chunker/czis adapter/geo gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
