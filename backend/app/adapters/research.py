@@ -20,6 +20,15 @@ import httpx
 log = logging.getLogger("agrisense.adapters.research")
 
 TIMEOUT_S = 10.0
+# Wikimedia's API policy rejects requests without a descriptive User-Agent
+# (returns 403). Send an identifying UA per https://meta.wikimedia.org/wiki/
+# User-Agent_policy so the public Action API answers.
+WIKIPEDIA_HEADERS = {
+    "User-Agent": (
+        "AgriSenseAI/1.0 (agronomic advisor; "
+        "https://github.com/abrar-nazib/UNKNOWNS_AgriSense)"
+    )
+}
 MAX_QUERY_CHARS = 300
 MAX_RESULTS = 5
 MAX_SUMMARY_CHARS = 1_600
@@ -107,7 +116,7 @@ async def _get_json(
     url: str, params: dict[str, Any], client: Optional[httpx.AsyncClient]
 ) -> dict[str, Any]:
     owns_client = client is None
-    cl = client or httpx.AsyncClient(timeout=TIMEOUT_S)
+    cl = client or httpx.AsyncClient(timeout=TIMEOUT_S, headers=WIKIPEDIA_HEADERS)
     try:
         response = await cl.get(url, params=params)
         response.raise_for_status()
