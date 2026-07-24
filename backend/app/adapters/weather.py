@@ -26,6 +26,7 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 TIMEOUT_S = 10.0
 RETRIES = 2  # total attempts per HTTP call
 MAX_FORECAST_DAYS = 16
+MAX_PAST_DAYS = 92  # Open-Meteo forecast endpoint serves up to 92 past days
 
 # Offline fallback centroids for demo-critical places (approximate upazila /
 # district centers). Used only when the live geocoder is unreachable or has no
@@ -160,14 +161,24 @@ async def fetch_forecast(
     longitude: float,
     days: int = 7,
     *,
+    past_days: int = 0,
     client: Optional[httpx.AsyncClient] = None,
 ) -> dict:
-    """Fetch a normalized daily forecast from Open-Meteo.
+    """Fetch normalized daily weather from Open-Meteo.
 
-    Returns a dict with per-day rows + a computed summary + evidence metadata.
-    Raises WeatherError on failure.
+    ``days`` is the forecast horizon (0-16; 0 = no forecast rows).
+    ``past_days`` (0-92) prepends OBSERVED recent days to the same series —
+    Open-Meteo serves both from one endpoint. Past rows are marked
+    ``kind: "past"`` and summarized separately so callers can cite "rain in
+    the last week" as recorded values, not forecasts.
+
+    Returns a dict with per-day rows + computed summaries + evidence
+    metadata. Raises WeatherError on failure.
     """
-    days = max(1, min(int(days), MAX_FORECAST_DAYS))
+    past_days = max(0, min(int(past_days), MAX_PAST_DAYS))
+    # days=0 is only meaningful when past rows were requested.
+    floor = 0 if past_days > 0 else 1
+    days = max(floor, min(int(days), MAX_FORECAST_DAYS))
     params = {
         "latitude": round(float(latitude), 4),
         "longitude": round(float(longitude), 4),
@@ -175,6 +186,8 @@ async def fetch_forecast(
         "forecast_days": days,
         "timezone": "Asia/Dhaka",
     }
+    if past_days:
+        params["past_days"] = past_days
     raw = await _get_json(FORECAST_URL, params, client)
 
     daily = raw.get("daily") or {}
@@ -195,41 +208,57 @@ async def fetch_forecast(
 
     rows = []
     for i, date in enumerate(dates):
-        rows.append(
-            {
-                "date": date,
-                "t_min_c": _round_or_none(t_min[i]),
-                "t_max_c": _round_or_none(t_max[i]),
-                "rain_mm": _round_or_none(rain[i]),
-                "rain_prob_pct": _round_or_none(rain_prob[i], 0),
-                "et0_mm": _round_or_none(et0[i]),
-                "wind_max_kmh": _round_or_none(wind[i]),
-            }
-        )
+        row = {
+            "date": date,
+            "t_min_c": _round_or_none(t_min[i]),
+            "t_max_c": _round_or_none(t_max[i]),
+            "rain_mm": _round_or_none(rain[i]),
+            "rain_prob_pct": _round_or_none(rain_prob[i], 0),
+            "et0_mm": _round_or_none(et0[i]),
+            "wind_max_kmh": _round_or_none(wind[i]),
+        }
+        if past_days:
+            # The API returns exactly past_days rows before today, in order.
+            row["kind"] = "past" if i < past_days else "forecast"
+        rows.append(row)
 
-    rain_vals = [(r["date"], r["rain_mm"]) for r in rows if r["rain_mm"] is not None]
-    total_rain = round(sum(v for _, v in rain_vals), 1)
-    rainy_days = [d for d, v in rain_vals if v >= 1.0]
-    t_max_vals = [r["t_max_c"] for r in rows if r["t_max_c"] is not None]
-    t_min_vals = [r["t_min_c"] for r in rows if r["t_min_c"] is not None]
+    def _summarize(subset: list) -> dict:
+        rain_vals = [
+            (r["date"], r["rain_mm"]) for r in subset if r["rain_mm"] is not None
+        ]
+        rainy = [d for d, v in rain_vals if v >= 1.0]
+        t_max_vals = [r["t_max_c"] for r in subset if r["t_max_c"] is not None]
+        t_min_vals = [r["t_min_c"] for r in subset if r["t_min_c"] is not None]
+        return {
+            "total_rain_mm": round(sum(v for _, v in rain_vals), 1),
+            "rainy_day_count": len(rainy),
+            "first_rainy_date": rainy[0] if rainy else None,
+            "max_temp_c": max(t_max_vals) if t_max_vals else None,
+            "min_temp_c": min(t_min_vals) if t_min_vals else None,
+        }
 
-    return {
+    forecast_rows = [r for r in rows if r.get("kind", "forecast") == "forecast"]
+    past_rows = [r for r in rows if r.get("kind") == "past"]
+
+    note = (
+        "Model forecast values, not field measurements. Horizon is capped "
+        f"at {MAX_FORECAST_DAYS} days — beyond that only climate patterns "
+        "can be discussed, never specific daily forecasts."
+    )
+    result = {
         "source": "Open-Meteo forecast API",
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "request_params": params,
         "timezone": raw.get("timezone", "Asia/Dhaka"),
         "days": rows,
-        "summary": {
-            "forecast_days": len(rows),
-            "total_rain_mm": total_rain,
-            "rainy_day_count": len(rainy_days),
-            "first_rainy_date": rainy_days[0] if rainy_days else None,
-            "max_temp_c": max(t_max_vals) if t_max_vals else None,
-            "min_temp_c": min(t_min_vals) if t_min_vals else None,
-        },
-        "note": (
-            "Model forecast values, not field measurements. Horizon is capped "
-            f"at {MAX_FORECAST_DAYS} days — beyond that only climate patterns "
-            "can be discussed, never specific daily forecasts."
-        ),
+        "summary": {"forecast_days": len(forecast_rows), **_summarize(forecast_rows)},
+        "note": note,
     }
+    if past_rows:
+        result["past_summary"] = {"past_days": len(past_rows), **_summarize(past_rows)}
+        result["note"] = (
+            "Rows marked kind=past are recorded recent weather (rain "
+            "probability may be null there); rows marked kind=forecast are "
+            "model predictions. " + note
+        )
+    return result
