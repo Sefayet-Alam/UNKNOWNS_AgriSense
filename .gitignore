@@ -1,0 +1,40 @@
+# Env
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build / dist
+dist/
+build/
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp
+
+# Local agent config
+.claude/
+
+# Docker volumes (local)
+pgdata/
+
+# Logs
+*.log
