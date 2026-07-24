@@ -40,7 +40,8 @@ whose crop advice ignores the weather it just fetched will be noticed.
 
 ### Tier 1 — Advanced (differentiators)
 Persistent memory across sessions (✅ infra done via pgvector), proactive
-weather-triggered advice, fertilizer/irrigation scheduler, pest/disease risk,
+weather-triggered advice (✅ DONE — see "Proactive weather SMS" below),
+fertilizer/irrigation scheduler, pest/disease risk,
 scenario simulation ("what if rainfall drops 30%?" → revised numbers).
 
 ### Tier 2 — Bonus (only after Tier 0 solid)
@@ -172,6 +173,32 @@ that runs end-to-end in a 4-minute demo.
   `kb_embeddings.npy`) with zero embedding calls. Only after corpus edits:
   `python -m scripts.ingest_kb app/data/kb_corpus/frg2024.md --source "FRG
   2024"` then `python -m scripts.backup_kb` (refresh + commit the seed).
+- **Proactive weather SMS (Tier 1)**: the agent watches the forecast on its
+  own and adjusts the plan. `generate_season_plan` now PERSISTS every
+  generated calendar (`season_plans` table, migration 0007; ok/degraded both
+  saved, hard-gates save nothing; `season_plan_saved`/`season_plan_id` in the
+  tool JSON). A lifespan loop in [backend/app/main.py](backend/app/main.py)
+  (skipped under TESTING; `WEATHER_SCAN_ENABLED`, every
+  `WEATHER_SCAN_INTERVAL_HOURS`) runs
+  [backend/app/services/weather_scan.py](backend/app/services/weather_scan.py):
+  complete-profile farms grouped by rounded coords → ONE live Open-Meteo call
+  per location → deterministic
+  [backend/app/engines/weather_alerts.py](backend/app/engines/weather_alerts.py)
+  (plan-aware: fertilizer-delay/skip-irrigation vs the farm's LATEST saved
+  plan using BAMIS per-crop `weather_warning` thresholds; generic fallback:
+  heavy-rain/heat/cold constants when no live plan) → fixed English SMS
+  templates (LLM never in the SMS path) → bulksmsbd adapter
+  [backend/app/adapters/sms.py](backend/app/adapters/sms.py) (msisdn 8801…,
+  success `response_code` 202, provider rejection recorded not raised) →
+  `weather_alerts` audit/dedup log (idempotent re-scans). **`SMS_DRY_RUN=true`
+  is the default** — full pipeline runs and records `sms_status="dry_run"`
+  until the bulksmsbd account gets sending access (set `SMS_DRY_RUN=false` +
+  `SMS_API_KEY` + `SMS_SENDER_ID` in `.env` to go live). Manual demo trigger
+  `POST /api/alerts/scan-now` + history `GET /api/alerts`
+  ([backend/app/routers/alerts.py](backend/app/routers/alerts.py)); advisor
+  tool `get_weather_alerts` relays stored advisories in chat. Live-verified:
+  real Paba forecast (12.8 mm) tripped a skip-irrigation advisory on a saved
+  plan, dedup on re-scan, and the chat advisor relayed the stored SMS text.
 - **Frontend**: Next.js login/register/chat, agri-green theme, streaming + tool
   chips. ([frontend/src/](frontend/src/)) Gotcha fixed in `0b31359`: never key ChatColumn by
   session id and never abort the stream on the session-frame echo — that killed
@@ -237,7 +264,7 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 327 tests: unit (security/phone/tools/weather adapter/KB
+  (or `make test`). 353 tests: unit (security/phone/tools/weather adapter/KB
   chunker/czis adapter/geo gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
@@ -246,8 +273,11 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
   season-plan journeys for success, weather delay, financial composition and
   degraded sources, plus financial input-sensitivity/what-if journeys and 16
   dedicated whole-product E2E cases (five-turn PDF path + every focused crop's
-  plan, finance, and incomplete-profile gate). LLM +
-  HTTP are faked — no network. Isolated against a separate `argi_test` db.
+  plan, finance, and incomplete-profile gate), plus proactive-alert coverage
+  (gold weather-alert engine numbers, SMS adapter MockTransport paths,
+  season-plan persistence, and weather-scan journeys: plan-aware delay,
+  generic fallback, dedup/idempotency, outage skip, endpoints + agent tool).
+  LLM + HTTP are faked — no network. Isolated against a separate `argi_test` db.
   Realtime transport is **SSE, not WebSocket**. Add tests with any new feature.
   NOTE: the container has no source volume mount — `docker compose up -d --build
   backend` (or `docker cp` for a quick single file) before re-running tests.

@@ -29,6 +29,7 @@ from .messages import (
     tool_call_traces,
 )
 from .tools import (
+    build_alerts_tool,
     build_czis_tools,
     build_farm_tools,
     build_kb_tools,
@@ -202,14 +203,17 @@ async def stream_agent_turn(
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
+        alerts_tool = build_alerts_tool(user)
         tool_groups = {
             "intake": static_tools + farm_tools + [soil_tool],
             # KB retrieval is an advisor tool (D1 Rev 3: capabilities land as
             # tools unless they need their own conversation policy).
+            # get_weather_alerts is likewise a tool, not a node — its whole
+            # job is relaying the stored proactive-scan advisories.
             "advisor": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool, patterns_tool]
+            + [soil_tool, patterns_tool, alerts_tool]
             + czis_tools
             + kb_tools
             + memory_tools,

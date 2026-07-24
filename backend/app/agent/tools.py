@@ -5,7 +5,7 @@ import ast
 import json
 import logging
 import operator
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from typing import Optional
@@ -25,7 +25,7 @@ from ..engines import finance as finance_mod
 from ..engines import season_planner as season_planner_mod
 from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
-from ..models import Farm
+from ..models import Farm, SeasonPlan, WeatherAlert
 from . import memory as memory_mod
 
 
@@ -1548,6 +1548,7 @@ def build_season_plan_tool(user):
                     },
                     ensure_ascii=False,
                 )
+            farm_id = farm.id
             farm_inputs = {
                 "area_decimal": farm.area_decimal,
                 "soil_texture": farm.soil_texture,
@@ -1821,10 +1822,35 @@ def build_season_plan_tool(user):
                 ),
             },
         }
+        plan_status = "degraded" if unavailable else "ok"
+        saved_plan_id: Optional[int] = None
+        try:
+            async with AsyncSessionLocal() as session:
+                saved_plan = SeasonPlan(
+                    farm_id=farm_id,
+                    crop_name=canonical,
+                    crop_id=selected_crop["crop_id"],
+                    status=plan_status,
+                    planting_date=date.fromisoformat(calendar["planting_date"]),
+                    harvest_date=date.fromisoformat(calendar["harvest_date"]),
+                    duration_days=int(calendar["duration_days"]),
+                    selected_variety=selected_variety,
+                    calendar=calendar,
+                    financial_projection=financial_projection,
+                )
+                session.add(saved_plan)
+                await session.commit()
+                await session.refresh(saved_plan)
+                saved_plan_id = saved_plan.id
+        except Exception as exc:  # persistence must never eat the reply
+            log.warning("season plan persistence failed: %s", exc)
+
         return json.dumps(
             {
-                "status": "degraded" if unavailable else "ok",
+                "status": plan_status,
                 "unavailable_sources": unavailable,
+                "season_plan_saved": saved_plan_id is not None,
+                "season_plan_id": saved_plan_id,
                 "selected_crop": selected_crop,
                 "selected_variety": selected_variety,
                 "farm_inputs": farm_inputs,
@@ -1846,6 +1872,84 @@ def build_season_plan_tool(user):
         )
 
     return generate_season_plan
+
+
+# --------------------------------------------------------------------------- #
+# Proactive weather alerts (read-only: relay what the background scan sent)
+# --------------------------------------------------------------------------- #
+def build_alerts_tool(user):
+    """Return the read-only proactive-alert history tool."""
+
+    @tool
+    async def get_weather_alerts(days_back: int = 7) -> str:
+        """List the proactive weather alerts recently issued for this farmer.
+
+        The background weather scan watches the forecast daily and records
+        advisories (fertilizer delays, irrigation skips, severe-weather
+        warnings), sending them by SMS when enabled. Use this tool when the
+        farmer asks about alerts, warnings, or an SMS they received. Relay
+        the stored messages and dates exactly; do not re-derive advice here.
+        """
+        _emit("alerts", f"loading weather alerts from the last {days_back} days")
+        days_back = max(1, min(int(days_back or 7), 90))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            rows = (
+                (
+                    await session.execute(
+                        select(WeatherAlert)
+                        .where(
+                            WeatherAlert.user_id == user.id,
+                            WeatherAlert.farm_id == farm.id,
+                            WeatherAlert.created_at >= cutoff,
+                        )
+                        .order_by(WeatherAlert.created_at.desc())
+                        .limit(20)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        if not rows:
+            return json.dumps(
+                {
+                    "status": "NO_ALERTS",
+                    "days_back": days_back,
+                    "message": (
+                        "No proactive weather alerts were recorded for this "
+                        "farm in the window. The daily scan only alerts when "
+                        "the forecast crosses a documented threshold."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {
+                "status": "ok",
+                "days_back": days_back,
+                "alerts": [
+                    {
+                        "alert_type": row.alert_type,
+                        "event_date": row.event_date.isoformat()
+                        if row.event_date
+                        else None,
+                        "trigger_date": row.trigger_date.isoformat(),
+                        "message": row.message,
+                        "sms_status": row.sms_status,
+                        "created_at": row.created_at.isoformat(),
+                    }
+                    for row in rows
+                ],
+                "grounding_rule": (
+                    "These are the exact stored advisories produced by the "
+                    "deterministic weather scan; relay them verbatim."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return get_weather_alerts
 
 
 def build_czis_tools(user):

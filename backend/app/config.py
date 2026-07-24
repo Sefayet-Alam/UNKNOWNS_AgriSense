@@ -82,6 +82,17 @@ class Settings(BaseSettings):
     HISTORY_LIMIT: int = 40
     MEMORY_TOP_K: int = 5
 
+    # ---- Proactive weather alerts (SMS via bulksmsbd.net) ----
+    # Dry-run is the SAFE default: the daily scan computes and records
+    # alerts (sms_status="dry_run") without calling the SMS API. Flip to
+    # false only once the bulksmsbd account has sending access enabled.
+    SMS_API_URL: str = "http://bulksmsbd.net/api/smsapi"
+    SMS_API_KEY: str = ""
+    SMS_SENDER_ID: str = ""
+    SMS_DRY_RUN: bool = True
+    WEATHER_SCAN_ENABLED: bool = True
+    WEATHER_SCAN_INTERVAL_HOURS: int = 24
+
     # ---- Logging ----
     LOG_LEVEL: str = "INFO"
     LOG_DIR: str = "logs"  # relative to the backend working dir; gitignored
