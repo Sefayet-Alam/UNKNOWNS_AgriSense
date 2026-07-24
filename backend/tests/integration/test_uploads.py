@@ -116,6 +116,36 @@ async def test_content_missing_attachment_is_404(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_history_endpoint_preserves_message_attachments(auth_client, db_session):
+    # The list-messages response_model must NOT strip the attachments field
+    # (regression: photo showed live but vanished on history refetch).
+    from sqlalchemy import select
+
+    from app.models import ChatMessage, ChatSession, User
+
+    user = (await db_session.execute(select(User))).scalar_one()
+    session = ChatSession(user_id=user.id, title="t")
+    db_session.add(session)
+    await db_session.commit()
+    await db_session.refresh(session)
+    db_session.add(
+        ChatMessage(
+            session_id=session.id,
+            role="user",
+            content="check this leaf",
+            tool_trace=[],
+            attachments=[{"id": 7, "kind": "image", "mime_type": "image/png"}],
+        )
+    )
+    await db_session.commit()
+
+    resp = await auth_client.get(f"/api/chat/sessions/{session.id}/messages")
+    assert resp.status_code == 200
+    msg = resp.json()["results"][0]
+    assert msg["attachments"] == [{"id": 7, "kind": "image", "mime_type": "image/png"}]
+
+
+@pytest.mark.asyncio
 async def test_upload_requires_auth(client):
     resp = await client.post(
         "/api/uploads",
