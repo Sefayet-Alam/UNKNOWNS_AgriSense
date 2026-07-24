@@ -48,7 +48,10 @@ async def test_plan_catalog_identifies_the_provisioned_bdapps_tariff(
     monkeypatch.setattr(settings, "BDAPPS_PLUS_PASSWORD", "plus-secret")
     plus_catalog = (await auth_client.get("/api/billing/plans")).json()
     assert plus_catalog["provider"] == "bdapps"
-    assert plus_catalog["subscribable_plan_ids"] == ["plus"]
+    # Mixed mode: Plus runs on the real carrier while Pro (no credentials yet)
+    # stays subscribable through the labelled dev mock (OTP 1234) rather than
+    # being blocked as "credentials pending". Every paid plan is subscribable.
+    assert plus_catalog["subscribable_plan_ids"] == ["plus", "pro"]
 
     monkeypatch.setattr(settings, "BDAPPS_PRO_APPLICATION_ID", "APP_PRO")
     monkeypatch.setattr(settings, "BDAPPS_PRO_PASSWORD", "pro-secret")
