@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import operator
 from datetime import datetime, timezone
 
@@ -19,8 +20,16 @@ from ..models import Farm
 from . import memory as memory_mod
 
 
+log = logging.getLogger("agrisense.tools")
+
+
 def _emit(stage: str, detail: str) -> None:
-    """Emit a custom progress event if a stream writer is active (no-op else)."""
+    """Emit a custom progress event if a stream writer is active (no-op else).
+
+    Every progress emission is mirrored to the log file so tool activity is
+    fully traceable even when no client is streaming.
+    """
+    log.info("[%s] %s", stage, detail)
     try:
         from langgraph.config import get_stream_writer
 

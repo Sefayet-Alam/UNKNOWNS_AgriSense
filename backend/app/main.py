@@ -8,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import engine
+from .logging_setup import setup_logging
+
+setup_logging()
 
 # Import models so they register on Base.metadata (used by Alembic autogenerate
 # and by the test-suite's create_all). Schema is now owned by Alembic
