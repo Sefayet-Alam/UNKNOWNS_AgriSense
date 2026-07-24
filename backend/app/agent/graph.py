@@ -1,6 +1,8 @@
 """Single-agent ReAct graph."""
 from __future__ import annotations
 
+import logging
+
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -9,6 +11,8 @@ from .llm import build_chat_model
 from .state import OrchestratorState
 
 MAX_TURNS = 8
+
+log = logging.getLogger("agrisense.agent.graph")
 
 
 def build_graph(tools):
@@ -27,7 +31,20 @@ def build_graph(tools):
             for m in messages
             if isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
         )
-        active = model if used_turns >= MAX_TURNS else model_with_tools
+        if used_turns >= MAX_TURNS:
+            log.warning(
+                "MAX_TURNS (%d) reached — invoking model WITHOUT tools to "
+                "force a final answer",
+                MAX_TURNS,
+            )
+            active = model
+        else:
+            active = model_with_tools
+        log.info(
+            "agent node: llm call (tool_rounds_used=%d, messages=%d)",
+            used_turns,
+            len(messages),
+        )
         response = await active.ainvoke(messages)
         return {"messages": [response]}
 

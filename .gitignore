@@ -38,3 +38,5 @@ pgdata/
 
 # Logs
 *.log
+logs/
+backend/logs/

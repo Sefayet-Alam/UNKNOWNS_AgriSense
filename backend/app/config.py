@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     HISTORY_LIMIT: int = 40
     MEMORY_TOP_K: int = 5
 
+    # ---- Logging ----
+    LOG_LEVEL: str = "INFO"
+    LOG_DIR: str = "logs"  # relative to the backend working dir; gitignored
+
     # ---- CORS ----
     # Comma-separated list of allowed origins.
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"

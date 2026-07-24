@@ -12,10 +12,13 @@ Grounding rules (Tier 0 #2, PLAN.md):
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
+
+log = logging.getLogger("agrisense.adapters.weather")
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -69,8 +72,12 @@ async def _get_json(
                 return resp.json()
             except (httpx.HTTPError, WeatherError, ValueError) as exc:
                 last_exc = exc
+                log.warning(
+                    "GET %s failed (attempt %d/%d): %s", url, attempt + 1, RETRIES, exc
+                )
                 if attempt + 1 < RETRIES:
                     await asyncio.sleep(0.4)
+        log.error("GET %s exhausted retries: %s", url, last_exc)
         raise WeatherError(f"request to {url} failed: {last_exc}")
     finally:
         if owns_client:
@@ -129,6 +136,7 @@ async def geocode_place(
     key = query.lower()
     if key in FALLBACK_CENTROIDS:
         lat, lon = FALLBACK_CENTROIDS[key]
+        log.info("geocode fallback: %r -> bundled centroid (%s, %s)", query, lat, lon)
         return {
             "name": query,
             "latitude": lat,
