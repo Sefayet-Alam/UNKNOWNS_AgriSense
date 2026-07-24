@@ -42,6 +42,56 @@ Res 204. Blacklists the refresh token `jti` (and the current access `jti`).
 ### GET /api/auth/me
 Res 200: `UserOut` (see Shapes). 401 if unauthenticated.
 
+### POST /api/auth/password/change
+Bearer required.
+Req: `{ "current_password": str, "new_password": str }`
+Res 200: `{ "message": "Password updated successfully." }`
+- 400 when the current password is wrong or the new password is unchanged.
+
+### POST /api/auth/password/reset/request
+Public. Req: `{ "phone": str }`
+Res 200:
+```
+{ "challenge_id": str, "expires_in_seconds": int,
+  "message": str, "demo_otp": "1234" | null }
+```
+The response never reveals whether the phone is registered. In the current
+mock stage the OTP is `1234`; a real SMS provider must remove `demo_otp`.
+
+### POST /api/auth/password/reset/confirm
+Public.
+Req: `{ "challenge_id": str, "otp": str, "new_password": str }`
+Res 200: `{ "message": str }`. Challenges expire and have an attempt limit.
+
+## Billing (all require Bearer)
+
+The backend is authoritative for plans, prices, subscriber phone and status.
+The browser must never send an amount or arbitrary phone number.
+
+### GET /api/billing/plans
+Res 200: `{ "results": [BillingPlan], "provider": "mock" | "bdapps" }`
+
+### GET /api/billing/subscription
+Res 200: `Subscription`. A user without a paid record receives the Free plan.
+
+### POST /api/billing/otp/request
+Req: `{ "plan_id": "plus" | "pro" }`
+Res 201:
+```
+{ "challenge_id": str, "expires_in_seconds": int,
+  "status_code": str, "status_detail": str, "demo_otp": "1234" | null }
+```
+Mock mode returns `1234`. BDApps mode calls `/otp/request` and does not expose
+an OTP.
+
+### POST /api/billing/otp/verify
+Req: `{ "challenge_id": str, "otp": str }`
+Res 200: `Subscription`. The server persists the activated subscription.
+
+### POST /api/billing/subscription/cancel
+Res 200: `{ "subscription": Subscription, "status_code": str, "status_detail": str }`
+BDApps mode calls `/subscription/send` with action `"0"`.
+
 ## Chat (all require Bearer)
 
 ### POST /api/chat/stream  → Server-Sent Events
@@ -84,6 +134,17 @@ Message = {
   id: int, role: "user" | "assistant", content: str,
   tool_trace: [ { tool: str, args: object, result: str } ],
   model: str, created_at: iso8601
+}
+BillingPlan = {
+  id: "free" | "plus" | "pro", name: str, amount_bdt: int,
+  billing_cycle: "none" | "monthly", features: [str]
+}
+Subscription = {
+  plan_id: "free" | "plus" | "pro",
+  status: "active" | "inactive" | "cancelled",
+  provider: "internal" | "mock" | "bdapps", provider_status: str,
+  subscriber_id: str, amount_bdt: int, billing_cycle: str,
+  started_at: iso8601 | null, cancelled_at: iso8601 | null
 }
 ```
 

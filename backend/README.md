@@ -85,6 +85,9 @@ See `../.env.example`. Key vars:
 | `JWT_SECRET_KEY` / `JWT_ALGORITHM` | — / `HS256` | token signing |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | access lifetime |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | refresh lifetime |
+| `BILLING_PROVIDER` | `mock` | `mock` (OTP `1234`) or real `bdapps` |
+| `BDAPPS_APPLICATION_ID` / `BDAPPS_PASSWORD` | — | server-only BDApps credentials |
+| `BDAPPS_PLAN_ID` | `plus` | plan matching the provisioned BDApps tariff |
 | `OPENROUTER_API_KEY` | — | **required for chat**; agent raises without it |
 | `OPENROUTER_MODEL` / `OPENROUTER_BASE_URL` | `deepseek/deepseek-chat` / openrouter | chat LLM |
 | `EMBEDDINGS_PROVIDER` | `fake` | `fake` (offline, deterministic) or `ollama` |
@@ -103,6 +106,9 @@ All under the base URL (default `http://localhost:8000`). See
 
 - `POST /api/auth/register` · `POST /api/auth/login`
 - `POST /api/auth/refresh` (rotation) · `POST /api/auth/logout` · `GET /api/auth/me`
+- `POST /api/auth/password/change` · `POST /api/auth/password/reset/{request,confirm}`
+- `GET /api/billing/{plans,subscription}` · `POST /api/billing/otp/{request,verify}`
+- `POST /api/billing/subscription/cancel`
 - `POST /api/chat/stream` (SSE) · `GET /api/chat/sessions`
 - `GET /api/chat/sessions/{id}/messages` · `DELETE /api/chat/sessions/{id}`
 - `GET /health`

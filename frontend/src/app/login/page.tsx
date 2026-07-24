@@ -89,6 +89,14 @@ export default function LoginPage() {
               error={passError}
               autoComplete="current-password"
             />
+            <div className="-mt-2 text-right">
+              <Link
+                href="/forgot-password"
+                className="text-xs font-medium text-primary-700 hover:text-primary-800"
+              >
+                Forgot password?
+              </Link>
+            </div>
 
             {formError && (
               <div className="rounded-lg border border-status-error bg-status-error-chip px-3 py-2 text-sm text-status-error">

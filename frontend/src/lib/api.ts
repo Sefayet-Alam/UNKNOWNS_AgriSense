@@ -9,8 +9,11 @@ import {
 } from "./tokens";
 import type {
   AuthUser,
+  BillingOtpStart,
+  BillingPlansResponse,
   MessagesResponse,
   SessionsResponse,
+  Subscription,
   TokenPair,
 } from "./types";
 
@@ -179,6 +182,99 @@ export async function apiLogout(refresh_token: string): Promise<void> {
 export async function apiMe(): Promise<AuthUser> {
   const res = await apiFetch("/api/auth/me", { method: "GET" });
   return json<AuthUser>(res);
+}
+
+export async function apiChangePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ message: string }> {
+  const res = await apiFetch("/api/auth/password/change", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  return json<{ message: string }>(res);
+}
+
+export async function apiRequestPasswordReset(
+  phone: string,
+): Promise<{
+  challenge_id: string;
+  expires_in_seconds: number;
+  message: string;
+  demo_otp: string | null;
+}> {
+  const res = await apiFetch("/api/auth/password/reset/request", {
+    method: "POST",
+    auth: false,
+    body: JSON.stringify({ phone }),
+  });
+  return json(res);
+}
+
+export async function apiConfirmPasswordReset(
+  challengeId: string,
+  otp: string,
+  newPassword: string,
+): Promise<{ message: string }> {
+  const res = await apiFetch("/api/auth/password/reset/confirm", {
+    method: "POST",
+    auth: false,
+    body: JSON.stringify({
+      challenge_id: challengeId,
+      otp,
+      new_password: newPassword,
+    }),
+  });
+  return json<{ message: string }>(res);
+}
+
+// ---------------------------------------------------------------------------
+// Billing endpoints
+// ---------------------------------------------------------------------------
+
+export async function apiBillingPlans(): Promise<BillingPlansResponse> {
+  const res = await apiFetch("/api/billing/plans", { method: "GET" });
+  return json<BillingPlansResponse>(res);
+}
+
+export async function apiSubscription(): Promise<Subscription> {
+  const res = await apiFetch("/api/billing/subscription", { method: "GET" });
+  return json<Subscription>(res);
+}
+
+export async function apiRequestBillingOtp(
+  planId: string,
+): Promise<BillingOtpStart> {
+  const res = await apiFetch("/api/billing/otp/request", {
+    method: "POST",
+    body: JSON.stringify({ plan_id: planId }),
+  });
+  return json<BillingOtpStart>(res);
+}
+
+export async function apiVerifyBillingOtp(
+  challengeId: string,
+  otp: string,
+): Promise<Subscription> {
+  const res = await apiFetch("/api/billing/otp/verify", {
+    method: "POST",
+    body: JSON.stringify({ challenge_id: challengeId, otp }),
+  });
+  return json<Subscription>(res);
+}
+
+export async function apiCancelSubscription(): Promise<{
+  subscription: Subscription;
+  status_code: string;
+  status_detail: string;
+}> {
+  const res = await apiFetch("/api/billing/subscription/cancel", {
+    method: "POST",
+  });
+  return json(res);
 }
 
 // ---------------------------------------------------------------------------

@@ -143,3 +143,84 @@ async def test_me_requires_auth(client):
 
     # No token -> 401.
     assert (await client.get("/api/auth/me")).status_code == 401
+
+
+async def test_authenticated_password_change_persists(client):
+    headers = await auth_headers_for(client, "01712345678")
+
+    wrong = await client.post(
+        "/api/auth/password/change",
+        json={
+            "current_password": "not-the-password",
+            "new_password": "new-farm-pass-456",
+        },
+        headers=headers,
+    )
+    assert wrong.status_code == 400
+
+    changed = await client.post(
+        "/api/auth/password/change",
+        json={
+            "current_password": DEFAULT_PASSWORD,
+            "new_password": "new-farm-pass-456",
+        },
+        headers=headers,
+    )
+    assert changed.status_code == 200, changed.text
+
+    assert (await login_user(client, "01712345678")).status_code == 401
+    assert (
+        await login_user(client, "01712345678", "new-farm-pass-456")
+    ).status_code == 200
+
+
+async def test_password_reset_uses_mock_otp_and_changes_login(client):
+    await register_user(client, "01712345678")
+    started = await client.post(
+        "/api/auth/password/reset/request",
+        json={"phone": "+8801712345678"},
+    )
+    assert started.status_code == 200, started.text
+    challenge = started.json()
+    assert challenge["demo_otp"] == "1234"
+
+    wrong = await client.post(
+        "/api/auth/password/reset/confirm",
+        json={
+            "challenge_id": challenge["challenge_id"],
+            "otp": "9999",
+            "new_password": "reset-farm-pass-789",
+        },
+    )
+    assert wrong.status_code == 400
+
+    reset = await client.post(
+        "/api/auth/password/reset/confirm",
+        json={
+            "challenge_id": challenge["challenge_id"],
+            "otp": "1234",
+            "new_password": "reset-farm-pass-789",
+        },
+    )
+    assert reset.status_code == 200, reset.text
+    assert (await login_user(client, "01712345678")).status_code == 401
+    assert (
+        await login_user(client, "01712345678", "reset-farm-pass-789")
+    ).status_code == 200
+
+
+async def test_password_reset_does_not_reveal_unknown_phone(client):
+    started = await client.post(
+        "/api/auth/password/reset/request",
+        json={"phone": "01712345678"},
+    )
+    assert started.status_code == 200
+    confirm = await client.post(
+        "/api/auth/password/reset/confirm",
+        json={
+            "challenge_id": started.json()["challenge_id"],
+            "otp": "1234",
+            "new_password": "reset-farm-pass-789",
+        },
+    )
+    assert confirm.status_code == 400

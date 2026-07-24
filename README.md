@@ -29,9 +29,18 @@ docker compose up --build
 The database lives **only** in docker-compose (pgvector image). Backend and frontend each build from their own Dockerfile.
 
 ## Screens
-1. **Login** — username + password.
-2. **Register** — username, email, password1, password2.
+1. **Login / reset password** — mobile-number auth with mock OTP recovery.
+2. **Register** — name, mobile, Bangladesh address and password.
 3. **Chat** — session sidebar + streaming agentic chat with tool-call traces.
+4. **Profile / billing** — persisted subscription, cancel, and password change.
+
+## Billing: real vs mock
+
+- Default `BILLING_PROVIDER=mock`: OTP is `1234`; subscription state is real
+  Postgres data, but no operator charge occurs.
+- `BILLING_PROVIDER=bdapps`: the backend uses the real BDApps OTP and
+  Subscription APIs with server-only credentials. Configure the variables in
+  `.env.example`; never expose the password through a `NEXT_PUBLIC_*` variable.
 
 ## LLM setup
 - `OPENROUTER_API_KEY` + `OPENROUTER_MODEL` — the default chat provider.

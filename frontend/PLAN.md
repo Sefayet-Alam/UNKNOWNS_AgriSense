@@ -4,11 +4,20 @@ Built to `DESIGN.md` (Agronomic Instrument / B3). Demo-first: a working thin sli
 before breadth. Approach **C** (chat + expandable plan artifact + right collapsible
 trace panel). Branch: `feat/agrisense-workspace`. **No commits/pushes without Sefayet's yes.**
 
+## Latest implementation status (Jul 24, Codex)
+
+- Billing is no longer seeded/local-only. The frontend calls authenticated FastAPI
+  `/api/billing/*`; subscription state is persisted in Postgres.
+- Mock mode uses OTP `1234`; real mode is ready for BDApps credentials.
+- `/forgot-password` is linked from login and registration; profile password change is persisted.
+- `npm run typecheck` and production `npm run build` pass.
+
 ## Locked decisions
 - Identity: mobile-number auth + address (PR #1, pending merge).
 - Plan data: **frontend defines the schema, backend fills it** — an `agrisense_plan` JSON
   rides inside the frozen SSE contract (a tool result or fenced ```agrisense-plan block).
-- Billing: **seeded now**, real BDApps CaaS later. Uploads: **staged/mock** now.
+- Billing: persisted subscription backend with `mock|bdapps` provider switching.
+  Uploads: **staged/mock** now.
 - I build against a **mock SSE emitter** (`lib/mockAgent.ts`) so I'm never blocked on the agent.
 
 ## Backend integration points (from B1 — real contract)
@@ -23,7 +32,7 @@ trace panel). Branch: `feat/agrisense-workspace`. **No commits/pushes without Se
 ```
 src/app/
   page.tsx                 landing (hero 3D moment) → /chat or /login
-  login/  register/  profile/          (auth built in PR #1; restyle after merge)
+  login/  register/  forgot-password/  profile/
   chat/page.tsx  chat/[sessionId]/page.tsx   workspace (home)
 src/components/
   workspace/   WorkspaceShell · Sidebar · Composer(+attachments) · StopButton
@@ -56,10 +65,11 @@ src/styles/ theme via tailwind.config.ts + globals.css (Agronomic Instrument tok
 - [ ] **M3 · Plan artifact** — CropComparison + SeasonCalendar + editable FinanceBreakdown (`finance.ts` recompute + what-if).
 - [ ] **M4 · Intake + states** — MissingFieldsChips, Stop, loading/error/empty, ModelBadge.
 - [ ] **M5 · Wire real backend** — swap mockAgent for live SSE; `planParse.ts`; NEXT_PUBLIC_API_URL=8080. Stubs marked.
-- [ ] **M6 · Profile + billing** — PasswordChange + BillingDashboard (seeded SpendChart, `dataviz`).
+- [x] **M6 · Profile + billing** — persisted PasswordChange + server-backed subscription status.
 - [ ] **M7 · Uploads (staged)** — Composer attachments; mock leaf-disease + doc-ingest results.
 - [ ] **M8 · Landing hero** — R3F contour-terrain moment (lazy, landing-only) + GSAP entrance; restyle auth to theme.
-- [ ] **M9 · BDApps CaaS** — checkout (OTP→debit→receipt) via in-repo API routes; billing → real.
+- [x] **M9 · BDApps subscription foundation** — persisted mock flow + real provider adapter.
+      Portal credentials and a live Robi-number test remain.
 - [ ] **M10 · Demo + README** — judge click-path rehearsal; README real-vs-mock table.
 
 ## Skills, used surgically
@@ -75,5 +85,5 @@ src/styles/ theme via tailwind.config.ts + globals.css (Agronomic Instrument tok
 6. Profile → billing graph (mock) + BDApps receipt (if M9 done). Close.
 
 ## Build checklist (cross-cutting)
-- [ ] `tsc --noEmit` clean per milestone. [ ] Reduced-motion verified. [ ] Keyboard + focus rings.
+- [x] `tsc --noEmit` clean. [x] Production build clean. [ ] Reduced-motion verified. [ ] Keyboard + focus rings.
 - [ ] Stubs clearly marked (`// STUB:`) + listed for the README. [ ] No emoji icons (Lucide only). [ ] No commits without approval.

@@ -191,6 +191,15 @@ export default function RegisterPage() {
               Sign in
             </Link>
           </p>
+          <p className="mt-2 text-center text-xs text-text-muted">
+            Already registered but cannot sign in?{" "}
+            <Link
+              href="/forgot-password"
+              className="font-medium text-primary-700 hover:text-primary-800"
+            >
+              Reset your password
+            </Link>
+          </p>
         </div>
       </div>
     </main>

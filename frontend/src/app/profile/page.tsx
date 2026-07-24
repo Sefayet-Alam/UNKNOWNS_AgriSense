@@ -18,12 +18,19 @@ import { useEffect, useState } from "react";
 import { BdAppsCheckout } from "@/components/billing/BdAppsCheckout";
 import { PieChart } from "@/components/profile/PieChart";
 import { LeafMark } from "@/components/ui/LeafMark";
+import {
+  apiBillingPlans,
+  apiCancelSubscription,
+  apiChangePassword,
+  apiSubscription,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useChat } from "@/lib/chat/ChatProvider";
 import { bdt } from "@/lib/finance";
 import { useSessions } from "@/lib/hooks";
 import { formatBdPhone } from "@/lib/phone";
 import { getAccess } from "@/lib/tokens";
+import type { Subscription } from "@/lib/types";
 
 type Tab = "info" | "history" | "billing";
 
@@ -62,9 +69,9 @@ const TIERS = [
 ] as const;
 
 type TierId = (typeof TIERS)[number]["id"];
+type PaidTierId = Exclude<TierId, "free">;
 const RANK: Record<TierId, number> = { free: 0, plus: 1, pro: 2 };
 const PRICE: Record<TierId, number> = { free: 0, plus: 199, pro: 499 };
-const TIER_KEY = "agri_tier";
 
 const VIZ = ["#15803D", "#2DD4BF", "#C2740B", "#8AD5A4", "#E3B45C"];
 
@@ -83,19 +90,66 @@ export default function ProfilePage() {
   const { user, loading, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("info");
   const [tier, setTier] = useState<TierId>("free");
-  const [checkout, setCheckout] = useState<{ id: TierId; name: string; amount: number } | null>(
-    null,
-  );
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [serverPrices, setServerPrices] = useState<Record<string, number>>({});
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingMsg, setBillingMsg] = useState("");
+  const [checkout, setCheckout] = useState<{
+    id: PaidTierId;
+    name: string;
+    amount: number;
+  } | null>(null);
 
   useEffect(() => {
-    if (!getAccess()) router.replace("/login");
-    const stored = (typeof window !== "undefined" && localStorage.getItem(TIER_KEY)) as TierId | null;
-    if (stored && stored in RANK) setTier(stored);
+    if (!getAccess()) {
+      router.replace("/login");
+      return;
+    }
+    let active = true;
+    Promise.all([apiSubscription(), apiBillingPlans()])
+      .then(([current, catalog]) => {
+        if (!active) return;
+        setSubscription(current);
+        setTier(
+          current.status === "active" && current.plan_id in RANK
+            ? current.plan_id
+            : "free",
+        );
+        setServerPrices(
+          Object.fromEntries(
+            catalog.results.map((plan) => [plan.id, plan.amount_bdt]),
+          ),
+        );
+      })
+      .catch((error) => {
+        if (active) {
+          setBillingMsg(
+            error instanceof Error
+              ? error.message
+              : "Could not load subscription.",
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [router]);
 
-  const changeTier = (id: TierId) => {
-    setTier(id);
-    if (typeof window !== "undefined") localStorage.setItem(TIER_KEY, id);
+  const cancelCurrentSubscription = async () => {
+    setBillingBusy(true);
+    setBillingMsg("");
+    try {
+      const result = await apiCancelSubscription();
+      setSubscription(result.subscription);
+      setTier("free");
+      setBillingMsg(result.status_detail);
+    } catch (error) {
+      setBillingMsg(
+        error instanceof Error ? error.message : "Could not cancel subscription.",
+      );
+    } finally {
+      setBillingBusy(false);
+    }
   };
 
   if (loading || !user) {
@@ -212,10 +266,8 @@ export default function ProfilePage() {
         {tab === "billing" && (
           <div className="space-y-4">
             <p className="text-sm text-text-muted">
-              Your plan controls model quality and thinking depth.{" "}
-              <span className="text-text-primary">
-                (Upgrades are a demo — a real charge would run through BDApps.)
-              </span>
+              Your plan controls model quality and thinking depth. Subscription
+              status is stored securely on the server.
             </p>
             <div className="grid gap-4 md:grid-cols-3">
               {TIERS.map((t) => {
@@ -250,7 +302,13 @@ export default function ProfilePage() {
                       ) : canUpgrade ? (
                         <button
                           type="button"
-                          onClick={() => setCheckout({ id: t.id, name: t.name, amount: PRICE[t.id] })}
+                          onClick={() =>
+                            setCheckout({
+                              id: t.id as PaidTierId,
+                              name: t.name,
+                              amount: serverPrices[t.id] ?? PRICE[t.id],
+                            })
+                          }
                           className="w-full rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700"
                         >
                           Upgrade to {t.name}
@@ -270,18 +328,46 @@ export default function ProfilePage() {
                 You&apos;re on Pro — the top plan. Nothing more to upgrade.
               </p>
             )}
+            {subscription?.status === "active" && tier !== "free" && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+                <div>
+                  <p className="font-medium text-text-primary">
+                    {subscription.provider === "bdapps"
+                      ? "Verified by bdapps"
+                      : "Demo subscription"}
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    {subscription.provider_status} · ৳{subscription.amount_bdt}/
+                    {subscription.billing_cycle}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={cancelCurrentSubscription}
+                  disabled={billingBusy}
+                  className="rounded-lg border border-status-error/30 px-3 py-1.5 text-xs font-medium text-status-error transition hover:bg-status-error-chip disabled:opacity-60"
+                >
+                  {billingBusy ? "Cancelling…" : "Cancel subscription"}
+                </button>
+              </div>
+            )}
+            {billingMsg && (
+              <p className="text-xs text-text-muted">{billingMsg}</p>
+            )}
           </div>
         )}
       </div>
 
       {checkout && (
         <BdAppsCheckout
+          planId={checkout.id}
           tierName={checkout.name}
           amount={checkout.amount}
           mobile={user.phone}
           onClose={() => setCheckout(null)}
-          onSuccess={() => {
-            changeTier(checkout.id);
+          onSuccess={(activeSubscription) => {
+            setSubscription(activeSubscription);
+            setTier(activeSubscription.plan_id);
             setCheckout(null);
           }}
         />
@@ -386,16 +472,29 @@ function PasswordChange() {
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (next.length < 8) return setMsg("New password must be at least 8 characters.");
+    setSuccess(false);
+    if (next.length < 8)
+      return setMsg("New password must be at least 8 characters.");
     if (next !== confirm) return setMsg("Passwords do not match.");
-    // STUB: no backend password-change endpoint yet.
-    setMsg("Password updated. (Demo — needs the backend endpoint to persist.)");
-    setCur("");
-    setNext("");
-    setConfirm("");
+    setBusy(true);
+    setMsg(null);
+    try {
+      const result = await apiChangePassword(cur, next);
+      setMsg(result.message);
+      setSuccess(true);
+      setCur("");
+      setNext("");
+      setConfirm("");
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "Could not update password.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const input =
@@ -431,12 +530,21 @@ function PasswordChange() {
             autoComplete="new-password"
           />
         </div>
-        {msg && <p className="text-xs text-text-muted">{msg}</p>}
+        {msg && (
+          <p
+            className={`text-xs ${
+              success ? "text-primary-700" : "text-status-error"
+            }`}
+          >
+            {msg}
+          </p>
+        )}
         <button
           type="submit"
-          className="self-start rounded-xl bg-primary-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-700"
+          disabled={busy || !cur || !next || !confirm}
+          className="self-start rounded-xl bg-primary-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-700 disabled:opacity-60"
         >
-          Update password
+          {busy ? "Updating…" : "Update password"}
         </button>
       </form>
     </section>
