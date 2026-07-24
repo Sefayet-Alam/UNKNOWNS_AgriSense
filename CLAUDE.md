@@ -231,14 +231,16 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 289 tests: unit (security/phone/tools/weather adapter/KB
+  (or `make test`). 305 tests: unit (security/phone/tools/weather adapter/KB
   chunker/czis adapter/geo gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
   chip, multi-turn intake, and six recommendation SSE journeys covering success,
   source outages, no irrigation, tight budget, and exclusions), plus selected-crop
   season-plan journeys for success, weather delay, financial composition and
-  degraded sources, plus financial input-sensitivity and what-if journeys. LLM +
+  degraded sources, plus financial input-sensitivity/what-if journeys and 16
+  dedicated whole-product E2E cases (five-turn PDF path + every focused crop's
+  plan, finance, and incomplete-profile gate). LLM +
   HTTP are faked — no network. Isolated against a separate `argi_test` db.
   Realtime transport is **SSE, not WebSocket**. Add tests with any new feature.
   NOTE: the container has no source volume mount — `docker compose up -d --build

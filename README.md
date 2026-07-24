@@ -48,6 +48,11 @@ expected yield, revenue, net profit, ROI, break-even yield and break-even price.
 Changing area, yield, sale price, cost items or a cost percentage recomputes the
 dependent values. The tool also returns internal math checks.
 
+The backend suite includes whole-product SSE journeys, not only unit tests: a
+five-turn vague-opening-to-costed-plan flow, complete plan and finance flows for
+all five focused crops, missing-profile hard gates for every crop, live-source
+failure drills, and persisted raw-trace checks.
+
 ## Agricultural data: real vs generated/demo
 
 | Data or behavior | Classification | Notes |
