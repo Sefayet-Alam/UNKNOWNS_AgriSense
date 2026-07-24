@@ -113,13 +113,21 @@ cp .env.example .env          # set JWT_SECRET_KEY + OPENROUTER_API_KEY
 docker compose up --build     # db (pgvector) + backend + frontend
 docker compose logs -f backend
 docker compose down           # stop
-docker compose down -v && docker compose up -d --build   # NUKE db + rebuild
+docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 ```
 
-- **No Alembic — `create_all` won't ALTER existing tables.** After any DB model
-  change (e.g. the phone-auth migration), **nuke the volume**: `docker compose down -v`
-  then rebuild. Nuking the dev DB is explicitly OK at this stage — it wipes users,
-  chat sessions, and memories, so re-register after.
+- **Migrations = Alembic** (schema is Alembic-owned; startup runs `alembic upgrade
+  head` via `entrypoint.sh`, no more `create_all`). After changing a DB model:
+  `alembic revision --autogenerate -m "msg"` → review → `alembic upgrade head`
+  (or `make makemigrations m="msg"` / `make migrate` in `backend/`). **No db nuke
+  needed for schema changes anymore** — nuke only to clear data.
+- **Tests** (regression guard, run before/after changes): from `backend/`,
+  `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
+  TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
+  (or `make test`). 54 tests: unit (security/phone/tools), integration (auth
+  rotation/blacklist, chat ownership), streaming (SSE tool_trace→message_update→
+  done). LLM is faked — no network. Isolated against a separate `argi_test` db.
+  Realtime transport is **SSE, not WebSocket**. Add tests with any new feature.
 - Frontend http://localhost:3000 · Backend http://localhost:8080 (docs `/docs`) ·
   Postgres localhost:5433. (Host ports 8080/5433 avoid local clashes; container
   ports are 8000/5432. `NEXT_PUBLIC_API_URL` in `.env` is baked into the frontend at
