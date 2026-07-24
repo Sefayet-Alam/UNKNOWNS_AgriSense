@@ -231,6 +231,7 @@ async def fetch_forecast(
         t_min_vals = [r["t_min_c"] for r in subset if r["t_min_c"] is not None]
         return {
             "total_rain_mm": round(sum(v for _, v in rain_vals), 1),
+            "max_daily_rain_mm": max((v for _, v in rain_vals), default=None),
             "rainy_day_count": len(rainy),
             "first_rainy_date": rainy[0] if rainy else None,
             "max_temp_c": max(t_max_vals) if t_max_vals else None,

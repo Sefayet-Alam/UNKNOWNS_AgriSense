@@ -113,9 +113,11 @@ masked BDApps Pro subscriber tokens.
 6. Test Pro the same way and confirm BDT 499 and the Pro application are used.
 7. Cancel Pro and confirm both systems show UNREGISTERED.
 
-AgriSense deliberately requires cancellation before switching plans so a
-subscriber cannot accidentally remain active—and charged—in both BDApps
-applications.
+Real BDApps subscriptions require cancellation before switching plans so a
+subscriber cannot accidentally remain active—and charged—in both carrier
+applications. The direct Plus-to-Pro replacement described above is limited
+to the explicitly labelled local mock flow until a dedicated carrier upgrade
+tariff is implemented.
 
 Keep `BILLING_PROVIDER=mock` locally when a real Robi-number test is not being
 performed; mock mode uses OTP `1234` and never charges a mobile account.

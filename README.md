@@ -18,6 +18,11 @@ cp .env.example .env
 # edit .env: set JWT_SECRET_KEY and OPENROUTER_API_KEY
 docker compose up --build
 ```
+
+Backend startup runs Alembic and then verifies/restores the committed 287-chunk
+FRG 2024 vector seed before serving. The restore uses committed embeddings and
+does not spend embedding API calls; complete databases are left untouched.
+
 - Frontend: http://localhost:3000
 - Backend:  http://localhost:8080  (docs at /docs)
 - Postgres: localhost:5433
@@ -35,6 +40,38 @@ The database lives **only** in docker-compose (pgvector image). Backend and fron
    `docs/upazilas.csv` dataset.
 3. **Chat** — session sidebar + streaming agentic chat with tool-call traces.
 4. **Profile / billing** — persisted subscription, cancel, and password change.
+
+## Hackathon Tier 0 path
+
+The focused demo path is: targeted six-field farm intake → live weather and
+official point-suitability crop ranking → selected-crop dated calendar → an
+itemized financial projection. The planner combines BAMIS crop calendars, the
+BARC Fertilizer Recommendation Guide 2024 knowledge base, live BARC CZIS crop,
+variety and farm-scaled fertilizer results, and live Open-Meteo weather. Native
+tool calls, arguments and raw results are visible in the chat trace.
+
+Financial arithmetic is deterministic (`Decimal`) and exposes itemized cost,
+expected yield, revenue, net profit, ROI, break-even yield and break-even price.
+Changing area, yield, sale price, cost items or a cost percentage recomputes the
+dependent values. The tool also returns internal math checks.
+
+The backend suite includes whole-product SSE journeys, not only unit tests: a
+five-turn vague-opening-to-costed-plan flow, complete plan and finance flows for
+all five focused crops, missing-profile hard gates for every crop, live-source
+failure drills, and persisted raw-trace checks.
+
+## Agricultural data: real vs generated/demo
+
+| Data or behavior | Classification | Notes |
+|---|---|---|
+| Weather | **Real/live** | Open-Meteo forecast at the active farm coordinates; outage is surfaced, never filled in. |
+| Crop point suitability | **Real/live** | Official BARC CZIS GeoServer response. |
+| Variety yield and farm-scaled fertilizer | **Real/live** | Official BARC CZIS endpoints; the raw yield range and fertilizer response remain in the trace. |
+| Crop calendar and fertilizer guidance | **Real/public reference** | BAMIS Rajshahi crop-weather calendars and FRG 2024; FRG is retrieved through the pgvector RAG store. |
+| Soil default | **Real/public reference, bundled snapshot** | Upazila survey default; labelled as an assumption that the farmer must confirm. |
+| Financial sale price and cultivation cost defaults | **Generated/seeded demo assumptions** | Not a market board or supplier quote. Every such value is labelled `seeded_demo_value`; farmer estimates override it. |
+| Financial formulas | **Real deterministic computation** | Server-side `Decimal` math with inspectable identities and break-even values. |
+| Billing | See below | Mock by default; real BDApps is configurable. |
 
 ## Billing: real vs mock
 

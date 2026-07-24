@@ -6,6 +6,8 @@ drive it with ``client.stream("POST", ...)`` and a tiny SSE parser
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from tests.fakes import stream_turn
@@ -293,6 +295,537 @@ async def test_multi_turn_intake_fills_profile_across_turns(
         if e["type"] == "message" and e["message"]["role"] == "assistant"
     ]
     assert any("৮০,০০০" in c for c in finals)
+
+
+@pytest.mark.parametrize("fake_llm", ["recommendation"], indirect=True)
+async def test_complete_farm_recommendation_is_grounded_and_visible_end_to_end(
+    auth_client, fake_llm, db_session, monkeypatch
+):
+    """PDF Tier-0 #2/#3/#6/#8 through auth -> SSE -> graph -> tool -> DB."""
+    from sqlalchemy import select
+
+    from app.agent import tools as tools_mod
+    from app.agent.tools import _get_or_create_active_farm
+    from app.models import User
+
+    user = (await db_session.execute(select(User))).scalar_one()
+    farm = await _get_or_create_active_farm(db_session, user)
+    farm.area_decimal = 99.0
+    farm.irrigation_available = True
+    farm.water_source = "shallow tubewell"
+    farm.budget_bdt = 180_000
+    farm.season = "rabi"
+    farm.phase = "ready_for_planning"
+    await db_session.commit()
+
+    async def fake_weather(lat, lon, days, **kwargs):
+        return {
+            "source": "Open-Meteo forecast API",
+            "fetched_at": "2026-07-24T12:00:00+00:00",
+            "request_params": {"latitude": lat, "longitude": lon},
+            "days": [{"date": "2026-07-25", "rain_mm": 2.0}],
+            "summary": {
+                "forecast_days": 7,
+                "total_rain_mm": 8.0,
+                "max_temp_c": 31.0,
+                "min_temp_c": 18.0,
+            },
+        }
+
+    async def fake_suitability(lat, lon, crop_ids, **kwargs):
+        return {
+            "latitude": lat,
+            "longitude": lon,
+            "crops": [
+                {
+                    "crop_id": crop_id,
+                    "suitability": 1,
+                    "suite_code": "VS",
+                    "suite": "Very Suitable",
+                }
+                for crop_id in crop_ids
+            ],
+            "missing_crop_ids": [],
+            "evidence": {
+                "source": "BARC CZIS GeoServer",
+                "request_params": {"crop_ids": crop_ids},
+            },
+        }
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", fake_weather)
+    monkeypatch.setattr(
+        tools_mod.czis_suitability_mod,
+        "get_point_suitability",
+        fake_suitability,
+    )
+
+    events = await stream_turn(auth_client, "কোন ফসল লাগাব?")
+    assert _types(events)[-1] == "done"
+    assert "error" not in _types(events)
+
+    rank_chips = [
+        trace
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "rank_crop_candidates" and trace.get("result")
+    ]
+    assert rank_chips and rank_chips[0]["args"] == {"limit": 5}
+    raw = json.loads(rank_chips[0]["result"])
+    assert raw["status"] == "ok"
+    assert len(raw["candidates"]) >= 3
+    assert raw["weather"]["summary"]["total_rain_mm"] == 8.0
+    assert raw["land_suitability"]["evidence"]["source"] == "BARC CZIS GeoServer"
+
+    finals = [
+        event["message"]["content"]
+        for event in events
+        if event["type"] == "message"
+        and event["message"]["role"] == "assistant"
+        and event["message"]["content"].strip()
+    ]
+    assert any("CZIS" in text and "Open-Meteo" in text for text in finals)
+
+
+@pytest.mark.parametrize(
+    "fake_llm,failed_source",
+    [
+        ("recommendation_degraded", "weather"),
+        ("recommendation_degraded", "land_suitability"),
+    ],
+    indirect=["fake_llm"],
+)
+async def test_recommendation_live_source_failure_is_disclosed_end_to_end(
+    auth_client, fake_llm, failed_source, db_session, monkeypatch
+):
+    """A source outage survives tool -> trace -> final answer without invention."""
+    from sqlalchemy import select
+
+    from app.agent import tools as tools_mod
+    from app.agent.tools import _get_or_create_active_farm
+    from app.models import User
+
+    user = (await db_session.execute(select(User))).scalar_one()
+    farm = await _get_or_create_active_farm(db_session, user)
+    farm.area_decimal = 99.0
+    farm.irrigation_available = True
+    farm.budget_bdt = 180_000
+    farm.season = "rabi"
+    await db_session.commit()
+
+    async def weather_ok(lat, lon, days, **kwargs):
+        return {
+            "source": "Open-Meteo forecast API",
+            "summary": {"total_rain_mm": 8, "max_temp_c": 31, "min_temp_c": 18},
+            "days": [],
+        }
+
+    async def weather_fail(*args, **kwargs):
+        raise tools_mod.weather_mod.WeatherError("test outage")
+
+    async def suitability_ok(lat, lon, crop_ids, **kwargs):
+        return {
+            "latitude": lat,
+            "longitude": lon,
+            "crops": [
+                {"crop_id": c, "suite_code": "VS", "suite": "Very Suitable"}
+                for c in crop_ids
+            ],
+            "missing_crop_ids": [],
+            "evidence": {"source": "BARC CZIS GeoServer"},
+        }
+
+    async def suitability_fail(*args, **kwargs):
+        raise tools_mod.czis_suitability_mod.CzisSuitabilityError("test outage")
+
+    monkeypatch.setattr(
+        tools_mod.weather_mod,
+        "fetch_forecast",
+        weather_fail if failed_source == "weather" else weather_ok,
+    )
+    monkeypatch.setattr(
+        tools_mod.czis_suitability_mod,
+        "get_point_suitability",
+        suitability_fail if failed_source == "land_suitability" else suitability_ok,
+    )
+
+    events = await stream_turn(auth_client, "কোন ফসল লাগাব?")
+    raw_results = [
+        json.loads(trace["result"])
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "rank_crop_candidates" and trace.get("result")
+    ]
+    assert raw_results and raw_results[0]["status"] == "degraded"
+    assert failed_source in raw_results[0]["unavailable_sources"]
+    if failed_source == "weather":
+        assert all(
+            c["score_components"]["weather"] == 5.0
+            for c in raw_results[0]["candidates"]
+        )
+    else:
+        assert all(
+            c["suitability"]["class"] == "Unknown"
+            for c in raw_results[0]["candidates"]
+        )
+    finals = [
+        event["message"]["content"]
+        for event in events
+        if event["type"] == "message"
+        and event["message"]["role"] == "assistant"
+        and event["message"]["content"].strip()
+    ]
+    assert any("অনুপলব্ধ" in text and "অনুমান করিনি" in text for text in finals)
+
+
+@pytest.mark.parametrize("constraint", ["no_irrigation", "tight_budget", "exclude_potato"])
+@pytest.mark.parametrize("fake_llm", ["recommendation"], indirect=True)
+async def test_recommendation_respects_farm_constraints_end_to_end(
+    auth_client, fake_llm, constraint, db_session, monkeypatch
+):
+    """Farmer constraint changes are visible in the actual SSE tool result."""
+    from sqlalchemy import select
+
+    from app.agent import tools as tools_mod
+    from app.agent.tools import _get_or_create_active_farm
+    from app.models import User
+
+    user = (await db_session.execute(select(User))).scalar_one()
+    farm = await _get_or_create_active_farm(db_session, user)
+    farm.area_decimal = 99.0
+    farm.irrigation_available = constraint != "no_irrigation"
+    farm.budget_bdt = 10_000 if constraint == "tight_budget" else 180_000
+    farm.season = "rabi"
+    farm.excluded_crops = ["potato"] if constraint == "exclude_potato" else []
+    await db_session.commit()
+
+    async def weather_ok(*args, **kwargs):
+        return {
+            "source": "Open-Meteo forecast API",
+            "summary": {"total_rain_mm": 8, "max_temp_c": 31, "min_temp_c": 18},
+            "days": [],
+        }
+
+    async def suitability_ok(lat, lon, crop_ids, **kwargs):
+        return {
+            "crops": [
+                {"crop_id": c, "suite_code": "VS", "suite": "Very Suitable"}
+                for c in crop_ids
+            ],
+            "missing_crop_ids": [],
+            "evidence": {"source": "BARC CZIS GeoServer"},
+        }
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", weather_ok)
+    monkeypatch.setattr(
+        tools_mod.czis_suitability_mod,
+        "get_point_suitability",
+        suitability_ok,
+    )
+    events = await stream_turn(auth_client, "কোন ফসল লাগাব?")
+    raw = next(
+        json.loads(trace["result"])
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "rank_crop_candidates" and trace.get("result")
+    )
+    assert len(raw["candidates"]) >= 3
+    if constraint == "no_irrigation":
+        assert any(
+            "irrigation" in " ".join(c["risk"]["reasons"]).lower()
+            for c in raw["candidates"]
+        )
+    elif constraint == "tight_budget":
+        assert all(not c["budget_fit"]["within_budget"] for c in raw["candidates"])
+    else:
+        assert "Potato" not in {c["crop_name"] for c in raw["candidates"]}
+
+
+async def _prepare_plan_farm(db_session):
+    from sqlalchemy import select
+
+    from app.agent.tools import _get_or_create_active_farm
+    from app.models import User
+
+    user = (await db_session.execute(select(User))).scalar_one()
+    farm = await _get_or_create_active_farm(db_session, user)
+    farm.area_decimal = 50.0
+    farm.irrigation_available = True
+    farm.water_source = "shallow tubewell"
+    farm.budget_bdt = 150_000
+    farm.season = "rabi"
+    farm.phase = "ready_for_planning"
+    await db_session.commit()
+    return farm
+
+
+def _plan_context(crop_id=3):
+    return {
+        "crop_id": crop_id,
+        "crop_name": "Wheat",
+        "varieties": [{"variety_id": 1001, "name": "BARI Gom 33"}],
+        "evidence": {"source": "CZIS crop context"},
+    }
+
+
+def _plan_fertilizer():
+    return {
+        "products": [
+            {"product": "Urea", "element": "N", "amount": {"value": 30, "unit": "kg"}, "is_alternative": False},
+            {"product": "TSP", "element": "P", "amount": {"value": 12, "unit": "kg"}, "is_alternative": False},
+        ],
+        "evidence": {"source": "CZIS server", "computed_by": "CZIS server"},
+    }
+
+
+def _plan_varieties(crop_id=3):
+    return {
+        "crop_id": crop_id,
+        "varieties": [
+            {
+                "name": "BARI Gom 33",
+                "yield_t_ha": "4.0-5.0",
+                "duration_days": "115-120",
+                "characteristics": "reference",
+            }
+        ],
+        "evidence": {"source": "CZIS", "endpoint": f"/varieties/{crop_id}"},
+    }
+
+
+@pytest.mark.parametrize("fake_llm", ["season_plan"], indirect=True)
+@pytest.mark.parametrize("farmer_message", ["গমের প্ল্যান বানাও", "গম"])
+async def test_selected_crop_season_plan_is_complete_and_grounded_end_to_end(
+    auth_client, fake_llm, farmer_message, db_session, monkeypatch
+):
+    """PDF #4/#6/#7/#8: dated plan + RAG + raw tool evidence over SSE."""
+    from app.agent import tools as tools_mod
+    from app.rag import ingest_document
+
+    await _prepare_plan_farm(db_session)
+    await ingest_document(
+        db_session,
+        "<!-- Page 90 (embedded) -->\n\nWheat nitrogen: basal then remaining nitrogen 17-21 days after sowing.",
+        source="FRG 2024",
+        crop="wheat",
+    )
+
+    async def weather(*args, **kwargs):
+        return {
+            "source": "Open-Meteo forecast API",
+            "summary": {"forecast_days": 16, "total_rain_mm": 4, "max_temp_c": 30},
+            "days": [{"date": "2026-11-15", "rain_mm": 0}],
+        }
+
+    async def context(*args, **kwargs):
+        return _plan_context()
+
+    async def fertilizer(*args, **kwargs):
+        return _plan_fertilizer()
+
+    async def varieties(*args, **kwargs):
+        return _plan_varieties()
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", weather)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_fertilizer_recommendation", fertilizer)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
+
+    events = await stream_turn(auth_client, farmer_message)
+    routing = [
+        event["detail"]
+        for event in events
+        if event["type"] == "progress" and event.get("stage") == "routing"
+    ]
+    assert routing and "specialist: planner" in routing[0]
+    raw = next(
+        json.loads(trace["result"])
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "generate_season_plan" and trace.get("result")
+    )
+    assert raw["status"] == "ok"
+    assert raw["knowledge_evidence"][0]["source"] == "FRG 2024"
+    assert raw["calendar"]["planting_date"] == "2026-11-15"
+    assert raw["calendar"]["harvest_date"] == "2027-03-14"
+    categories = {event["category"] for event in raw["calendar"]["events"]}
+    assert {"land_preparation", "sowing", "fertilizer", "irrigation", "weed", "pest", "harvest"} <= categories
+    projection = raw["financial_projection"]
+    assert projection["math_checks"]["cost_items_sum_to_total"] is True
+    assert projection["math_checks"]["profit_equals_revenue_minus_cost"] is True
+    assert projection["yield_assumption"]["source"]["source"] == "CZIS"
+    assert projection["price_assumption"]["source_type"] == "seeded_demo_value"
+    finals = [
+        event["message"]["content"]
+        for event in events
+        if event["type"] == "message"
+        and event["message"]["role"] == "assistant"
+        and event["message"]["content"].strip()
+    ]
+    assert any("BAMIS" in text and "FRG 2024" in text and "CZIS" in text for text in finals)
+
+
+@pytest.mark.parametrize(
+    "fake_llm,failed_source",
+    [
+        ("season_plan_degraded", "weather"),
+        ("season_plan_degraded", "fertilizer"),
+        ("season_plan_degraded", "knowledge_base"),
+    ],
+    indirect=["fake_llm"],
+)
+async def test_season_plan_source_failures_are_visible_end_to_end(
+    auth_client, fake_llm, failed_source, db_session, monkeypatch
+):
+    from app.agent import tools as tools_mod
+    from app.rag import ingest_document
+
+    await _prepare_plan_farm(db_session)
+    if failed_source != "knowledge_base":
+        await ingest_document(
+            db_session, "Wheat season plan fertilizer timing", source="FRG", crop="wheat"
+        )
+
+    async def weather_ok(*args, **kwargs):
+        return {"source": "Open-Meteo forecast API", "summary": {}, "days": []}
+
+    async def weather_fail(*args, **kwargs):
+        raise tools_mod.weather_mod.WeatherError("test outage")
+
+    async def context(*args, **kwargs):
+        return _plan_context()
+
+    async def fertilizer_ok(*args, **kwargs):
+        return _plan_fertilizer()
+
+    async def fertilizer_fail(*args, **kwargs):
+        raise tools_mod.czis_mod.CzisError("test outage")
+
+    monkeypatch.setattr(
+        tools_mod.weather_mod,
+        "fetch_forecast",
+        weather_fail if failed_source == "weather" else weather_ok,
+    )
+    monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
+    monkeypatch.setattr(
+        tools_mod.czis_mod,
+        "get_fertilizer_recommendation",
+        fertilizer_fail if failed_source == "fertilizer" else fertilizer_ok,
+    )
+    events = await stream_turn(auth_client, "গমের প্ল্যান বানাও")
+    raw = next(
+        json.loads(trace["result"])
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "generate_season_plan" and trace.get("result")
+    )
+    assert raw["status"] == "degraded"
+    assert failed_source in raw["unavailable_sources"]
+    if failed_source == "fertilizer":
+        assert all(
+            event.get("fertilizer_doses") == []
+            for event in raw["calendar"]["events"]
+            if event["category"] == "fertilizer"
+        )
+    finals = [
+        event["message"]["content"]
+        for event in events
+        if event["type"] == "message"
+        and event["message"]["role"] == "assistant"
+        and event["message"]["content"].strip()
+    ]
+    assert any("degraded" in text and "অনুমান করিনি" in text for text in finals)
+
+
+@pytest.mark.parametrize("fake_llm", ["season_plan"], indirect=True)
+async def test_season_plan_heavy_rain_shifts_calendar_end_to_end(
+    auth_client, fake_llm, db_session, monkeypatch
+):
+    from app.agent import tools as tools_mod
+    from app.rag import ingest_document
+
+    await _prepare_plan_farm(db_session)
+    await ingest_document(db_session, "Wheat season plan", source="FRG", crop="wheat")
+
+    async def rainy(*args, **kwargs):
+        return {
+            "source": "Open-Meteo forecast API",
+            "summary": {"total_rain_mm": 56},
+            "days": [
+                {"date": "2026-11-15", "rain_mm": 60},
+                {"date": "2026-11-16", "rain_mm": 55},
+                {"date": "2026-11-17", "rain_mm": 1},
+            ],
+        }
+
+    async def context(*args, **kwargs):
+        return _plan_context()
+
+    async def fertilizer(*args, **kwargs):
+        return _plan_fertilizer()
+
+    async def varieties(*args, **kwargs):
+        return _plan_varieties()
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", rainy)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_fertilizer_recommendation", fertilizer)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
+    events = await stream_turn(auth_client, "গমের প্ল্যান বানাও")
+    raw = next(
+        json.loads(trace["result"])
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "generate_season_plan" and trace.get("result")
+    )
+    assert raw["calendar"]["planting_date"] == "2026-11-17"
+    assert raw["calendar"]["harvest_date"] == "2027-03-16"
+    assert raw["calendar"]["weather_adjustments"][0]["type"] == "planting_delay"
+
+
+@pytest.mark.parametrize("fake_llm", ["finance"], indirect=True)
+async def test_financial_what_if_routes_and_returns_inspectable_math_end_to_end(
+    auth_client, fake_llm, db_session, monkeypatch
+):
+    """PDF #5/#6/#8: live yield + changed price -> inspectable trace math."""
+    from app.agent import tools as tools_mod
+
+    await _prepare_plan_farm(db_session)
+
+    async def varieties(*args, **kwargs):
+        return _plan_varieties()
+
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
+    events = await stream_turn(
+        auth_client, "If wheat sells at 42 taka, recalculate the profit and ROI"
+    )
+    routing = [
+        event["detail"]
+        for event in events
+        if event["type"] == "progress" and event.get("stage") == "routing"
+    ]
+    assert routing and "specialist: finance" in routing[0]
+    raw = next(
+        json.loads(trace["result"])
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "calculate_crop_financials" and trace.get("result")
+    )
+    projection = raw["financial_projection"]
+    assert projection["expected"]["price_bdt_per_kg"] == 42
+    assert projection["price_assumption"]["source_type"] == "farmer_estimate"
+    assert len(projection["cost_items"]) == 8
+    assert projection["expected"]["revenue_bdt"] - projection["total_cost_bdt"] == pytest.approx(
+        projection["expected"]["net_profit_bdt"], abs=0.01
+    )
+    assert projection["break_even"]["yield_kg"] > 0
+    assert projection["break_even"]["price_bdt_per_kg"] > 0
 
 
 @pytest.mark.parametrize("fake_llm", ["plain"], indirect=True)

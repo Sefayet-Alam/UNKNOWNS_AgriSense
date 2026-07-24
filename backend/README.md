@@ -20,8 +20,11 @@ backend:
 
 Schema is owned by **Alembic migrations**. The container entrypoint
 (`entrypoint.sh`) runs `alembic upgrade head` (the first migration creates the
-`vector` extension) and then launches uvicorn. The app no longer calls
-`create_all` on startup.
+`vector` extension), runs `python -m scripts.seed_rag_data --if-needed` to
+ensure the committed FRG vector corpus is complete, and then launches uvicorn.
+The seed check repairs missing/partial managed sources, preserves unrelated
+sources, and skips a complete store. The app no longer calls `create_all` on
+startup.
 
 ### Local
 ```bash
@@ -139,8 +142,15 @@ Production configuration and portal field values are documented in
 - `GET /health`
 
 ## Agent
-LangGraph ReAct loop (`app/agent/`): tools `get_current_time`, `calculator`,
-`save_memory`, `recall_memory`. Long-term memory is user-scoped pgvector
+LangGraph specialist loop (`app/agent/`): tools include live weather, official
+CZIS crop/variety/fertilizer and point-suitability lookups, deterministic
+`rank_crop_candidates`, dated `generate_season_plan` calendars grounded in
+BAMIS/FRG/RAG, deterministic `calculate_crop_financials` (also embedded in the
+season-plan result), farm profiles, `calculator`, `save_memory`, and
+`recall_memory`. Financial yield defaults to the live CZIS variety range;
+bundled price/cost assumptions are explicitly marked `seeded_demo_value`, are
+not live quotes, and can be overridden by farmer inputs.
+Long-term memory is user-scoped pgvector
 semantic recall; each session also keeps a rolling `summary`. The stream
 runner emits `session` / `message` / `message_update` / `progress` / `done` /
 `error` frames per the contract.

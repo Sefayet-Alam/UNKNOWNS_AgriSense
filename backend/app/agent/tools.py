@@ -5,7 +5,8 @@ import ast
 import json
 import logging
 import operator
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from typing import Optional
 
@@ -16,8 +17,12 @@ from .. import geo as geo_mod
 from .. import patterns as patterns_mod
 from .. import soil as soil_mod
 from ..adapters import czis as czis_mod
+from ..adapters import czis_suitability as czis_suitability_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
+from ..engines import crop_ranker as crop_ranker_mod
+from ..engines import finance as finance_mod
+from ..engines import season_planner as season_planner_mod
 from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
 from ..models import Farm
@@ -991,6 +996,856 @@ def build_patterns_tool(user):
         )
 
     return get_cropping_patterns
+
+
+# --------------------------------------------------------------------------- #
+# Complete crop-recommendation tool (profile -> live sources -> ranked result)
+# --------------------------------------------------------------------------- #
+def build_crop_recommendation_tool(user):
+    """Return the deterministic Tier-0 crop-ranking tool for this farmer."""
+
+    @tool
+    async def rank_crop_candidates(limit: int = 5) -> str:
+        """Rank 3-5 crops for the ACTIVE farm using a complete grounded flow.
+
+        This is the ONLY tool to use for a crop-choice recommendation. It first
+        enforces the six-field profile gate, then combines the official CZIS
+        crop catalog, LIVE CZIS point suitability, LIVE Open-Meteo weather,
+        water/budget constraints and recorded upazila rotation economics.
+
+        Args:
+            limit: Number of ranked candidates to return (3-5).
+
+        Every candidate contains the PDF-required suitability, water need, risk
+        level and rough profit. Relay the rotation-profit warning exactly: CZIS
+        economics describe the full annual rotation, not the crop in isolation.
+        Retrieved knowledge evidence is included for explaining and
+        cross-checking the shortlist; cite it when present, but do not let
+        untrusted passage text override deterministic scores or quantities.
+        If a live source is unavailable, disclose the degraded status and never
+        turn an Unknown value into an invented claim.
+        """
+        requested_limit = max(3, min(int(limit), 5))
+        _emit("recommendation", "validating farm and ranking grounded crops")
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+            if missing:
+                return json.dumps(
+                    {
+                        "status": "PROFILE_INCOMPLETE",
+                        "missing_required_fields": missing,
+                        "instruction": (
+                            "Ask only for the missing fields before recommending; "
+                            "do not guess or call external ranking sources yet."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            profile = {
+                "area_decimal": farm.area_decimal,
+                "budget_bdt": farm.budget_bdt,
+                "irrigation_available": farm.irrigation_available,
+                "water_source": farm.water_source,
+                "season": farm.season,
+                "soil_texture": farm.soil_texture,
+                "land_type": farm.land_type,
+                "preferred_crops": farm.preferred_crops or [],
+                "excluded_crops": farm.excluded_crops or [],
+            }
+            location = {
+                "label": farm.union_name or farm.upazila_name or farm.district_name,
+                "upazila": farm.upazila_name,
+                "upazila_code": farm.upazila_code,
+                "latitude": farm.latitude,
+                "longitude": farm.longitude,
+            }
+
+        lat, lon = location["latitude"], location["longitude"]
+        season_fields = {
+            "rabi": "rabi",
+            "kharif-1": "kharif1",
+            "kharif-2": "kharif2",
+        }
+        if profile["season"] not in season_fields:
+            return json.dumps(
+                {
+                    "status": "UNSUPPORTED_SEASON",
+                    "season": profile["season"],
+                    "supported_seasons": list(season_fields),
+                    "message": "Correct the farm season before ranking crops.",
+                },
+                ensure_ascii=False,
+            )
+        if lat is None or lon is None:
+            return json.dumps(
+                {
+                    "status": "LOCATION_UNRESOLVED",
+                    "message": (
+                        "The farm has a location name but no coordinates. Ask the "
+                        "farmer to correct the location before recommending."
+                    ),
+                    "farm_inputs": {**profile, "location": location},
+                },
+                ensure_ascii=False,
+            )
+
+        rows = patterns_mod.patterns_for(
+            location["upazila_code"], season=profile["season"]
+        )
+        if not rows:
+            return json.dumps(
+                {
+                    "status": "INSUFFICIENT_ECONOMICS",
+                    "message": (
+                        "No recorded CZIS rotation economics are available for "
+                        "this upazila and season, so rough profit cannot be "
+                        "defensibly estimated."
+                    ),
+                    "farm_inputs": {**profile, "location": location},
+                },
+                ensure_ascii=False,
+            )
+
+        # Keep one standard/favourable catalog entry per locally recorded crop;
+        # tolerant variants must not appear as duplicate candidate names.
+        season_field = season_fields[profile["season"]]
+        local_names = {
+            str(row.get(season_field) or "").strip().lower() for row in rows
+        }
+        # Keep the recommendation and planning stages composable: every crop
+        # ranked here must have a deterministic dated plan downstream.
+        supported = set(season_planner_mod.CROP_PLANS)
+        catalog_rows = sorted(
+            czis_mod.list_crops(season=profile["season"]),
+            key=lambda item: (
+                str(item.get("variety_group") or "").lower()
+                != "favourable environment",
+                int(item["crop_id"]),
+            ),
+        )
+        catalog: list[dict] = []
+        seen_names: set[str] = set()
+        for item in catalog_rows:
+            key = str(item["name"]).strip().lower()
+            if key in local_names and key in supported and key not in seen_names:
+                catalog.append(item)
+                seen_names.add(key)
+
+        if len(catalog) < 3:
+            return json.dumps(
+                {
+                    "status": "INSUFFICIENT_GROUNDED_CANDIDATES",
+                    "message": (
+                        "Fewer than three crops have both local recorded economics "
+                        "and a supported agronomic profile for this season."
+                    ),
+                    "candidate_count": len(catalog),
+                    "farm_inputs": {**profile, "location": location},
+                },
+                ensure_ascii=False,
+            )
+
+        unavailable: list[str] = []
+        _emit("weather", "fetching 7-day Open-Meteo forecast for ranking")
+        try:
+            weather = await weather_mod.fetch_forecast(lat, lon, 7)
+        except weather_mod.WeatherError as exc:
+            unavailable.append("weather")
+            weather = {
+                "source": "Open-Meteo forecast API",
+                "status": "WEATHER_UNAVAILABLE",
+                "error": str(exc),
+                "summary": {},
+            }
+
+        _emit("czis", f"fetching point suitability for {len(catalog)} crops")
+        try:
+            land_suitability = await czis_suitability_mod.get_point_suitability(
+                lat, lon, [int(item["crop_id"]) for item in catalog]
+            )
+            if land_suitability.get("missing_crop_ids"):
+                unavailable.append("land_suitability_partial")
+        except czis_suitability_mod.CzisSuitabilityError as exc:
+            unavailable.append("land_suitability")
+            land_suitability = {
+                "latitude": lat,
+                "longitude": lon,
+                "crops": [],
+                "status": "CZIS_SUITABILITY_UNAVAILABLE",
+                "error": str(exc),
+                "evidence": {
+                    "source": "BARC CZIS GeoServer",
+                    "request_params": {
+                        "latitude": lat,
+                        "longitude": lon,
+                        "crop_ids": [int(item["crop_id"]) for item in catalog],
+                    },
+                },
+            }
+
+        candidates = crop_ranker_mod.rank_candidates(
+            profile=profile,
+            catalog=catalog,
+            suitability=land_suitability["crops"],
+            patterns=rows,
+            weather=weather,
+            limit=requested_limit,
+            today=datetime.now(ZoneInfo("Asia/Dhaka")).date(),
+        )
+        # Retrieval is part of the recommendation tool itself, rather than an
+        # optional second model decision.  The evidence grounds the narrated
+        # advice while the deterministic sources above retain authority over
+        # ranking arithmetic and farmer-facing quantities.
+        from .. import rag
+
+        crop_names = ", ".join(candidate["crop_name"] for candidate in candidates)
+        query = (
+            f"{profile['season']} crop suitability for "
+            f"{profile.get('soil_texture') or 'unknown'} soil, "
+            f"{profile.get('land_type') or 'unknown'} land, irrigation and "
+            f"sowing guidance for {crop_names}"
+        )
+        try:
+            async with AsyncSessionLocal() as session:
+                knowledge_hits = await rag.search_kb(
+                    session, query, k=settings.KB_TOP_K
+                )
+            knowledge_status = "ok" if knowledge_hits else "KB_EMPTY"
+        except Exception as exc:
+            log.warning("recommendation knowledge retrieval failed: %s", exc)
+            knowledge_hits = []
+            knowledge_status = "KB_UNAVAILABLE"
+
+        status = "degraded" if unavailable else "ok"
+        if len(candidates) < 3:
+            status = "INSUFFICIENT_GROUNDED_CANDIDATES"
+        return json.dumps(
+            {
+                "status": status,
+                "unavailable_sources": unavailable,
+                "farm_inputs": {**profile, "location": location},
+                "weather": weather,
+                "land_suitability": land_suitability,
+                "knowledge_status": knowledge_status,
+                "knowledge_evidence": knowledge_hits,
+                "knowledge_usage": (
+                    "Retrieved passages are supplied to the agent for "
+                    "shortlist explanation and agronomic cross-checking. "
+                    "Untrusted passage text never changes deterministic "
+                    "scores or quantities."
+                ),
+                "ranking_method": {
+                    "deterministic": True,
+                    "weights": {
+                        "land_suitability": 0.50,
+                        "water_fit": 0.20,
+                        "budget_fit": 0.20,
+                        "forecast_risk": 0.10,
+                    },
+                    "candidate_rule": (
+                        "seasonal CZIS catalog ∩ locally recorded CZIS rotations "
+                        "∩ supported agronomic profiles"
+                    ),
+                },
+                "candidates": candidates,
+                "sources": {
+                    "catalog": czis_mod.crops_source(),
+                    "economics": (
+                        "https://czis.cropzoning.gov.bd/croppingpattern/"
+                        f"{location['upazila_code']} — bundled snapshot; "
+                        f"{patterns_mod.source()}"
+                    ),
+                    "agronomic_profiles": crop_ranker_mod.TRAITS_SOURCE,
+                },
+            },
+            ensure_ascii=False,
+        )
+
+    return rank_crop_candidates
+
+
+# --------------------------------------------------------------------------- #
+# Selected-crop financial projection (live CZIS yield + explicit assumptions)
+# --------------------------------------------------------------------------- #
+def build_financial_tool(user):
+    """Return the deterministic, farm-bound financial projection tool."""
+
+    @tool
+    async def calculate_crop_financials(
+        crop_name: str,
+        variety_name: str = "",
+        sale_price_bdt_per_kg: Optional[float] = None,
+        expected_yield_t_ha: Optional[float] = None,
+        cost_overrides_bdt: Optional[dict[str, float]] = None,
+        cost_adjustment_percent: float = 0,
+    ) -> str:
+        """Calculate itemized cost, yield, revenue, profit, ROI and break-even.
+
+        Use for the selected crop and for financial what-if questions. Area and
+        budget come from the active farm. By default, yield is fetched from the
+        live CZIS variety table. A farmer-provided expected yield overrides CZIS.
+        Price and item costs use clearly labelled seeded demo assumptions unless
+        the farmer supplies overrides. Never present a seeded_demo_value as a
+        live market or supplier price.
+
+        ``cost_overrides_bdt`` values are ABSOLUTE total BDT for this farm; valid
+        keys are land_preparation, seed, fertilizer, irrigation,
+        labor_and_weeding, crop_protection, harvest, transport_and_other.
+        ``cost_adjustment_percent`` changes only non-overridden catalog costs.
+        """
+        _emit("finance", f"calculating financial projection for {crop_name}")
+        try:
+            canonical = season_planner_mod.canonical_crop_name(crop_name)
+        except ValueError:
+            return json.dumps(
+                {
+                    "status": "CROP_SEASON_MISMATCH",
+                    "message": (
+                        "Financial projection supports Wheat, Mustard, Potato, "
+                        "Maize and Boro dhan on the focused path."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+            if missing:
+                return json.dumps(
+                    {
+                        "status": "PROFILE_INCOMPLETE",
+                        "missing_required_fields": missing,
+                        "instruction": "Complete the six farm fields before finance.",
+                    },
+                    ensure_ascii=False,
+                )
+            farm_inputs = {
+                "area_decimal": farm.area_decimal,
+                "budget_bdt": farm.budget_bdt,
+                "season": farm.season,
+                "location": farm.union_name or farm.upazila_name,
+            }
+
+        catalog = sorted(
+            [
+                item
+                for item in czis_mod.list_crops(season=farm_inputs["season"])
+                if str(item["name"]).strip().lower() == canonical.lower()
+            ],
+            key=lambda item: (
+                str(item.get("variety_group") or "").lower()
+                != "favourable environment",
+                int(item["crop_id"]),
+            ),
+        )
+        if not catalog:
+            return json.dumps(
+                {
+                    "status": "CROP_SEASON_MISMATCH",
+                    "crop": canonical,
+                    "farm_season": farm_inputs["season"],
+                },
+                ensure_ascii=False,
+            )
+        crop_id = int(catalog[0]["crop_id"])
+
+        selected_variety = None
+        if expected_yield_t_ha is not None:
+            yield_low = yield_high = expected_yield_t_ha
+            yield_source = {
+                "source_type": "farmer_estimate",
+                "value_t_ha": expected_yield_t_ha,
+            }
+        else:
+            _emit("czis", f"fetching live yield references for crop {crop_id}")
+            try:
+                varieties_response = await czis_mod.get_varieties(crop_id)
+            except czis_mod.CzisError as exc:
+                return json.dumps(
+                    {
+                        "status": "YIELD_UNAVAILABLE",
+                        "error": str(exc),
+                        "instruction": (
+                            "Provide expected_yield_t_ha or retry CZIS; no yield "
+                            "or financial result was invented."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            varieties = varieties_response.get("varieties") or []
+            if variety_name.strip():
+                selected_variety = next(
+                    (
+                        row
+                        for row in varieties
+                        if str(row.get("name") or "").strip().casefold()
+                        == variety_name.strip().casefold()
+                    ),
+                    None,
+                )
+                if selected_variety is None:
+                    return json.dumps(
+                        {
+                            "status": "INVALID_VARIETY",
+                            "requested_variety": variety_name,
+                            "available_varieties": [
+                                row.get("name") for row in varieties
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
+            elif varieties:
+                selected_variety = {
+                    **varieties[0],
+                    "selection": "provisional_first_live_option",
+                }
+            if selected_variety is None:
+                return json.dumps(
+                    {
+                        "status": "YIELD_UNAVAILABLE",
+                        "error": "CZIS returned no usable variety yield",
+                    },
+                    ensure_ascii=False,
+                )
+            try:
+                yield_low, yield_high = finance_mod.parse_yield_range(
+                    selected_variety.get("yield_t_ha")
+                )
+            except ValueError as exc:
+                return json.dumps(
+                    {
+                        "status": "YIELD_UNAVAILABLE",
+                        "error": str(exc),
+                        "selected_variety": selected_variety,
+                    },
+                    ensure_ascii=False,
+                )
+            yield_source = {
+                **(varieties_response.get("evidence") or {}),
+                "source": "CZIS",
+                "variety": selected_variety.get("name"),
+                "raw_yield_t_ha": selected_variety.get("yield_t_ha"),
+            }
+
+        try:
+            projection = finance_mod.build_financial_projection(
+                crop_name=canonical,
+                area_decimal=float(farm_inputs["area_decimal"]),
+                budget_bdt=farm_inputs["budget_bdt"],
+                yield_low_t_ha=yield_low,
+                yield_high_t_ha=yield_high,
+                sale_price_bdt_per_kg=sale_price_bdt_per_kg,
+                cost_overrides_bdt=cost_overrides_bdt,
+                cost_adjustment_percent=cost_adjustment_percent,
+                yield_source=yield_source,
+            )
+        except (ValueError, TypeError) as exc:
+            return json.dumps(
+                {"status": "INVALID_FINANCIAL_INPUT", "message": str(exc)},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {
+                "status": "ok",
+                "selected_crop": {"crop_id": crop_id, "name": canonical},
+                "selected_variety": selected_variety,
+                "farm_inputs": farm_inputs,
+                "financial_projection": projection,
+                "grounding_rule": (
+                    "Yield is CZIS or farmer-provided; price/cost provenance is "
+                    "shown per value; all arithmetic is deterministic Decimal."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return calculate_crop_financials
+
+
+# --------------------------------------------------------------------------- #
+# Complete selected-crop season plan (live inputs + RAG + deterministic dates)
+# --------------------------------------------------------------------------- #
+def build_season_plan_tool(user):
+    """Return the PDF Tier-0 dated season-plan tool for this farmer."""
+
+    @tool
+    async def generate_season_plan(
+        crop_name: str,
+        planting_date: str = "",
+        variety_id: Optional[int] = None,
+        sale_price_bdt_per_kg: Optional[float] = None,
+        expected_yield_t_ha: Optional[float] = None,
+        cost_overrides_bdt: Optional[dict[str, float]] = None,
+        cost_adjustment_percent: float = 0,
+    ) -> str:
+        """Generate a grounded, DATED land-preparation-to-harvest calendar.
+
+        Use only after the farmer has selected a crop. Supported focused-path
+        crops: Wheat, Mustard, Potato, Maize and Boro dhan. The tool combines a
+        Rajshahi BAMIS crop-weather calendar, FRG 2024 fertilizer timing, live
+        CZIS farm-scaled fertilizer products, live Open-Meteo weather and RAG
+        evidence. It returns sowing, fertilizer, irrigation, weed/pest and
+        harvest dates; do not recompute or invent dates/quantities in the reply.
+
+        Args:
+            crop_name: Selected crop name.
+            planting_date: Optional farmer-selected ISO date (YYYY-MM-DD).
+                Empty chooses the next BAMIS-calendar-derived sowing window.
+            variety_id: Optional CZIS variety id. Empty selects the first live
+                variety only as an explicit provisional reference.
+            sale_price_bdt_per_kg: Optional farmer-estimated farmgate price.
+            expected_yield_t_ha: Optional farmer yield estimate overriding CZIS.
+            cost_overrides_bdt: Optional absolute item costs for this farm.
+            cost_adjustment_percent: What-if adjustment for non-overridden costs.
+        """
+        _emit("planning", f"building dated season plan for {crop_name}")
+        today = datetime.now(ZoneInfo("Asia/Dhaka")).date()
+        try:
+            canonical = season_planner_mod.canonical_crop_name(crop_name)
+        except ValueError as exc:
+            return json.dumps(
+                {"status": "UNSUPPORTED_CROP", "message": str(exc)},
+                ensure_ascii=False,
+            )
+
+        requested_date: Optional[date] = None
+        if planting_date.strip():
+            try:
+                requested_date = date.fromisoformat(planting_date.strip())
+            except ValueError:
+                return json.dumps(
+                    {
+                        "status": "INVALID_PLANTING_DATE",
+                        "message": "planting_date must be YYYY-MM-DD",
+                    },
+                    ensure_ascii=False,
+                )
+            if requested_date < today:
+                return json.dumps(
+                    {
+                        "status": "PAST_PLANTING_DATE",
+                        "requested_planting_date": requested_date.isoformat(),
+                        "today": today.isoformat(),
+                        "message": (
+                            "A new season plan cannot start in the past. For an "
+                            "existing crop, collect its current growth stage first."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+            if missing:
+                return json.dumps(
+                    {
+                        "status": "PROFILE_INCOMPLETE",
+                        "missing_required_fields": missing,
+                        "instruction": "Complete the six farm fields before planning.",
+                    },
+                    ensure_ascii=False,
+                )
+            farm_inputs = {
+                "area_decimal": farm.area_decimal,
+                "soil_texture": farm.soil_texture,
+                "land_type": farm.land_type,
+                "irrigation_available": farm.irrigation_available,
+                "water_source": farm.water_source,
+                "budget_bdt": farm.budget_bdt,
+                "season": farm.season,
+                "location": {
+                    "label": farm.union_name or farm.upazila_name,
+                    "division": farm.division_name,
+                    "district": farm.district_name,
+                    "upazila": farm.upazila_name,
+                    "latitude": farm.latitude,
+                    "longitude": farm.longitude,
+                },
+            }
+
+        if str(farm_inputs["location"]["division"] or "").strip().casefold() != "rajshahi":
+            return json.dumps(
+                {
+                    "status": "UNSUPPORTED_CALENDAR_REGION",
+                    "calendar_region": "Rajshahi",
+                    "farm_inputs": farm_inputs,
+                    "message": (
+                        "The focused deterministic calendars are sourced for "
+                        "Rajshahi division and are not applied to another region."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+        if (
+            farm_inputs["irrigation_available"] is False
+            and crop_ranker_mod.CROP_TRAITS[canonical.lower()]["water"] == "high"
+        ):
+            return json.dumps(
+                {
+                    "status": "IRRIGATION_REQUIRED",
+                    "crop": canonical,
+                    "farm_inputs": farm_inputs,
+                    "message": (
+                        f"{canonical} has high water demand in the cited BAMIS "
+                        "profile, but this farm has no assured irrigation."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+
+        lat = farm_inputs["location"]["latitude"]
+        lon = farm_inputs["location"]["longitude"]
+        if lat is None or lon is None:
+            return json.dumps(
+                {"status": "LOCATION_UNRESOLVED", "farm_inputs": farm_inputs},
+                ensure_ascii=False,
+            )
+
+        catalog = sorted(
+            [
+                item
+                for item in czis_mod.list_crops(season=farm_inputs["season"])
+                if str(item["name"]).strip().lower() == canonical.lower()
+            ],
+            key=lambda item: (
+                str(item.get("variety_group") or "").lower()
+                != "favourable environment",
+                int(item["crop_id"]),
+            ),
+        )
+        if not catalog:
+            return json.dumps(
+                {
+                    "status": "CROP_SEASON_MISMATCH",
+                    "crop": canonical,
+                    "farm_season": farm_inputs["season"],
+                },
+                ensure_ascii=False,
+            )
+        selected_crop = {"crop_id": int(catalog[0]["crop_id"]), "name": canonical}
+
+        unavailable: list[str] = []
+        _emit("weather", "fetching 16-day forecast for schedule adjustments")
+        try:
+            weather = await weather_mod.fetch_forecast(lat, lon, 16)
+        except weather_mod.WeatherError as exc:
+            unavailable.append("weather")
+            weather = {
+                "source": "Open-Meteo forecast API",
+                "status": "WEATHER_UNAVAILABLE",
+                "error": str(exc),
+                "days": [],
+                "summary": {},
+            }
+
+        _emit("kb", f"retrieving FRG support for {canonical}")
+        try:
+            from .. import rag
+
+            async with AsyncSessionLocal() as session:
+                retrieved_hits = await rag.search_kb(
+                    session,
+                    f"{canonical} fertilizer application timing irrigation season plan",
+                    k=3,
+                    crop=canonical.lower(),
+                )
+            crop_terms = {
+                canonical.casefold(),
+                *season_planner_mod.CROP_PLANS[canonical.lower()]["aliases"],
+            }
+            knowledge_hits = [
+                hit
+                for hit in retrieved_hits
+                if str(hit.get("crop") or "").casefold() == canonical.casefold()
+                or any(
+                    term.casefold() in str(hit.get("content") or "").casefold()
+                    for term in crop_terms
+                )
+            ]
+        except Exception as exc:
+            log.warning("season-plan KB retrieval failed: %s", exc)
+            knowledge_hits = []
+        if not knowledge_hits:
+            unavailable.append("knowledge_base")
+
+        selected_variety: Optional[dict] = None
+        fertilizer: dict = {
+            "status": "CZIS_FERTILIZER_UNAVAILABLE",
+            "products": [],
+        }
+        _emit("czis", f"fetching varieties and fertilizer for crop {selected_crop['crop_id']}")
+        try:
+            context = await czis_mod.get_crop_context(
+                selected_crop["crop_id"], lat, lon
+            )
+            choices = context.get("varieties") or []
+            if variety_id is not None:
+                selected_variety = next(
+                    (
+                        item
+                        for item in choices
+                        if int(item["variety_id"]) == int(variety_id)
+                    ),
+                    None,
+                )
+                if selected_variety is None:
+                    return json.dumps(
+                        {
+                            "status": "INVALID_VARIETY",
+                            "requested_variety_id": variety_id,
+                            "available_varieties": choices,
+                        },
+                        ensure_ascii=False,
+                    )
+            elif choices:
+                selected_variety = {**choices[0], "selection": "provisional_first_live_option"}
+            if selected_variety is None:
+                raise czis_mod.CzisError("no live variety available at farm point")
+            fertilizer = await czis_mod.get_fertilizer_recommendation(
+                selected_crop["crop_id"],
+                lat,
+                lon,
+                int(selected_variety["variety_id"]),
+                float(farm_inputs["area_decimal"]),
+            )
+        except czis_mod.CzisError as exc:
+            unavailable.append("fertilizer")
+            fertilizer = {
+                "status": "CZIS_FERTILIZER_UNAVAILABLE",
+                "error": str(exc),
+                "products": [],
+            }
+
+        financial_projection = None
+        financial_status: dict = {"status": "YIELD_UNAVAILABLE"}
+        yield_low = yield_high = None
+        if expected_yield_t_ha is not None:
+            yield_low = yield_high = expected_yield_t_ha
+            yield_source = {
+                "source_type": "farmer_estimate",
+                "value_t_ha": expected_yield_t_ha,
+            }
+        elif selected_variety is not None:
+            try:
+                variety_table = await czis_mod.get_varieties(selected_crop["crop_id"])
+                selected_name = str(selected_variety.get("name") or "").strip().casefold()
+                yield_row = next(
+                    (
+                        row
+                        for row in variety_table.get("varieties") or []
+                        if str(row.get("name") or "").strip().casefold()
+                        == selected_name
+                    ),
+                    None,
+                )
+                if yield_row is None:
+                    raise ValueError(
+                        "selected CZIS point variety has no matching published yield row"
+                    )
+                yield_low, yield_high = finance_mod.parse_yield_range(
+                    yield_row.get("yield_t_ha")
+                )
+                yield_source = {
+                    **(variety_table.get("evidence") or {}),
+                    "source": "CZIS",
+                    "variety": yield_row.get("name"),
+                    "raw_yield_t_ha": yield_row.get("yield_t_ha"),
+                }
+            except (czis_mod.CzisError, ValueError) as exc:
+                unavailable.append("financial_yield")
+                financial_status = {
+                    "status": "YIELD_UNAVAILABLE",
+                    "error": str(exc),
+                    "instruction": "No financial yield or projection was invented.",
+                }
+        else:
+            unavailable.append("financial_yield")
+
+        if yield_low is not None and yield_high is not None:
+            try:
+                financial_projection = finance_mod.build_financial_projection(
+                    crop_name=canonical,
+                    area_decimal=float(farm_inputs["area_decimal"]),
+                    budget_bdt=farm_inputs["budget_bdt"],
+                    yield_low_t_ha=yield_low,
+                    yield_high_t_ha=yield_high,
+                    sale_price_bdt_per_kg=sale_price_bdt_per_kg,
+                    cost_overrides_bdt=cost_overrides_bdt,
+                    cost_adjustment_percent=cost_adjustment_percent,
+                    yield_source=yield_source,
+                )
+                financial_status = {"status": "ok"}
+            except (ValueError, TypeError) as exc:
+                unavailable.append("financial_projection")
+                financial_status = {
+                    "status": "INVALID_FINANCIAL_INPUT",
+                    "error": str(exc),
+                }
+
+        calendar = season_planner_mod.build_season_calendar(
+            crop_name=canonical,
+            today=today,
+            planting_date=requested_date,
+            fertilizer_products=fertilizer.get("products") or [],
+            weather=weather,
+            irrigation_available=farm_inputs["irrigation_available"],
+            soil_texture=farm_inputs["soil_texture"] or "",
+            land_type=farm_inputs["land_type"] or "",
+        )
+        if any(
+            "does not cover planting date" in warning.casefold()
+            for warning in calendar["warnings"]
+        ) and "weather" not in unavailable:
+            unavailable.append("weather_forecast_pending")
+        knowledge_claims = {
+            "fertilizer_timing": {
+                "deterministic_source": calendar["sources"]["fertilizer_timing"],
+                "retrieved_support": [
+                    {
+                        "source": hit["source"],
+                        "page_start": hit["page_start"],
+                        "page_end": hit["page_end"],
+                    }
+                    for hit in knowledge_hits
+                ],
+                "status": "supported" if knowledge_hits else "omitted_from_rag_explanation",
+            },
+            "dated_crop_stages": {
+                "deterministic_source": calendar["sources"]["crop_calendar"],
+                "note": (
+                    "Direct BAMIS evidence controls dates; retrieved FRG text "
+                    "does not override the calendar."
+                ),
+            },
+        }
+        return json.dumps(
+            {
+                "status": "degraded" if unavailable else "ok",
+                "unavailable_sources": unavailable,
+                "selected_crop": selected_crop,
+                "selected_variety": selected_variety,
+                "farm_inputs": farm_inputs,
+                "weather": weather,
+                "fertilizer_recommendation": fertilizer,
+                "financial_status": financial_status,
+                "financial_projection": financial_projection,
+                "knowledge_evidence": knowledge_hits,
+                "knowledge_claims": knowledge_claims,
+                "calendar": calendar,
+                "grounding_rule": (
+                    "Calendar stages/weather risks come from BAMIS; fertilizer "
+                    "timing from FRG 2024; displayed fertilizer amounts only from "
+                    "the live CZIS farm-scaled response. Financial yield is CZIS "
+                    "or farmer-provided and every price/cost states its provenance."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return generate_season_plan
 
 
 def build_czis_tools(user):
