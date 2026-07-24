@@ -49,6 +49,8 @@ const TESTIMONIALS: Testimonial[] = [
     story:
       "I had 2 bigha of sandy land and no idea what to plant. It suggested wheat over potato because my canal water was limited — I followed the plan and cleared ৳15,800 profit this Rabi.",
     stars: 5,
+    photo:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Farmer_of_Rajshahi%2C_Bangladesh.JPG/250px-Farmer_of_Rajshahi%2C_Bangladesh.JPG",
   },
   {
     name: "Rehana Begum",
@@ -56,6 +58,8 @@ const TESTIMONIALS: Testimonial[] = [
     story:
       "It warned me heavy rain was coming and told me to delay the urea by four days. That one message saved my fertilizer from washing away.",
     stars: 5,
+    photo:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/Smiling_farmer_in_Bangladesh.jpg/250px-Smiling_farmer_in_Bangladesh.jpg",
   },
   {
     name: "Jahangir Alam",
@@ -63,6 +67,35 @@ const TESTIMONIALS: Testimonial[] = [
     story:
       "A photo of my tomato leaf and it told me it was early blight and exactly which spray to use. My uncle in the next village now uses it too.",
     stars: 4,
+    photo:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/A_Village_Farmer_in_Bangladesh.jpg/250px-A_Village_Farmer_in_Bangladesh.jpg",
+  },
+  {
+    name: "Mizanur Rahman",
+    where: "Ullapara, Sirajganj",
+    story:
+      "At harvest it showed my cost, yield and profit in one screen — ৳27,000 revenue for ৳11,000 cost. I finally knew my numbers before I sold, not after.",
+    stars: 5,
+    photo:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Farmer_bundling_harvested_rice_at_sunset_in_Bangladesh.jpg/250px-Farmer_bundling_harvested_rice_at_sunset_in_Bangladesh.jpg",
+  },
+  {
+    name: "Shahida Khatun",
+    where: "Shibganj, Chapainawabganj",
+    story:
+      "I just typed in Bangla what land I have and it asked only what it needed. No forms, no jargon — it felt like talking to a real krishi officer.",
+    stars: 5,
+    photo:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Bangladeshi_farmer_and_the_magical_morning.jpg/250px-Bangladeshi_farmer_and_the_magical_morning.jpg",
+  },
+  {
+    name: "Nurul Islam",
+    where: "Fulbari, Dinajpur",
+    story:
+      "It gave me a dated calendar — sowing, urea timing, irrigation, harvest — and every recommendation said why. For the first time I planned the whole season on paper.",
+    stars: 4,
+    photo:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/The_Bangladeshi_Farmer.jpg/250px-The_Bangladeshi_Farmer.jpg",
   },
 ];
 
