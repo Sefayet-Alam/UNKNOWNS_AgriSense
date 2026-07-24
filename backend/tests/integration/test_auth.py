@@ -27,12 +27,16 @@ async def test_register_returns_profile_with_phone_and_address(client):
     assert "id" in body
 
 
-async def test_register_requires_union(client):
+async def test_register_without_union_ok(client):
+    # Union is optional — some upazilas have no unions listed.
     payload = register_payload("01712345671")
     del payload["union_name"]
     del payload["union_code"]
     resp = await client.post("/api/auth/register", json=payload)
-    assert resp.status_code == 422  # schema-required
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["address"]["union_name"] == ""
+    assert body["address"]["union_code"] == ""
 
 
 async def test_register_rejects_union_not_in_upazila(client):

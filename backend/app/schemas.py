@@ -41,11 +41,12 @@ class RegisterRequest(BaseModel):
     district_code: str = Field(min_length=1, max_length=8)
     upazila_name: str = Field(min_length=1, max_length=80)
     upazila_code: str = Field(min_length=1, max_length=12)
-    # Union is REQUIRED — it pins the farm to a coordinate (union centroid)
-    # so weather is always fetched with explicit lat/lon, never a flaky
-    # name-geocode. Codes come from the bundled CZIS/BBS gazetteer.
-    union_name: str = Field(min_length=1, max_length=80)
-    union_code: str = Field(min_length=1, max_length=12)
+    # Union is OPTIONAL — some upazilas have no union rows in the gazetteer
+    # (city corporations etc.). When provided it pins the farm to the union
+    # centroid; when absent, coordinates fall back to the upazila centroid.
+    # If a code IS sent it must be a real union of the chosen upazila.
+    union_name: str = Field(default="", max_length=80)
+    union_code: str = Field(default="", max_length=12)
 
     @field_validator("phone")
     @classmethod

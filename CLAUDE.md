@@ -60,8 +60,9 @@ that runs end-to-end in a 4-minute demo.
 - **Auth**: **phone number is the identity** (unique login credential; no email —
   rural farmers have phones). `username` is a non-unique display name. Registration
   captures the farm **address with CZIS/BBS geocodes** down to the **union**
-  (REQUIRED; validated server-side against the bundled gazetteer) → the union
-  centroid pins every farm to exact lat/lon. JWT register/login/me +
+  (OPTIONAL — some upazilas list none; a non-empty union_code is validated
+  server-side against the bundled gazetteer) → union centroid pins the farm to
+  exact lat/lon, else the upazila centroid does. JWT register/login/me +
   refresh with rotation, jti blacklisting, reuse detection, logout blacklist.
   ([backend/app/routers/auth.py](backend/app/routers/auth.py), [backend/app/security.py](backend/app/security.py), [backend/app/schemas.py](backend/app/schemas.py))
 - **Chat**: SSE streaming, user-scoped sessions/messages, tool-trace display.

@@ -32,11 +32,9 @@ export default function RegisterPage() {
 
   const mark = (k: string) => setTouched((t) => ({ ...t, [k]: true }));
 
+  // Union stays optional — some upazilas have no unions listed.
   const addressComplete = Boolean(
-    address.division_code &&
-      address.district_code &&
-      address.upazila_code &&
-      address.union_code,
+    address.division_code && address.district_code && address.upazila_code,
   );
 
   const errors = {
@@ -55,7 +53,7 @@ export default function RegisterPage() {
         : undefined,
     address:
       touched.address && !addressComplete
-        ? "Select your division, district, upazila and union."
+        ? "Select your division, district and upazila."
         : undefined,
   };
 

@@ -20,12 +20,13 @@ Req:
   "division_name": str, "division_code": str,     // e.g. "Rajshahi", "50"
   "district_name": str, "district_code": str,     // e.g. "Rajshahi", "5081"
   "upazila_name":  str, "upazila_code":  str,      // e.g. "Tanore", "508194"
-  "union_name":    str, "union_code":    str }     // e.g. "Badhair", "50819427" (REQUIRED)
+  "union_name":    str, "union_code":    str }     // OPTIONAL, e.g. "Badhair", "50819427"
 ```
 - 400 if `password1 != password2`, weak password, invalid phone, phone already
-  registered, or `union_code` is not a real union of `upazila_code` (validated
-  against the bundled CZIS/BBS gazetteer). Union is required because its
-  centroid pins the farm to exact lat/lon for weather grounding.
+  registered, or a NON-EMPTY `union_code` is not a real union of `upazila_code`
+  (validated against the bundled CZIS/BBS gazetteer). Union is optional (some
+  upazilas list none); when given, its centroid pins the farm to exact lat/lon
+  for weather grounding — otherwise the upazila centroid is used.
 Res 201: `UserOut` (see Shapes).
 
 ### POST /api/auth/login

@@ -6,8 +6,9 @@
 // rows are too heavy to bundle client-side. Every selection carries the real
 // CZIS/BBS code (e.g. union 50819427) that the agent later feeds straight
 // into CZIS + weather tools. Codes are NEVER free-typed — this is the guard
-// against the "HTTP 200 + null" bad-geocode trap. Union is REQUIRED: its
-// centroid pins the farm to exact lat/lon for weather.
+// against the "HTTP 200 + null" bad-geocode trap. Union is OPTIONAL (some
+// upazilas list none); when picked, its centroid pins the farm to exact
+// lat/lon for weather — otherwise the upazila centroid is used.
 
 import { useEffect, useState } from "react";
 import { Select, type SelectOption } from "@/components/ui/Select";
@@ -156,18 +157,20 @@ export function AddressPicker({ value, onChange, onBlur, error }: Props) {
         options={toOpts(district?.upazilas ?? [])}
       />
       <Select
-        label="Union"
+        label="Union (optional)"
         placeholder={
           !value.upazila_code
             ? "Select upazila first"
             : unionsLoading
               ? "Loading unions…"
-              : "Select union"
+              : unions.length === 0
+                ? "No unions listed for this upazila"
+                : "Select union"
         }
         value={value.union_code}
         onChange={onUnion}
         onBlur={onBlur}
-        disabled={!value.upazila_code || unionsLoading}
+        disabled={!value.upazila_code || unionsLoading || unions.length === 0}
         options={toOpts(unions)}
       />
       {error && <p className="text-xs text-status-error">{error}</p>}

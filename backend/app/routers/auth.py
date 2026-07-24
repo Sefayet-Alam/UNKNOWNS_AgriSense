@@ -58,9 +58,11 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
             status_code=400, detail="Password must be at least 8 characters."
         )
 
-    # Union must be a real union under the chosen upazila (bundled CZIS/BBS
-    # gazetteer) — this is what guarantees the farm resolves to coordinates.
-    if not geo.union_valid(payload.union_code, payload.upazila_code):
+    # Union is optional (some upazilas have none listed) — but when provided
+    # it must be a real union under the chosen upazila (bundled gazetteer).
+    if payload.union_code and not geo.union_valid(
+        payload.union_code, payload.upazila_code
+    ):
         raise HTTPException(
             status_code=400,
             detail="Select a valid union for the chosen upazila.",
