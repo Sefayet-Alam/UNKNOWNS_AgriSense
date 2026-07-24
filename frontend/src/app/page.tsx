@@ -252,7 +252,7 @@ export default function HomePage() {
           </Reveal>
           <Reveal delay={320}>
             <div className="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 font-mono text-xs text-text-muted">
-              {["Real weather", "84 crops ranked", "Grounded in FRG 2024", "No card needed"].map(
+              {["Real 16-day forecasts", "7,761 unions mapped", "Grounded in FRG 2024", "No card needed"].map(
                 (s) => (
                   <span key={s} className="flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
