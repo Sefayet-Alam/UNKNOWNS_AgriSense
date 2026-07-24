@@ -77,3 +77,34 @@ def test_tool_rounds_zero_for_plain_conversation():
         )
         == 0
     )
+
+
+# --------------------------------------------------------------------------- #
+# Reply-language STATE (state.reply_language -> per-node directive)
+# --------------------------------------------------------------------------- #
+def test_language_directive_from_state_value():
+    from app.agent.messages import language_directive
+
+    bn = language_directive("bengali")
+    en = language_directive("english")
+    assert "BENGALI" in bn.content and "বাংলা" in bn.content
+    assert "ENGLISH" in en.content
+    # Unknown/empty state falls back to english, never crashes.
+    assert "ENGLISH" in language_directive("").content
+    assert "ENGLISH" in language_directive("klingon").content
+
+
+@pytest.mark.parametrize(
+    "text,lang",
+    [
+        ("আবহাওয়া কেমন?", "bengali"),
+        ("bhai amar jomi ase", "bengali"),
+        ("What should I plant?", "english"),
+    ],
+)
+def test_state_language_detection_matches_last_message(text, lang):
+    # classify_node stores detect_reply_language(last message) into
+    # state.reply_language — this pins the detector the state relies on.
+    from app.agent.messages import detect_reply_language
+
+    assert detect_reply_language(text) == lang

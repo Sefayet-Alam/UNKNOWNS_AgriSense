@@ -36,6 +36,7 @@ from langgraph.prebuilt import ToolNode
 
 from ..config import settings
 from .llm import build_chat_model
+from .messages import detect_reply_language, language_directive
 from .state import OrchestratorState
 
 MAX_TURNS = 8  # tool rounds per REQUEST turn (history rounds excluded)
@@ -62,8 +63,14 @@ NODE_DIRECTIVES = {
         "profile facts (get_farm_profile / update_farm_profile). Save every "
         "explicitly stated fact immediately, relay warnings, then ask ONE "
         "or two targeted questions for the most important missing field. "
-        "Do not give full crop advice here — once the profile is complete, "
-        "summarize and confirm it."
+        "Soil usually auto-fills from the upazila survey (soil_source="
+        "survey_default_confirm_with_farmer) — present it as an assumption "
+        "to confirm; only when soil_type is missing ask the farmer for it "
+        "(get_soil_context gives the survey breakdown). If the farmer is "
+        "talking about a different/new field, resolve WHICH farm first "
+        "(list_farms / select_farm / create_farm). Do not give full crop "
+        "advice here — once all six mandatory fields are present, "
+        "summarize and confirm the profile."
     ),
     "advisor": (
         "CURRENT NODE: GENERAL ADVISOR. Give practical agronomic advice "
@@ -77,7 +84,14 @@ NODE_DIRECTIVES = {
         "(yield/duration) -> czis_crop_context (gets the variety_id at the "
         "farm) -> czis_fertilizer_recommendation (server-computed doses). "
         "Never invent variety yields or fertilizer amounts; if CZIS is "
-        "unavailable, say so and use the knowledge base."
+        "unavailable, say so and use the knowledge base. HARD GATE: check "
+        "get_farm_profile first — while ANY of the six mandatory fields "
+        "(location, farm_size, soil_type, water_availability, budget, "
+        "season) is missing, do NOT give crop recommendations or plans; "
+        "ask for at most TWO missing fields per turn (never a numbered "
+        "list of 3+ questions). Soil usually auto-fills from the survey "
+        "(soil_source=survey_default_confirm_with_farmer) — mention it as "
+        "an assumption to confirm rather than asking for it."
     ),
 }
 
@@ -184,14 +198,18 @@ def build_graph(tool_groups: dict[str, list]):
     async def classify_node(state: OrchestratorState):
         text = _last_human_text(state["messages"])
         intent = await _classify(text)
+        # Language STATE: refreshed on every user message (deterministic).
+        reply_language = detect_reply_language(text)
         farm = state.get("farm_context") or {}
         log.info(
-            "classify: intent=%s (missing_fields=%s) message=%r",
+            "classify: intent=%s reply_language=%s (missing_fields=%s) "
+            "message=%r",
             intent,
+            reply_language,
             farm.get("missing_required_fields"),
             text[:120],
         )
-        return {"intent": intent}
+        return {"intent": intent, "reply_language": reply_language}
 
     def make_agent_node(name: str):
         async def agent_node(state: OrchestratorState):
@@ -215,7 +233,16 @@ def build_graph(tool_groups: dict[str, list]):
                 len(messages),
             )
             directive = SystemMessage(content=NODE_DIRECTIVES[name])
-            response = await active.ainvoke([directive] + list(messages))
+            # Reply language comes from graph STATE (set by classify each
+            # user message); fall back to detecting from the last human
+            # message when the graph is driven without a classify pass.
+            lang = state.get("reply_language") or detect_reply_language(
+                _last_human_text(messages)
+            )
+            lang_directive = language_directive(lang)
+            response = await active.ainvoke(
+                [directive, lang_directive] + list(messages)
+            )
             return {"messages": [response], "active_agent": name}
 
         agent_node.__name__ = f"{name}_node"

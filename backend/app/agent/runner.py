@@ -24,7 +24,6 @@ from .messages import (
     build_system_messages,
     fill_trace_result,
     history_to_lc_messages,
-    reply_language_directive,
     text_of,
     tool_call_traces,
 )
@@ -32,6 +31,7 @@ from .tools import (
     build_czis_tools,
     build_farm_tools,
     build_memory_tools,
+    build_soil_tool,
     build_static_tools,
     build_weather_tool,
 )
@@ -59,10 +59,20 @@ SYSTEM_PROMPT = (
     "soil, water, budget, season, previous crop, preferences), immediately "
     "save it with update_farm_profile. Save only what they explicitly said "
     "— never guess or infer values.\n"
-    "- Before crop planning these are required: location, farm size, water "
-    "availability, budget, season (see missing_required_fields). Ask for "
-    "missing ones with ONE or at most two targeted questions per turn — do "
-    "not interrogate with a long list.\n"
+    "- SIX fields are MANDATORY before any crop recommendation or plan: "
+    "location, farm_size, soil_type, water_availability, budget, season "
+    "(see missing_required_fields). You MUST NOT recommend crops, "
+    "varieties, fertilizer plans or profits while ANY of them is missing — "
+    "collect them first. Ask for missing ones with ONE or at most two "
+    "targeted questions per turn — do not interrogate with a long list.\n"
+    "- SOIL: the profile auto-fills soil from the national survey for the "
+    "farm's upazila (soil_source=survey_default_confirm_with_farmer — an "
+    "upazila-level DEFAULT). When you see that source, state the assumed "
+    "soil and ask the farmer to confirm it; their statement overrides it. "
+    "Use get_soil_context for the full survey breakdown (land type, "
+    "drainage, pH). If soil_type is in missing_required_fields (no survey "
+    "for that upazila), ask the farmer for their soil (sandy/loam/clay) "
+    "and save it — never guess.\n"
     "- Land units: bigha and kani vary by region. If the farmer gives such "
     "a unit, ask how many shotok it is locally when practical; if they "
     "confirm, pass local_unit_factor_decimal. If a conversion was ASSUMED "
@@ -71,9 +81,18 @@ SYSTEM_PROMPT = (
     "area/budget) and confirm with the farmer before planning.\n"
     "- Once all required fields are present, summarize the profile in the "
     "farmer's language and confirm it is correct before recommending.\n"
-    "- The registered address only prefills the farm location — if the "
-    "farmer says the land is elsewhere, update it (list_farms / create_farm "
-    "/ select_farm handle multiple farms; ask which farm when ambiguous).\n"
+    "\n"
+    "MULTIPLE FARMS: one farmer can own several farms; every profile fact, "
+    "plan and recommendation applies to the ACTIVE farm only.\n"
+    "- The registered address only prefills the FIRST farm's location.\n"
+    "- If the farmer mentions land in a different place or another field "
+    "('আমার নওগাঁর জমি', 'my other plot'), call list_farms: if it matches an "
+    "existing farm, select_farm it; otherwise create_farm — never overwrite "
+    "the current farm's location with a different field's.\n"
+    "- When it is unclear WHICH farm the farmer means, ask them to choose "
+    "(name the farms from list_farms) before saving facts or advising.\n"
+    "- A NEWLY created farm starts empty: collect ALL six mandatory fields "
+    "for it (soil via get_soil_context) before giving any guidance on it.\n"
     "\n"
     "DATE & TIME: the CURRENT Bangladesh date-time is injected into the "
     "system context every turn — that value is authoritative. Your training "
@@ -156,13 +175,15 @@ async def stream_agent_turn(
         static_tools = build_static_tools()
         weather_tool = build_weather_tool(user)
         farm_tools = build_farm_tools(user)
+        soil_tool = build_soil_tool(user)
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         tool_groups = {
-            "intake": static_tools + farm_tools,
+            "intake": static_tools + farm_tools + [soil_tool],
             "advisor": static_tools
             + [weather_tool]
             + farm_tools
+            + [soil_tool]
             + czis_tools
             + memory_tools,
         }
@@ -204,16 +225,18 @@ async def stream_agent_turn(
             SYSTEM_PROMPT, session.summary, recalled
         )
         lc_messages.extend(history_to_lc_messages(history))
-        # Deterministic per-turn language directive (last user message wins).
-        lc_messages.append(reply_language_directive(message))
 
         # ---- run the graph ---------------------------------------------- #
+        # Reply language lives in graph STATE: the classify node re-detects
+        # it from this user message and every specialist node injects the
+        # directive from state (see state.py / graph.py).
         graph = build_graph(tool_groups)
         inputs = {
             "messages": lc_messages,
             "intent": "",
             "active_agent": "",
             "farm_context": farm_context,
+            "reply_language": "",
         }
         log.info(
             "graph invoke: session=%s models=[%s|lite=%s] history_msgs=%d "
@@ -253,10 +276,13 @@ async def stream_agent_turn(
                     continue
                 # Routing decision from the classify node -> progress frame.
                 if _node == "classify" and payload.get("intent"):
+                    detail = f"specialist: {payload['intent']}"
+                    if payload.get("reply_language"):
+                        detail += f" · reply: {payload['reply_language']}"
                     yield {
                         "type": "progress",
                         "stage": "routing",
-                        "detail": f"specialist: {payload['intent']}",
+                        "detail": detail,
                     }
                     continue
                 for msg in payload.get("messages", []) or []:

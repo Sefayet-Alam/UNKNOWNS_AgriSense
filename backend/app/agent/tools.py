@@ -13,6 +13,7 @@ from langchain_core.tools import tool
 from sqlalchemy import select
 
 from .. import geo as geo_mod
+from .. import soil as soil_mod
 from ..adapters import czis as czis_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
@@ -228,7 +229,14 @@ def build_weather_tool(user):
 # --------------------------------------------------------------------------- #
 # Farm profile tools (factory — all queries scoped to the authenticated user)
 # --------------------------------------------------------------------------- #
-REQUIRED_SLOTS = ("location", "farm_size", "water_availability", "budget", "season")
+REQUIRED_SLOTS = (
+    "location",
+    "farm_size",
+    "soil_type",
+    "water_availability",
+    "budget",
+    "season",
+)
 
 _SEASON_ALIASES = {
     "rabi": "rabi",
@@ -259,6 +267,10 @@ def _missing_slots(farm: Farm) -> list[str]:
         missing.append("location")
     if farm.area_decimal is None:
         missing.append("farm_size")
+    # Soil is MANDATORY before any crop recommendation: filled either by the
+    # get_soil_context tool (upazila survey default) or by asking the farmer.
+    if not farm.soil_texture:
+        missing.append("soil_type")
     if farm.irrigation_available is None:
         missing.append("water_availability")
     if farm.budget_bdt is None:
@@ -292,6 +304,11 @@ def _farm_payload(farm: Farm, warnings: Optional[list[str]] = None) -> dict:
         },
         "land_type": farm.land_type,
         "soil_texture": farm.soil_texture,
+        "soil_source": (
+            "survey_default_confirm_with_farmer"
+            if (farm.soil_test or {}).get("source") == _SOIL_SURVEY_MARKER
+            else ("farmer_stated" if farm.soil_texture else "")
+        ),
         "soil_test": farm.soil_test,
         "irrigation_available": farm.irrigation_available,
         "water_source": farm.water_source,
@@ -304,6 +321,56 @@ def _farm_payload(farm: Farm, warnings: Optional[list[str]] = None) -> dict:
         "phase": farm.phase,
         "missing_required_fields": missing,
         "warnings": warnings or [],
+    }
+
+
+_SOIL_SURVEY_MARKER = "czis_edaphic_survey_default"
+
+
+def _apply_soil_survey_defaults(farm: Farm, warnings: Optional[list[str]] = None) -> None:
+    """Fill soil_texture/land_type from the upazila survey (marked defaults).
+
+    Mechanical, not model-driven: soil is a MANDATORY slot and the LLM cannot
+    be trusted to always call the lookup tool, so defaults are attached the
+    same way coordinates are. Farmer-stated soil (no marker) is NEVER
+    overwritten; survey defaults from a previous location are refreshed or
+    cleared when the farm moves.
+    """
+    survey_default = bool(farm.soil_test) and (
+        farm.soil_test.get("source") == _SOIL_SURVEY_MARKER
+    )
+    if farm.soil_texture and not survey_default:
+        return  # farmer-stated soil wins, always
+    ctx = soil_mod.soil_context(farm.upazila_code or "")
+    if ctx is None:
+        # Moved somewhere unsurveyed: a stale survey default would describe
+        # the OLD upazila — clear it so the slot goes back to missing and the
+        # agent must ask the farmer.
+        if survey_default:
+            farm.soil_texture = ""
+            farm.land_type = ""
+            farm.soil_test = None
+            if warnings is not None:
+                warnings.append(
+                    "no soil survey for the new location — ask the farmer "
+                    "for their soil type"
+                )
+        return
+    types = ctx["types"]
+    if "texture" in types:
+        farm.soil_texture = types["texture"]["dominant"][:40]
+    if "landtype" in types and (survey_default or not farm.land_type):
+        farm.land_type = types["landtype"]["dominant"][:40]
+    farm.soil_test = {
+        "source": _SOIL_SURVEY_MARKER,
+        "upazila_code": farm.upazila_code,
+        "dominant": {
+            t: types[t]["dominant"] for t in soil_mod.CORE_TYPES if t in types
+        },
+        "note": (
+            "Upazila-level survey default (CZIS edaphic) — confirm with the "
+            "farmer; their own statement overrides it."
+        ),
     }
 
 
@@ -351,6 +418,9 @@ def _re_resolve_farm_geo(farm: Farm, warnings: list[str]) -> None:
             "location not found in the gazetteer — weather will fall back to "
             "live geocoding of the place name; double-check the spelling"
         )
+    # Location determines the soil survey — refresh survey-default soil for
+    # the new upazila (farmer-stated soil is never touched).
+    _apply_soil_survey_defaults(farm, warnings)
 
 
 async def _get_or_create_active_farm(session, user) -> Farm:
@@ -362,6 +432,12 @@ async def _get_or_create_active_farm(session, user) -> Farm:
     )
     farm = result.scalar_one_or_none()
     if farm is not None:
+        # Lazy heal: rows created before the soil-mandatory change get their
+        # survey default attached on first touch.
+        if not farm.soil_texture:
+            _apply_soil_survey_defaults(farm)
+            if farm.soil_texture:
+                await session.commit()
         return farm
     # First contact: prefill from the registration address (a DEFAULT the
     # agent must confirm — the actual field may be elsewhere). The union
@@ -389,6 +465,8 @@ async def _get_or_create_active_farm(session, user) -> Farm:
         preferred_crops=[],
         excluded_crops=[],
     )
+    # Soil survey default for the registered upazila (marked, confirmable).
+    _apply_soil_survey_defaults(farm)
     session.add(farm)
     await session.commit()
     await session.refresh(farm)
@@ -545,6 +623,9 @@ def build_farm_tools(user):
                 farm.land_type = land_type.strip()[:40]
             if soil_texture is not None:
                 farm.soil_texture = soil_texture.strip()[:40]
+                # Farmer-stated soil replaces any survey default marker.
+                if (farm.soil_test or {}).get("source") == _SOIL_SURVEY_MARKER:
+                    farm.soil_test = None
             if irrigation_available is not None:
                 farm.irrigation_available = bool(irrigation_available)
             if water_source is not None:
@@ -644,9 +725,13 @@ def build_farm_tools(user):
         upazila_name: Optional[str] = None,
         district_name: Optional[str] = None,
         division_name: Optional[str] = None,
+        union_name: Optional[str] = None,
     ) -> str:
         """Create an additional farm for the farmer (e.g. a second field in a
-        different place) and make it the active one."""
+        different place) and make it the active one. A NEW farm starts with an
+        empty profile: before giving any advice for it, collect ALL required
+        fields (location, farm_size, soil_type via get_soil_context, water,
+        budget, season) — see missing_required_fields in the result."""
         _emit("farm", f"creating farm: {name}")
         async with AsyncSessionLocal() as session:
             all_farms = (
@@ -661,13 +746,19 @@ def build_farm_tools(user):
                 division_name=(division_name or "").strip(),
                 district_name=(district_name or "").strip(),
                 upazila_name=(upazila_name or "").strip(),
+                union_name=(union_name or "").strip(),
                 preferred_crops=[],
                 excluded_crops=[],
             )
+            # Attach gazetteer codes + centroid coordinates from the stated
+            # names so weather/CZIS grounding works immediately.
+            warnings: list[str] = []
+            if upazila_name or district_name or union_name:
+                _re_resolve_farm_geo(farm, warnings)
             session.add(farm)
             await session.commit()
             await session.refresh(farm)
-            return json.dumps(_farm_payload(farm), ensure_ascii=False)
+            return json.dumps(_farm_payload(farm, warnings), ensure_ascii=False)
 
     return [get_farm_profile, update_farm_profile, list_farms, select_farm, create_farm]
 
@@ -696,6 +787,82 @@ async def _farm_point(user) -> Optional[dict]:
         "area_decimal": farm.area_decimal,
         "label": farm.union_name or farm.upazila_name or farm.district_name,
     }
+
+
+def build_soil_tool(user):
+    """``get_soil_context`` — offline CZIS edaphic survey for the active farm.
+
+    Soil type is a MANDATORY intake slot. This tool fills it automatically
+    from the upazila-level survey (dominant texture; a DEFAULT the farmer must
+    confirm). When the upazila is not covered, it returns SOIL_UNKNOWN and the
+    agent MUST ask the farmer directly — crop recommendations are blocked
+    until soil_type is known either way.
+    """
+
+    @tool
+    async def get_soil_context() -> str:
+        """Look up the soil survey for the active farm's upazila (offline CZIS
+        edaphic data, 480 upazilas): dominant soil texture, land type,
+        drainage, pH class and salinity, with per-category area breakdowns.
+
+        If the farm's soil type is still unset, the dominant texture is saved
+        to the profile automatically as an upazila-level DEFAULT — tell the
+        farmer what was assumed and ask them to confirm (their own statement
+        overrides it via update_farm_profile). If this returns SOIL_UNKNOWN,
+        you MUST ask the farmer for their soil type (e.g. sandy/loam/clay) —
+        never guess it."""
+        _emit("soil", "looking up soil survey for the farm's upazila")
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            # Farm's own upazila only. Fall back to the registration address
+            # ONLY when the farm has no location at all — a farm moved to an
+            # unrecognized place must NOT inherit the registered upazila's soil.
+            code = farm.upazila_code or ""
+            if not code and not farm.upazila_name:
+                code = getattr(user, "upazila_code", "") or ""
+            ctx = soil_mod.soil_context(code)
+            if ctx is None:
+                return (
+                    "SOIL_UNKNOWN: no soil survey data for this upazila "
+                    f"({farm.upazila_name or code or 'location unset'}). Ask "
+                    "the farmer directly what their soil is like (sandy / "
+                    "loam / clay, drainage) and save it with "
+                    "update_farm_profile — do NOT guess."
+                )
+            types = ctx["types"]
+            saved = []
+            if not farm.soil_texture and "texture" in types:
+                farm.soil_texture = types["texture"]["dominant"][:40]
+                saved.append(f"soil_texture={farm.soil_texture}")
+            if not farm.land_type and "landtype" in types:
+                farm.land_type = types["landtype"]["dominant"][:40]
+                saved.append(f"land_type={farm.land_type}")
+            if saved:
+                # Filling a mandatory slot may complete the profile.
+                farm.phase = (
+                    "ready_for_planning" if not _missing_slots(farm) else "intake"
+                )
+                await session.commit()
+            payload = {
+                "upazila": farm.upazila_name or code,
+                "upazila_code": code,
+                "survey": {
+                    t: types[t] for t in soil_mod.CORE_TYPES if t in types
+                },
+                "texture_definition": soil_mod.definition(
+                    "texture", types.get("texture", {}).get("dominant", "")
+                ),
+                "auto_saved_defaults": saved,
+                "note": (
+                    "UPAZILA-LEVEL survey averages, not a plot measurement — "
+                    "present the dominant values as an assumption and ask the "
+                    "farmer to confirm; their own answer overrides this."
+                ),
+                "source": ctx["source"],
+            }
+            return json.dumps(payload, ensure_ascii=False)
+
+    return get_soil_context
 
 
 def build_czis_tools(user):

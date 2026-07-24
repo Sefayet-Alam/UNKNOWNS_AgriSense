@@ -11,7 +11,7 @@ import json
 import pytest
 from sqlalchemy import select
 
-from app.agent.tools import build_farm_tools
+from app.agent.tools import build_farm_tools, build_soil_tool
 from app.models import Farm, User
 
 from tests.fakes import auth_headers_for
@@ -28,7 +28,10 @@ async def _tools_for(client, db_session, phone: str, **overrides):
     """Register a user via the real API, return {tool_name: tool}."""
     await auth_headers_for(client, phone=phone, **overrides)
     user = await _db_user(db_session, phone)
-    return {t.name: t for t in build_farm_tools(user)}
+    tools = {t.name: t for t in build_farm_tools(user)}
+    soil_tool = build_soil_tool(user)
+    tools[soil_tool.name] = soil_tool
+    return tools
 
 
 # --------------------------------------------------------------------------- #
@@ -52,6 +55,10 @@ async def test_first_profile_read_creates_farm_prefilled_from_registration(
     assert payload["location"]["longitude"] == pytest.approx(88.44103)
     # Location satisfied by prefill; the rest is still missing.
     missing = payload["missing_required_fields"]
+    # Soil auto-filled from the upazila survey (marked as a confirmable
+    # default) — so it is NOT missing, but its source says "confirm".
+    assert payload["soil_texture"] == "Clay Loam"
+    assert payload["soil_source"] == "survey_default_confirm_with_farmer"
     assert "location" not in missing
     assert set(missing) == {"farm_size", "water_availability", "budget", "season"}
     assert payload["phase"] == "intake"
@@ -79,7 +86,7 @@ async def test_update_fills_slots_and_converts_area(client, db_session):
     assert any("ASSUMED" in w for w in p1["warnings"])
     assert set(p1["missing_required_fields"]) == {"budget", "season"}
 
-    # Farmer confirms the local bigha and gives budget + season.
+    # Farmer confirms the local bigha, gives budget + season + soil.
     p2 = json.loads(
         await tools["update_farm_profile"].ainvoke(
             {
@@ -88,6 +95,7 @@ async def test_update_fills_slots_and_converts_area(client, db_session):
                 "local_unit_factor_decimal": 33,
                 "budget_bdt": 200000,
                 "season": "winter",  # normalized -> rabi
+                "soil_texture": "loam",
             }
         )
     )
@@ -173,6 +181,118 @@ async def test_location_change_reresolves_geocodes_and_coords(client, db_session
     assert any("location changed" in w for w in p["warnings"])
 
 
+# --------------------------------------------------------------------------- #
+# Soil (mandatory slot): survey auto-fill, SOIL_UNKNOWN ask-path, override
+# --------------------------------------------------------------------------- #
+async def test_soil_survey_prefill_and_tool_breakdown(client, db_session):
+    # Prefill is MECHANICAL: farm creation already attached the survey
+    # default (not model-driven), and the tool serves the full breakdown.
+    tools = await _tools_for(client, db_session, "01712345020")
+    profile = json.loads(await tools["get_farm_profile"].ainvoke({}))
+    assert profile["soil_texture"] == "Clay Loam"
+    assert profile["land_type"] == "High Land"
+    assert profile["soil_source"] == "survey_default_confirm_with_farmer"
+    assert "soil_type" not in profile["missing_required_fields"]
+
+    payload = json.loads(await tools["get_soil_context"].ainvoke({}))
+    assert payload["survey"]["texture"]["dominant"] == "Clay Loam"
+    assert payload["survey"]["reaction"]["dominant"]  # pH class present
+    assert "UPAZILA-LEVEL" in payload["note"]
+    # Already filled at creation — the tool saved nothing new.
+    assert payload["auto_saved_defaults"] == []
+
+
+async def test_soil_unknown_location_clears_default_and_returns_sentinel(
+    client, db_session
+):
+    # Farm moved to a place the gazetteer/survey doesn't know: the stale
+    # survey default (old upazila's soil) must be CLEARED — soil_type goes
+    # back to missing — and the tool says SOIL_UNKNOWN (=> agent must ask
+    # the farmer). Never silently keep another upazila's soil.
+    tools = await _tools_for(client, db_session, "01712345021")
+    moved = json.loads(
+        await tools["update_farm_profile"].ainvoke(
+            {"upazila_name": "Nowhereville", "district_name": "Nowhere"}
+        )
+    )
+    assert moved["soil_texture"] == ""
+    assert "soil_type" in moved["missing_required_fields"]
+    assert any("soil" in w.lower() for w in moved["warnings"])
+
+    result = await tools["get_soil_context"].ainvoke({})
+    assert result.startswith("SOIL_UNKNOWN")
+    assert "ask" in result.lower()
+
+
+async def test_location_change_refreshes_survey_soil_default(client, db_session):
+    # Survey-default soil must FOLLOW the farm when it moves to a surveyed
+    # upazila — Tanore's default is replaced by Manda's, still marked.
+    from app import geo, soil
+
+    tools = await _tools_for(client, db_session, "01712345024")
+    p = json.loads(
+        await tools["update_farm_profile"].ainvoke(
+            {"upazila_name": "Manda", "district_name": "Naogaon"}
+        )
+    )
+    manda = geo.find_upazila_by_name("Manda")
+    expected = soil.dominant(manda["code"], "texture")
+    assert expected  # Manda is surveyed
+    assert p["soil_texture"] == expected
+    assert p["soil_source"] == "survey_default_confirm_with_farmer"
+
+
+async def test_farmer_statement_overrides_survey_default(client, db_session):
+    tools = await _tools_for(client, db_session, "01712345022")
+    # Farmer says sandy — replaces the survey default and drops the marker.
+    p = json.loads(
+        await tools["update_farm_profile"].ainvoke({"soil_texture": "sandy"})
+    )
+    assert p["soil_texture"] == "sandy"
+    assert p["soil_source"] == "farmer_stated"
+
+    # The tool must not overwrite a farmer statement.
+    payload = json.loads(await tools["get_soil_context"].ainvoke({}))
+    assert not any("soil_texture=" in s for s in payload["auto_saved_defaults"])
+
+    # And moving the farm must NOT resurrect a survey default over it.
+    moved = json.loads(
+        await tools["update_farm_profile"].ainvoke(
+            {"upazila_name": "Manda", "district_name": "Naogaon"}
+        )
+    )
+    assert moved["soil_texture"] == "sandy"
+    assert moved["soil_source"] == "farmer_stated"
+
+
+async def test_create_farm_resolves_geo_and_requires_full_intake(
+    client, db_session
+):
+    # A new farm gets gazetteer codes + coords from its stated names, and
+    # starts with the full mandatory-field checklist (soil included).
+    from app import geo
+
+    tools = await _tools_for(client, db_session, "01712345023")
+    created = json.loads(
+        await tools["create_farm"].ainvoke(
+            {"name": "Manda Char", "upazila_name": "Manda", "district_name": "Naogaon"}
+        )
+    )
+    manda = geo.find_upazila_by_name("Manda")
+    assert created["location"]["upazila_code"] == manda["code"]
+    assert created["location"]["latitude"] == pytest.approx(manda["lat"])
+    missing = set(created["missing_required_fields"])
+    assert {"farm_size", "water_availability", "budget", "season"} <= missing
+    # Soil pre-filled from MANDA's survey (not the registration upazila's).
+    from app import soil
+
+    assert created["soil_texture"] == soil.dominant(manda["code"], "texture")
+    assert created["soil_source"] == "survey_default_confirm_with_farmer"
+    # And the soil tool now serves the NEW farm's upazila, not the old one's.
+    soil_payload = json.loads(await tools["get_soil_context"].ainvoke({}))
+    assert soil_payload["upazila_code"] == manda["code"]
+
+
 async def test_union_change_within_upazila_resolves_geocode(client, db_session):
     tools = await _tools_for(client, db_session, "01712345015")
     p = json.loads(
@@ -243,6 +363,7 @@ async def test_update_persists_to_db_row(client, db_session):
                 "budget_bdt": 80000,
                 "season": "rabi",
                 "irrigation_available": True,
+                "soil_texture": "clay loam",
                 "previous_crop": "aman rice",
                 "add_excluded_crops": ["Potato"],
             }
@@ -256,4 +377,5 @@ async def test_update_persists_to_db_row(client, db_session):
     assert row.season == "rabi"
     assert row.previous_crop == "aman rice"
     assert row.excluded_crops == ["potato"]
+    assert row.soil_texture == "clay loam"
     assert row.phase == "ready_for_planning"
