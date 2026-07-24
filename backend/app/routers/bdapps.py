@@ -53,11 +53,10 @@ class BdAppsAck(BdAppsPayload):
 def _require_bdapps_credentials(
     application_id: str, password: str | None = None
 ) -> BdAppsCredentials:
-    configured_apps = [
-        credentials
-        for plan_id in ("plus", "pro")
-        if (credentials := bdapps_credentials_for_plan(plan_id)).is_complete
-    ]
+    plus_credentials = bdapps_credentials_for_plan("plus")
+    configured_apps = (
+        [plus_credentials] if plus_credentials.is_complete else []
+    )
     if not configured_apps:
         raise HTTPException(
             status_code=503,

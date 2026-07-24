@@ -154,7 +154,7 @@ export function TracePanel({ turn, thinking, isLive, model, collapsed, onToggle 
         type="button"
         onClick={onToggle}
         aria-label="Show agent trace"
-        className="relative flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-jute-300/55 bg-paper-100 py-4 text-ink-dim transition hover:bg-paper-50 hover:text-signal hover:shadow-lift"
+        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-3 z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-jute-300/65 bg-paper-100 text-ink-dim shadow-lift transition hover:bg-paper-50 hover:text-signal sm:relative sm:bottom-auto sm:right-auto sm:z-auto sm:h-full sm:flex-col sm:gap-2 sm:rounded-none sm:border-y-0 sm:border-r-0 sm:py-4 sm:shadow-none sm:hover:shadow-lift"
       >
         <PanelRightOpen size={18} />
         {count > 0 && (
@@ -162,7 +162,7 @@ export function TracePanel({ turn, thinking, isLive, model, collapsed, onToggle 
             {count}
           </span>
         )}
-        <span className="[writing-mode:vertical-rl] font-mono text-xs tracking-widest">
+        <span className="hidden [writing-mode:vertical-rl] font-mono text-xs tracking-widest sm:block">
           AGENT TRACE
         </span>
       </button>
@@ -170,7 +170,7 @@ export function TracePanel({ turn, thinking, isLive, model, collapsed, onToggle 
   }
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-30 flex h-full w-[min(340px,calc(100vw-3.5rem))] shrink-0 flex-col border-l border-jute-300/55 bg-paper-100 shadow-[-18px_0_45px_-30px_rgba(23,53,27,.5)] sm:relative sm:z-auto sm:w-[340px]">
+    <aside className="fixed inset-y-0 right-0 z-50 flex h-[100dvh] w-[min(360px,calc(100vw-1rem))] shrink-0 flex-col border-l border-jute-300/55 bg-paper-100 shadow-[-18px_0_45px_-30px_rgba(23,53,27,.5)] sm:absolute sm:z-30 sm:h-full sm:w-[min(340px,calc(100vw-3.5rem))] md:relative md:z-auto md:w-[340px]">
       <div className="flex items-center justify-between border-b border-hairline px-3 py-3">
         <span className="min-w-0">
           <span className="block font-mono text-xs uppercase tracking-widest text-ink-dim">

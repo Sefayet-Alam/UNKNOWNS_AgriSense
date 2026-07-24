@@ -130,13 +130,13 @@ function PlanningSequence() {
   );
 
   return (
-    <div ref={root} className="mt-14 grid gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:gap-20">
-      <div data-method-map className="relative h-[390px] overflow-hidden border border-jute-300/60 bg-field-900 p-7 text-paper-50 lg:h-[520px]">
+    <div ref={root} className="mt-10 grid gap-8 sm:mt-14 sm:gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:gap-20">
+      <div data-method-map className="relative h-[320px] overflow-hidden border border-jute-300/60 bg-field-900 p-5 text-paper-50 sm:h-[390px] sm:p-7 lg:h-[520px]">
         <div className="absolute inset-0 opacity-20 atlas-grid" />
         <p className="relative font-mono text-[10px] uppercase tracking-[0.2em] text-jute-300">
           Seasonal route · one field
         </p>
-        <svg viewBox="0 0 420 460" className="relative mt-8 h-[290px] w-full lg:h-[390px]" aria-hidden="true">
+        <svg viewBox="0 0 420 460" className="relative mt-6 h-[235px] w-full sm:mt-8 sm:h-[290px] lg:h-[390px]" aria-hidden="true">
           <path
             data-route-line
             d="M44 58C118 5 176 124 239 86c87-52 135 45 96 112-38 65-160 14-168 98-7 81 128 50 145 117"
@@ -153,7 +153,7 @@ function PlanningSequence() {
             <circle cx="312" cy="413" r="13" />
           </g>
         </svg>
-        <span className="absolute bottom-6 right-7 font-display text-7xl text-paper-50/10">বর্ষা</span>
+        <span className="absolute bottom-5 right-5 font-display text-5xl text-paper-50/10 sm:bottom-6 sm:right-7 sm:text-7xl">বর্ষা</span>
       </div>
 
       <ol className="divide-y divide-jute-300/50">
@@ -166,7 +166,7 @@ function PlanningSequence() {
             <span className="font-mono text-sm text-clay-500">{step.number}</span>
             <div>
               <step.icon className="mb-5 text-field-600" size={25} strokeWidth={1.6} />
-              <h3 className="font-display text-3xl tracking-[-0.035em] text-ink-900">
+              <h3 className="font-display text-2xl tracking-[-0.035em] text-ink-900 sm:text-3xl">
                 {step.title}
               </h3>
               <p className="mt-3 max-w-lg leading-7 text-ink-500">{step.body}</p>
@@ -227,9 +227,9 @@ export default function HomePage() {
       </header>
 
       <section className="atlas-grid border-b border-jute-300/45">
-        <div className="mx-auto grid min-h-[calc(100vh-70px)] max-w-[1380px] lg:grid-cols-[0.88fr_1.12fr]">
-          <div className="flex items-center px-5 py-16 sm:px-8 lg:border-r lg:border-jute-300/45 lg:px-12 lg:py-24">
-            <div className="max-w-2xl">
+        <div className="mx-auto grid min-h-[calc(100dvh-70px)] w-full min-w-0 max-w-[1380px] lg:min-h-[calc(100vh-70px)] lg:grid-cols-[0.88fr_1.12fr]">
+          <div className="flex min-w-0 items-center px-5 py-12 sm:px-8 sm:py-16 lg:border-r lg:border-jute-300/45 lg:px-12 lg:py-24">
+            <div className="w-full min-w-0 max-w-2xl">
               <Reveal>
                 <p className="atlas-kicker flex items-center gap-2">
                   <span className="h-px w-8 bg-clay-500" />
@@ -237,14 +237,14 @@ export default function HomePage() {
                 </p>
               </Reveal>
               <Reveal delay={70}>
-                <h1 className="mt-7 font-display text-[clamp(3.2rem,6vw,6.8rem)] leading-[0.9] tracking-[-0.06em]">
-                  Plan the season
+                <h1 className="mt-7 font-display text-[clamp(2.85rem,13vw,4.2rem)] leading-[0.92] tracking-[-0.055em] sm:text-[clamp(3.2rem,6vw,6.8rem)] sm:leading-[0.9] sm:tracking-[-0.06em]">
+                  Plan the <br className="sm:hidden" />season
                   <span className="mt-2 block italic text-field-600">before the soil</span>
                   pays for it.
                 </h1>
               </Reveal>
               <Reveal delay={140}>
-                <p className="mt-8 max-w-xl text-lg leading-8 text-ink-500">
+                <p className="mt-7 max-w-[20rem] text-base leading-7 text-ink-500 sm:mt-8 sm:max-w-xl sm:text-lg sm:leading-8">
                   Turn local conditions, a working budget, and one honest conversation into a
                   crop choice you can explain—and a season plan you can carry.
                 </p>
@@ -257,7 +257,7 @@ export default function HomePage() {
                 </div>
               </Reveal>
               <Reveal delay={280}>
-                <p className="mt-8 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.17em] text-ink-500">
+                <p className="mt-8 flex max-w-full flex-wrap items-center gap-3 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-500 sm:text-[10px] sm:tracking-[0.17em]">
                   <span className="flex h-7 w-7 items-center justify-center rounded-full border border-jute-300">
                     <Sprout size={13} className="text-field-600" />
                   </span>
@@ -267,7 +267,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="relative min-h-[500px] border-t border-jute-300/45 lg:min-h-0 lg:border-t-0">
+          <div className="relative min-h-[430px] border-t border-jute-300/45 sm:min-h-[500px] lg:min-h-0 lg:border-t-0">
             <FieldAtlasScene />
           </div>
         </div>
@@ -276,9 +276,9 @@ export default function HomePage() {
       <section aria-label="Field notes" className="border-b border-jute-300/45 bg-field-900 text-paper-50">
         <div className="mx-auto grid max-w-[1380px] grid-cols-2 divide-x divide-y divide-paper-50/15 sm:grid-cols-4 sm:divide-y-0">
           {FIELD_NOTES.map((note) => (
-            <div key={note.label} className="px-5 py-7 sm:px-8">
-              <p className="font-display text-4xl tracking-[-0.04em] text-jute-300">{note.value}</p>
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-50/65">
+            <div key={note.label} className="px-4 py-6 sm:px-8 sm:py-7">
+              <p className="font-display text-3xl tracking-[-0.04em] text-jute-300 sm:text-4xl">{note.value}</p>
+              <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-paper-50/65 sm:text-[10px] sm:tracking-[0.16em]">
                 {note.label}
               </p>
             </div>
@@ -286,7 +286,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1240px] px-5 py-24 sm:px-8 sm:py-32">
+      <section className="mx-auto max-w-[1240px] px-5 py-16 sm:px-8 sm:py-32">
         <Reveal>
           <SectionHeading
             eyebrow="How the field becomes a plan"
@@ -299,7 +299,7 @@ export default function HomePage() {
 
       <section className="border-y border-jute-300/45 bg-paper-100">
         <div className="mx-auto grid max-w-[1380px] lg:grid-cols-[1.18fr_0.82fr]">
-          <div className="relative min-h-[520px] overflow-hidden">
+          <div className="relative min-h-[360px] overflow-hidden sm:min-h-[520px]">
             <Image
               src="/images/paddy-reflection-bangladesh.jpg"
               alt="Green paddy fields reflected in water in rural Bangladesh"
@@ -312,10 +312,10 @@ export default function HomePage() {
               Rural Bangladesh · Photo: A S M Jobaer
             </p>
           </div>
-          <div className="flex items-center px-6 py-16 sm:px-12 lg:px-16">
+          <div className="flex items-center px-5 py-12 sm:px-12 sm:py-16 lg:px-16">
             <Reveal>
               <p className="atlas-kicker">The reason for the ledger</p>
-              <h2 className="mt-5 font-display text-4xl leading-[1.02] tracking-[-0.045em] sm:text-6xl">
+              <h2 className="mt-5 font-display text-3xl leading-[1.05] tracking-[-0.04em] sm:text-6xl sm:leading-[1.02] sm:tracking-[-0.045em]">
                 A field is never only an acreage.
               </h2>
               <p className="mt-6 text-lg leading-8 text-ink-500">
@@ -331,7 +331,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1240px] px-5 py-24 sm:px-8 sm:py-32">
+      <section className="mx-auto max-w-[1240px] px-5 py-16 sm:px-8 sm:py-32">
         <Reveal>
           <SectionHeading
             eyebrow="Inside the workspace"
@@ -355,14 +355,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="relative overflow-hidden bg-field-900 px-5 py-24 text-paper-50 sm:px-8 sm:py-32">
+      <section className="relative overflow-hidden bg-field-900 px-5 py-16 text-paper-50 sm:px-8 sm:py-32">
         <div className="absolute inset-0 opacity-[0.08] atlas-grid" />
         <div className="relative mx-auto grid max-w-[1240px] items-end gap-12 lg:grid-cols-[1fr_auto]">
           <Reveal>
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-jute-300">
               Your next season starts with one field note
             </p>
-            <h2 className="mt-5 max-w-4xl font-display text-5xl leading-[0.95] tracking-[-0.055em] sm:text-7xl">
+            <h2 className="mt-5 max-w-4xl font-display text-4xl leading-[0.98] tracking-[-0.05em] sm:text-7xl sm:leading-[0.95] sm:tracking-[-0.055em]">
               Bring the land. Leave with the plan.
             </h2>
           </Reveal>

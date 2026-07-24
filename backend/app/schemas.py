@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -136,6 +136,7 @@ class BillingPlanOut(BaseModel):
     amount_bdt: int
     billing_cycle: str
     features: list[str]
+    provider: Literal["internal", "mock", "bdapps"] = "internal"
 
 
 class BillingPlansOut(BaseModel):

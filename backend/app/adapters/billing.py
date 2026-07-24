@@ -49,21 +49,17 @@ class BdAppsCredentials:
 
 
 def bdapps_credentials_for_plan(plan_id: str) -> BdAppsCredentials:
-    """Resolve one provisioned BDApps application for an internal plan."""
+    """Resolve the live Plus application; every other plan is mock-only."""
 
     if plan_id == "plus":
         configured = BdAppsCredentials(
             plan_id="plus",
             application_id=settings.BDAPPS_PLUS_APPLICATION_ID.strip(),
-            password=settings.BDAPPS_PLUS_PASSWORD,
+            password=(
+                settings.BDAPPS_PLUS_API_KEY
+                or settings.BDAPPS_PLUS_PASSWORD
+            ),
             application_hash=settings.BDAPPS_PLUS_APPLICATION_HASH.strip(),
-        )
-    elif plan_id == "pro":
-        configured = BdAppsCredentials(
-            plan_id="pro",
-            application_id=settings.BDAPPS_PRO_APPLICATION_ID.strip(),
-            password=settings.BDAPPS_PRO_PASSWORD,
-            application_hash=settings.BDAPPS_PRO_APPLICATION_HASH.strip(),
         )
     else:
         return BdAppsCredentials(plan_id=plan_id, application_id="", password="")
@@ -75,22 +71,20 @@ def bdapps_credentials_for_plan(plan_id: str) -> BdAppsCredentials:
     ):
         return configured
 
-    if settings.BDAPPS_PLAN_ID.strip() == plan_id:
+    if settings.BDAPPS_PLAN_ID.strip() == "plus":
         return BdAppsCredentials(
-            plan_id=plan_id,
+            plan_id="plus",
             application_id=settings.BDAPPS_APPLICATION_ID.strip(),
-            password=settings.BDAPPS_PASSWORD,
+            password=settings.BDAPPS_API_KEY or settings.BDAPPS_PASSWORD,
             application_hash=settings.BDAPPS_APPLICATION_HASH.strip(),
         )
     return configured
 
 
 def configured_bdapps_plan_ids() -> list[str]:
-    return [
-        plan_id
-        for plan_id in ("plus", "pro")
-        if bdapps_credentials_for_plan(plan_id).is_complete
-    ]
+    return (
+        ["plus"] if bdapps_credentials_for_plan("plus").is_complete else []
+    )
 
 
 def effective_billing_provider_name() -> str:
@@ -279,22 +273,43 @@ class BdAppsBillingProvider:
         )
 
 
+def provider_name_for_plan(plan_id: str) -> str:
+    """Per-plan provider for a NEW subscription (mixed mode).
+
+    Plus uses the real carrier only when its application ID and API key are
+    configured. Pro is intentionally and permanently the labelled development
+    mock with OTP 1234, even if stale Pro variables exist in an environment.
+    """
+    if (
+        settings.BILLING_PROVIDER.strip().lower() != "bdapps"
+        or plan_id != "plus"
+    ):
+        return "mock"
+    return (
+        "bdapps"
+        if bdapps_credentials_for_plan("plus").is_complete
+        else "mock"
+    )
+
+
 def get_billing_provider(
     plan_id: str | None = None,
     provider_name: str | None = None,
 ):
     """Return the configured provider, or the provider persisted on a record.
 
-    New subscriptions use ``BILLING_PROVIDER``. Existing subscriptions pass
-    their stored provider so status and cancellation never jump gateways when
-    the deployment changes between mock, simulator, and production modes.
+    New subscriptions resolve their provider PER PLAN (see
+    ``provider_name_for_plan``) so a real plan and a dummy plan can coexist.
+    Existing subscriptions pass their stored provider so status and
+    cancellation never jump gateways when the deployment changes.
     """
 
-    provider = (
-        provider_name.strip().lower()
-        if provider_name is not None
-        else effective_billing_provider_name()
-    )
+    if provider_name is not None:
+        provider = provider_name.strip().lower()
+    elif plan_id:
+        provider = provider_name_for_plan(plan_id)
+    else:
+        provider = effective_billing_provider_name()
     if provider == "mock":
         return MockBillingProvider()
     if provider == "bdapps":

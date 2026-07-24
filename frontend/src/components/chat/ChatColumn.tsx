@@ -89,14 +89,14 @@ export function ChatColumn() {
   const hasLiveBubble = streamingTurnId != null;
 
   return (
-    <div className="relative flex h-full flex-1 overflow-hidden bg-background">
+    <div className="relative flex h-full flex-1 overflow-hidden bg-background pt-14 sm:pt-0">
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scrollRef} className="chat-bg flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
             {showEmpty ? (
               <EmptyState onPick={handlePick} />
             ) : (
-              <div className="flex flex-col gap-5 px-4 py-6">
+              <div className="flex flex-col gap-4 px-3 py-5 sm:gap-5 sm:px-4 sm:py-6">
                 {messages.map((m) => {
                   if (isSupersededToolStep(messages, m.id)) return null;
                   const calls =
