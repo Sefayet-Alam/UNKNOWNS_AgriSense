@@ -353,6 +353,9 @@ Streaming (SSE):
   tool_trace chips (≥4 tools) → message_updates fill results → done.
 - S2 Tool failure mid-turn → progress + graceful assistant text, no `error` frame crash, no invented numbers in final text.
 - S3 Bengali content intact through SSE (already safe: `ensure_ascii` full-frame JSON; asserted anyway).
+- S4 Frontend final reply retains the complete per-turn tool trace when a stale message fetch races
+  a later `message_update`; redundant empty tool-step bubbles collapse only after the answer exists.
+  Every completed prompt exposes a persisted-duration trace, including `no tools` turns.
 
 Live smoke (manual, pre-demo checklist):
 - L1 Open-Meteo reachable from venue network; L2 CZIS reachable else snapshot

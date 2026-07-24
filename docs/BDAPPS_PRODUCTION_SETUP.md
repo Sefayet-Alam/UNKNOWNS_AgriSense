@@ -89,3 +89,25 @@ applications.
 
 Keep `BILLING_PROVIDER=mock` locally when a real Robi-number test is not being
 performed; mock mode uses OTP `1234` and never charges a mobile account.
+
+## Pre-approval sandbox testing
+
+Until BDApps approves the applications and exposes their API passwords, test the
+complete AgriSense checkout locally with `BILLING_PROVIDER=mock`. Rebuild the
+services, register or sign in with any valid local phone, select Plus or Pro,
+request the OTP, enter `1234`, verify that the plan becomes active immediately,
+refresh Profile → Billing, and then cancel it. This exercises AgriSense's real
+frontend, API routes, database persistence, and cancellation state without
+calling BDApps or charging a number.
+
+BDApps also publishes a separate Pro Developer Kit and SDK Simulator Guide for
+gateway-level local testing. Use the simulator-provided base URL and credentials
+from that guide; do not guess its host, port, application password, or OTP. If
+the simulator exposes the production-compatible HTTP routes, temporarily set
+`BILLING_PROVIDER=bdapps`, point `BDAPPS_BASE_URL` at the simulator, and put its
+Plus/Pro test credentials in the matching `BDAPPS_*` variables. Revert to
+`BILLING_PROVIDER=mock` afterward.
+
+An application account password is not an application API password. Without
+approved app credentials—or simulator-issued credentials—the real
+`https://developer.bdapps.com` OTP flow cannot be authenticated.
