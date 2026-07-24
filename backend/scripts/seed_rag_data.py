@@ -21,16 +21,23 @@ import json
 from collections import Counter
 
 import numpy as np
-from sqlalchemy import func, select
+from sqlalchemy import delete, select, text
 
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import KnowledgeChunk
-from app.rag.store import delete_source
 
 from . import backup_kb
 
 _INSERT_BATCH = 500
+_SEED_LOCK_KEY = 0x4152474953454544  # stable PostgreSQL advisory-lock id: ARGISEED
+
+
+async def _lock_seed_transaction(db) -> None:
+    """Serialize startup seed checks/replacements across app replicas."""
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SEED_LOCK_KEY}
+    )
 
 
 def load_seed() -> tuple[list[dict], np.ndarray]:
@@ -59,34 +66,44 @@ def load_seed() -> tuple[list[dict], np.ndarray]:
     return chunks, vectors
 
 
-async def seed(db) -> dict:
+async def seed(db, *, acquire_lock: bool = True) -> dict:
     """Replace every backed-up source's chunks in ``db`` from the seed files."""
     chunks, vectors = load_seed()
-    replaced = 0
-    for source in sorted({c["source"] for c in chunks}):
-        replaced += await delete_source(db, source)
-    for start in range(0, len(chunks), _INSERT_BATCH):
-        for c, vec in zip(
-            chunks[start : start + _INSERT_BATCH],
-            vectors[start : start + _INSERT_BATCH],
-        ):
-            db.add(
-                KnowledgeChunk(
-                    source=c["source"],
-                    chunk_index=c["chunk_index"],
-                    page_start=c.get("page_start"),
-                    page_end=c.get("page_end"),
-                    crop=c.get("crop", ""),
-                    topic=c.get("topic", ""),
-                    content=c["content"],
-                    embedding=vec.tolist(),
+    sources = sorted({c["source"] for c in chunks})
+    try:
+        if acquire_lock:
+            await _lock_seed_transaction(db)
+        deleted = await db.execute(
+            delete(KnowledgeChunk).where(KnowledgeChunk.source.in_(sources))
+        )
+        replaced = deleted.rowcount or 0
+        for start in range(0, len(chunks), _INSERT_BATCH):
+            for c, vec in zip(
+                chunks[start : start + _INSERT_BATCH],
+                vectors[start : start + _INSERT_BATCH],
+            ):
+                db.add(
+                    KnowledgeChunk(
+                        source=c["source"],
+                        chunk_index=c["chunk_index"],
+                        page_start=c.get("page_start"),
+                        page_end=c.get("page_end"),
+                        crop=c.get("crop", ""),
+                        topic=c.get("topic", ""),
+                        content=c["content"],
+                        embedding=vec.tolist(),
+                    )
                 )
-            )
+        # Delete + complete insert are one transaction: a failed restore can
+        # never leave the managed knowledge corpus partially empty.
         await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     return {
         "chunks": len(chunks),
         "replaced": replaced,
-        "sources": sorted({c["source"] for c in chunks}),
+        "sources": sources,
     }
 
 
@@ -97,22 +114,47 @@ async def ensure_seeded(db) -> dict:
     unrelated custom document must not prevent the committed FRG corpus from
     being present. Sources not represented in the backup remain untouched.
     """
-    chunks, _vectors = load_seed()
+    chunks, vectors = load_seed()
+    await _lock_seed_transaction(db)
     expected = Counter(chunk["source"] for chunk in chunks)
-    rows = await db.execute(
-        select(KnowledgeChunk.source, func.count(KnowledgeChunk.id))
-        .where(KnowledgeChunk.source.in_(list(expected)))
-        .group_by(KnowledgeChunk.source)
-    )
-    actual = {source: int(count) for source, count in rows.all()}
-    if all(actual.get(source, 0) == count for source, count in expected.items()):
+    rows = (
+        await db.execute(
+            select(KnowledgeChunk)
+            .where(KnowledgeChunk.source.in_(list(expected)))
+            .order_by(KnowledgeChunk.source, KnowledgeChunk.chunk_index)
+        )
+    ).scalars().all()
+    actual_counts = Counter(row.source for row in rows)
+    by_key = {(row.source, row.chunk_index): row for row in rows}
+    complete = actual_counts == expected
+    if complete:
+        for chunk, vector in zip(chunks, vectors):
+            row = by_key.get((chunk["source"], chunk["chunk_index"]))
+            if row is None or any(
+                (
+                    row.page_start != chunk.get("page_start"),
+                    row.page_end != chunk.get("page_end"),
+                    row.crop != chunk.get("crop", ""),
+                    row.topic != chunk.get("topic", ""),
+                    row.content != chunk["content"],
+                    not np.allclose(
+                        np.asarray(row.embedding, dtype=np.float32),
+                        np.asarray(vector, dtype=np.float32),
+                        rtol=0,
+                        atol=1e-6,
+                    ),
+                )
+            ):
+                complete = False
+                break
+    if complete:
         return {
             "action": "skipped",
             "chunks": len(chunks),
             "replaced": 0,
             "sources": sorted(expected),
         }
-    return {"action": "seeded", **(await seed(db))}
+    return {"action": "seeded", **(await seed(db, acquire_lock=False))}
 
 
 async def _run(*, if_needed: bool = False) -> None:

@@ -130,6 +130,7 @@ async def test_forecast_normalizes_days_and_summary():
     }
     summary = result["summary"]
     assert summary["total_rain_mm"] == pytest.approx(14.6)
+    assert summary["max_daily_rain_mm"] == pytest.approx(12.5)
     assert summary["rainy_day_count"] == 2
     assert summary["first_rainy_date"] == "2026-07-25"
     assert summary["max_temp_c"] == 34.0

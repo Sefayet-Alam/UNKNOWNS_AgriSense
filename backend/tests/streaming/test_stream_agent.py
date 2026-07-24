@@ -596,8 +596,9 @@ def _plan_varieties(crop_id=3):
 
 
 @pytest.mark.parametrize("fake_llm", ["season_plan"], indirect=True)
+@pytest.mark.parametrize("farmer_message", ["গমের প্ল্যান বানাও", "গম"])
 async def test_selected_crop_season_plan_is_complete_and_grounded_end_to_end(
-    auth_client, fake_llm, db_session, monkeypatch
+    auth_client, fake_llm, farmer_message, db_session, monkeypatch
 ):
     """PDF #4/#6/#7/#8: dated plan + RAG + raw tool evidence over SSE."""
     from app.agent import tools as tools_mod
@@ -615,7 +616,7 @@ async def test_selected_crop_season_plan_is_complete_and_grounded_end_to_end(
         return {
             "source": "Open-Meteo forecast API",
             "summary": {"forecast_days": 16, "total_rain_mm": 4, "max_temp_c": 30},
-            "days": [],
+            "days": [{"date": "2026-11-15", "rain_mm": 0}],
         }
 
     async def context(*args, **kwargs):
@@ -632,7 +633,7 @@ async def test_selected_crop_season_plan_is_complete_and_grounded_end_to_end(
     monkeypatch.setattr(tools_mod.czis_mod, "get_fertilizer_recommendation", fertilizer)
     monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
 
-    events = await stream_turn(auth_client, "গমের প্ল্যান বানাও")
+    events = await stream_turn(auth_client, farmer_message)
     routing = [
         event["detail"]
         for event in events
@@ -652,14 +653,7 @@ async def test_selected_crop_season_plan_is_complete_and_grounded_end_to_end(
     assert raw["calendar"]["harvest_date"] == "2027-03-14"
     categories = {event["category"] for event in raw["calendar"]["events"]}
     assert {"land_preparation", "sowing", "fertilizer", "irrigation", "weed", "pest", "harvest"} <= categories
-    finance = next(
-        json.loads(trace["result"])
-        for event in events
-        if event["type"] == "message_update"
-        for trace in event["message"].get("tool_trace") or []
-        if trace.get("tool") == "calculate_crop_financials" and trace.get("result")
-    )
-    projection = finance["financial_projection"]
+    projection = raw["financial_projection"]
     assert projection["math_checks"]["cost_items_sum_to_total"] is True
     assert projection["math_checks"]["profit_equals_revenue_minus_cost"] is True
     assert projection["yield_assumption"]["source"]["source"] == "CZIS"
@@ -762,8 +756,8 @@ async def test_season_plan_heavy_rain_shifts_calendar_end_to_end(
             "source": "Open-Meteo forecast API",
             "summary": {"total_rain_mm": 56},
             "days": [
-                {"date": "2026-11-15", "rain_mm": 30},
-                {"date": "2026-11-16", "rain_mm": 25},
+                {"date": "2026-11-15", "rain_mm": 60},
+                {"date": "2026-11-16", "rain_mm": 55},
                 {"date": "2026-11-17", "rain_mm": 1},
             ],
         }

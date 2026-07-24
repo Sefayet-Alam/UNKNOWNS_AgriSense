@@ -1,6 +1,8 @@
 """Gold-number tests for deterministic crop ranking."""
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from app.engines.crop_ranker import estimate_rotation_economics, rank_candidates
@@ -71,11 +73,25 @@ def test_ranker_returns_pdf_required_fields_and_three_candidates():
         assert crop["water_need"]["level"] in {"low", "medium", "high"}
         assert crop["risk"]["level"] in {"low", "medium", "high"}
         assert isinstance(crop["rough_profit"]["estimate_tk"], int)
-        assert crop["rough_profit"]["basis"] == "recorded_full_rotation_net_return"
+        assert crop["rough_profit"]["basis"] == "candidate_crop_projection"
+        assert crop["rough_profit"]["estimate_tk"] == round(
+            crop["rough_profit"]["gross_revenue_tk"]
+            - crop["rough_profit"]["total_cost_tk"]
+        )
+        assert crop["rough_profit"]["yield_assumption"]["source"][
+            "source_type"
+        ] == "official_reference_yield_goal"
+        assert crop["local_rotation_reference"]["rotation"]
         assert crop["score"] == pytest.approx(sum(crop["score_components"].values()))
         assert crop["water_need"]["source"]["url"].startswith(
             "https://www.bamis.gov.bd/"
         )
+        assert crop["budget_fit"]["basis"] == "seeded_demo_crop_cost"
+        assert crop["budget_fit"]["warning"].startswith("Not a live quote")
+
+    potato = next(crop for crop in ranked if crop["crop_name"] == "Potato")
+    assert potato["budget_fit"]["estimated_crop_cost_tk"] == 77_500
+    assert potato["rough_profit"]["total_cost_tk"] == 77_500
 
 
 def test_ranker_penalizes_high_water_crop_without_irrigation_and_honors_exclusion():
@@ -112,3 +128,62 @@ def test_ranker_treats_missing_weather_as_visible_uncertainty_not_safe_weather()
     assert all(
         "forecast" in " ".join(c["risk"]["reasons"]).lower() for c in ranked
     )
+
+
+def test_ranker_does_not_apply_july_weather_to_future_rabi_sowing_window():
+    inputs = _inputs()
+    inputs["weather"] = {
+        "summary": {"total_rain_mm": 80, "max_temp_c": 42},
+        "days": [
+            {"date": "2026-07-24", "rain_mm": 40},
+            {"date": "2026-07-30", "rain_mm": 40},
+        ],
+    }
+    ranked = rank_candidates(**inputs, today=date(2026, 7, 24))
+
+    assert ranked
+    assert all(c["score_components"]["weather"] == 5.0 for c in ranked)
+    assert all(
+        "does not cover" in " ".join(c["risk"]["reasons"]).lower()
+        for c in ranked
+    )
+    assert all(
+        "42" not in " ".join(c["risk"]["reasons"]) for c in ranked
+    )
+
+
+def test_ranker_compares_bamis_daily_rain_threshold_to_max_daily_not_weekly_total():
+    inputs = _inputs()
+    inputs["weather"] = {
+        "summary": {"total_rain_mm": 70, "max_temp_c": 25},
+        "days": [
+            {"date": f"2026-11-{day:02d}", "rain_mm": 10}
+            for day in range(15, 22)
+        ],
+    }
+    ranked = rank_candidates(**inputs, today=date(2026, 11, 15))
+    wheat = next(candidate for candidate in ranked if candidate["crop_name"] == "Wheat")
+    assert "forecast daily rain" not in " ".join(
+        wheat["risk"]["reasons"]
+    ).lower()
+    assert wheat["score_components"]["weather"] == 10.0
+
+
+def test_ranker_never_recommends_crop_that_focused_planner_cannot_plan():
+    inputs = _inputs()
+    inputs["catalog"].append({"crop_id": 16, "name": "Lentil", "season": "Rabi"})
+    inputs["suitability"].append(
+        {"crop_id": 16, "suite": "Very Suitable", "suite_code": "VS"}
+    )
+    inputs["patterns"].append(
+        {
+            "pattern": "Lentil-Fallow-T. Aman dhan",
+            "rabi": "Lentil",
+            "bcr_vc": "2.0",
+            "bcr_tc": "1.8",
+            "gm_tk_per_decimal": "5000",
+        }
+    )
+
+    ranked = rank_candidates(**inputs)
+    assert "Lentil" not in {candidate["crop_name"] for candidate in ranked}

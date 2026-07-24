@@ -144,8 +144,12 @@ async def test_each_focused_crop_returns_a_complete_costed_plan_over_sse(
         "cost_items_sum_to_total": True,
         "profit_equals_revenue_minus_cost": True,
     }
-    standalone = _completed_tool(events, "calculate_crop_financials")
-    assert standalone["financial_projection"]["expected"] == projection["expected"]
+    assert not any(
+        trace.get("tool") == "calculate_crop_financials"
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+    )
 
 
 @pytest.mark.parametrize(

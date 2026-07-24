@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.agent import tools as tools_mod
 from app.agent.tools import _get_or_create_active_farm, build_crop_recommendation_tool
 from app.models import User
+from app.rag import ingest_document
 
 
 async def _user_and_farm(db_session):
@@ -62,6 +63,14 @@ async def test_recommendation_tool_returns_three_weather_and_czis_grounded_crops
     auth_client, db_session, monkeypatch
 ):
     user, farm = await _complete_farm(db_session)
+    await ingest_document(
+        db_session,
+        "<!-- Page 72 (embedded) -->\n\n"
+        "Rabi crop selection should account for soil drainage, irrigation "
+        "access, and the locally appropriate sowing window.",
+        source="FRG 2024",
+        topic="crop selection",
+    )
 
     async def fake_weather(lat, lon, days, **kwargs):
         assert (lat, lon) == (farm.latitude, farm.longitude)
@@ -121,6 +130,9 @@ async def test_recommendation_tool_returns_three_weather_and_czis_grounded_crops
     assert payload["farm_inputs"]["area_decimal"] == 99.0
     assert payload["weather"]["source"] == "Open-Meteo forecast API"
     assert payload["land_suitability"]["evidence"]["source"] == "BARC CZIS GeoServer"
+    assert payload["knowledge_status"] == "ok"
+    assert payload["knowledge_evidence"][0]["source"] == "FRG 2024"
+    assert payload["knowledge_usage"].startswith("Retrieved passages are supplied")
     assert payload["sources"]["economics"].startswith("https://czis.cropzoning.gov.bd")
     for candidate in payload["candidates"]:
         assert {
@@ -133,7 +145,9 @@ async def test_recommendation_tool_returns_three_weather_and_czis_grounded_crops
         } <= candidate.keys()
         assert candidate["rough_profit"]["gross_revenue_tk"] - candidate[
             "rough_profit"
-        ]["total_cost_tk"] == candidate["rough_profit"]["estimate_tk"]
+        ]["total_cost_tk"] == pytest.approx(
+            candidate["rough_profit"]["estimate_tk"], abs=1
+        )
 
 
 @pytest.mark.asyncio

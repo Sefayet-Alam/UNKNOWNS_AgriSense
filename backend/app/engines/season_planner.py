@@ -60,6 +60,7 @@ CROP_PLANS: dict[str, dict[str, Any]] = {
         "weather_warning": {"rain_mm_day": 50, "max_temp_c": 30, "min_temp_c": 10},
         "stages": [(0, "Sowing"), (7, "Germination"), (18, "Vegetative growth"), (30, "Flowering"), (50, "Pod initiation"), (78, "Maturity")],
         "fertilizer": [(0, "Apply half nitrogen and all other prescribed fertilizers as basal", {"urea": 0.5}), (25, "Topdress remaining nitrogen at flower initiation", {"urea": 0.5})],
+        "rainfed_fertilizer": [(0, "Under the FRG rainfed rule, apply all prescribed fertilizers as basal during final land preparation", {})],
         "irrigation": [(1, "Light irrigation only if seedbed moisture is inadequate"), (25, "Irrigate at flower initiation when soil is dry"), (50, "Check moisture at pod initiation; avoid waterlogging")],
         "weeds": [(18, "Inspect and control weeds before flower initiation"), (35, "Second weed inspection after flowering starts")],
         "pests": [(28, "Scout for Alternaria leaf blight and stem rot"), (42, "Scout for aphids, especially in cloudy weather")],
@@ -162,7 +163,7 @@ def _inside_window(profile: dict, value: date) -> bool:
 
 
 def _weather_adjusted_date(
-    requested: date, weather: dict
+    requested: date, weather: dict, rain_threshold_mm: float
 ) -> tuple[date, list[dict], list[str]]:
     rows = {
         str(row.get("date")): row
@@ -170,8 +171,18 @@ def _weather_adjusted_date(
         if row.get("date")
     }
     current = rows.get(requested.isoformat())
+    if current is None:
+        if rows:
+            coverage = f"{min(rows)} through {max(rows)}"
+        else:
+            coverage = "no daily dates"
+        return requested, [], [
+            f"The live forecast ({coverage}) does not cover planting date "
+            f"{requested.isoformat()}; no weather date adjustment was made. "
+            "Recheck within 16 days of planting."
+        ]
     rain = current.get("rain_mm") if current else None
-    if rain is None or float(rain) < 20.0:
+    if rain is None or float(rain) < float(rain_threshold_mm):
         return requested, [], []
     candidates = sorted(
         (
@@ -183,7 +194,9 @@ def _weather_adjusted_date(
     )
     for candidate, row in candidates:
         candidate_rain = row.get("rain_mm")
-        if candidate_rain is not None and float(candidate_rain) < 20.0:
+        if candidate_rain is not None and float(candidate_rain) < float(
+            rain_threshold_mm
+        ):
             return (
                 candidate,
                 [
@@ -203,8 +216,7 @@ def _weather_adjusted_date(
     ]
 
 
-def _split_fertilizers(profile: dict, products: list[dict]) -> dict[int, list[dict]]:
-    events = profile["fertilizer"]
+def _split_fertilizers(events: list[tuple], products: list[dict]) -> dict[int, list[dict]]:
     doses: dict[int, list[dict]] = {offset: [] for offset, _, _ in events}
     for product in products:
         if product.get("is_alternative"):
@@ -253,12 +265,15 @@ def build_season_calendar(
     fertilizer_products: list[dict],
     weather: dict,
     planting_date: Optional[date] = None,
+    irrigation_available: Optional[bool] = None,
+    soil_texture: str = "",
+    land_type: str = "",
 ) -> dict:
     """Build the complete dated Tier-0 calendar for one supported crop."""
     profile = _profile(crop_name)
     requested = planting_date or next_sowing_date(profile["display"], today)
     actual, weather_adjustments, weather_warnings = _weather_adjusted_date(
-        requested, weather
+        requested, weather, profile["weather_warning"]["rain_mm_day"]
     )
     warnings = list(weather_warnings)
     if not _inside_window(profile, actual):
@@ -267,7 +282,12 @@ def build_season_calendar(
             "BAMIS-calendar-derived sowing window; confirm with local extension staff."
         )
 
-    fertilizer_doses = _split_fertilizers(profile, fertilizer_products)
+    fertilizer_events = (
+        profile.get("rainfed_fertilizer", profile["fertilizer"])
+        if irrigation_available is False
+        else profile["fertilizer"]
+    )
+    fertilizer_doses = _split_fertilizers(fertilizer_events, fertilizer_products)
     events: list[dict] = []
 
     def add(offset: int, category: str, title: str, action: str, source: dict, **extra):
@@ -293,7 +313,7 @@ def build_season_calendar(
     add(0, "sowing", profile["stages"][0][1], f"Plant {profile['display']} in the prepared field.", profile["bamis"])
     for offset, stage in profile["stages"][1:]:
         add(offset, "crop_stage", stage, f"Confirm the crop has reached {stage.lower()} and update the plan if development differs.", profile["bamis"])
-    for offset, action, _shares in profile["fertilizer"]:
+    for offset, action, _shares in fertilizer_events:
         add(
             offset,
             "fertilizer",
@@ -303,7 +323,18 @@ def build_season_calendar(
             fertilizer_doses=fertilizer_doses.get(offset, []),
         )
     for offset, action in profile["irrigation"]:
-        add(offset, "irrigation", "Irrigation checkpoint", action, profile["bamis"])
+        if irrigation_available is False:
+            add(
+                offset,
+                "moisture_monitoring",
+                "Rainfed moisture checkpoint",
+                "No assured irrigation: monitor soil moisture and rainfall; "
+                "this plan does not assume water can be applied at this stage.",
+                profile["bamis"],
+                original_irrigated_guidance=action,
+            )
+        else:
+            add(offset, "irrigation", "Irrigation checkpoint", action, profile["bamis"])
     for offset, action in profile["weeds"]:
         add(offset, "weed", "Weed checkpoint", action, profile["bamis"])
     for offset, action in profile["pests"]:
@@ -326,5 +357,16 @@ def build_season_calendar(
             "water_requirement": profile["water_requirement"],
             "weather_warning_thresholds": profile["weather_warning"],
             "source": profile["bamis"],
+        },
+        "farm_context": {
+            "irrigation_available": irrigation_available,
+            "soil_texture": soil_texture or None,
+            "land_type": land_type or None,
+            "usage": (
+                "Irrigation availability controls whether the calendar emits "
+                "irrigation instructions or rainfed moisture checks. Soil and "
+                "land type are retained for extension review; this Rajshahi "
+                "calendar does not invent uncited timing adjustments from them."
+            ),
         },
     }

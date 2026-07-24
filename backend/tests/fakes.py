@@ -224,20 +224,6 @@ def _season_plan_script() -> List[BaseMessage]:
             ],
         ),
         AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "name": "calculate_crop_financials",
-                    "args": {
-                        "crop_name": "Wheat",
-                        "variety_name": "BARI Gom 33",
-                    },
-                    "id": "call_plan_finance_1",
-                    "type": "tool_call",
-                }
-            ],
-        ),
-        AIMessage(
             content=(
                 "গমের তারিখভিত্তিক পরিকল্পনা প্রস্তুত। BAMIS রাজশাহী ক্যালেন্ডার, "
                 "FRG 2024 (পৃষ্ঠা ৯০), Open-Meteo এবং CZIS-এর ৫০ শতকের "
@@ -258,20 +244,6 @@ def _season_plan_degraded_script() -> List[BaseMessage]:
                     "name": "generate_season_plan",
                     "args": {"crop_name": "Wheat", "planting_date": "2026-11-15"},
                     "id": "call_plan_degraded",
-                    "type": "tool_call",
-                }
-            ],
-        ),
-        AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "name": "calculate_crop_financials",
-                    "args": {
-                        "crop_name": "Wheat",
-                        "expected_yield_t_ha": 4.5,
-                    },
-                    "id": "call_plan_finance_degraded",
                     "type": "tool_call",
                 }
             ],
@@ -453,21 +425,6 @@ def _journey_plan() -> List[BaseMessage]:
             ],
         ),
         AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "name": "calculate_crop_financials",
-                    "args": {
-                        "crop_name": "Wheat",
-                        "variety_name": "BARI Gom 33",
-                        "sale_price_bdt_per_kg": 42,
-                    },
-                    "id": "journey_finance",
-                    "type": "tool_call",
-                }
-            ],
-        ),
-        AIMessage(
             content=(
                 "গমের পূর্ণ costed plan প্রস্তুত: BAMIS/FRG তারিখ, Open-Meteo "
                 "সমন্বয়, CZIS সার ও ফলন, itemized cost, revenue, net profit, "
@@ -494,21 +451,6 @@ def _matrix_plan_script(
                         "sale_price_bdt_per_kg": price,
                     },
                     "id": f"matrix_plan_{slug}",
-                    "type": "tool_call",
-                }
-            ],
-        ),
-        AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "name": "calculate_crop_financials",
-                    "args": {
-                        "crop_name": crop,
-                        "expected_yield_t_ha": expected_yield_t_ha,
-                        "sale_price_bdt_per_kg": price,
-                    },
-                    "id": f"matrix_plan_finance_{slug}",
                     "type": "tool_call",
                 }
             ],

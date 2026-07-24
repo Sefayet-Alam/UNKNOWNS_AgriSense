@@ -110,8 +110,8 @@ def test_heavy_rain_delays_near_term_planting_to_first_dry_forecast_day():
     weather = {
         "source": "Open-Meteo forecast API",
         "days": [
-            {"date": "2026-11-15", "rain_mm": 35.0},
-            {"date": "2026-11-16", "rain_mm": 28.0},
+            {"date": "2026-11-15", "rain_mm": 60.0},
+            {"date": "2026-11-16", "rain_mm": 55.0},
             {"date": "2026-11-17", "rain_mm": 2.0},
         ],
     }
@@ -129,10 +129,51 @@ def test_heavy_rain_delays_near_term_planting_to_first_dry_forecast_day():
             "type": "planting_delay",
             "from": "2026-11-15",
             "to": "2026-11-17",
-            "reason": "35.0 mm rain forecast on requested planting date",
+            "reason": "60.0 mm rain forecast on requested planting date",
             "source": "Open-Meteo forecast API",
         }
     ]
+
+
+def test_rain_delay_uses_crop_specific_published_bamis_threshold():
+    weather = {
+        "source": "Open-Meteo forecast API",
+        "days": [
+            {"date": "2026-11-15", "rain_mm": 30.0},
+            {"date": "2026-11-16", "rain_mm": 1.0},
+        ],
+    }
+    wheat = build_season_calendar(
+        crop_name="Wheat",
+        today=date(2026, 11, 15),
+        planting_date=date(2026, 11, 15),
+        fertilizer_products=[],
+        weather=weather,
+    )
+    potato = build_season_calendar(
+        crop_name="Potato",
+        today=date(2026, 11, 15),
+        planting_date=date(2026, 11, 15),
+        fertilizer_products=[],
+        weather=weather,
+    )
+    assert wheat["planting_date"] == "2026-11-15"  # BAMIS warning is 50 mm/day
+    assert potato["planting_date"] == "2026-11-16"  # BAMIS warning is 25 mm/day
+
+
+def test_plan_warns_when_planting_date_is_outside_live_forecast_horizon():
+    plan = build_season_calendar(
+        crop_name="Wheat",
+        today=date(2026, 7, 24),
+        planting_date=date(2026, 11, 15),
+        fertilizer_products=[],
+        weather={
+            "source": "Open-Meteo forecast API",
+            "days": [{"date": "2026-07-24", "rain_mm": 1.0}],
+        },
+    )
+    assert any("does not cover" in warning.lower() for warning in plan["warnings"])
+    assert any("16 days" in warning for warning in plan["warnings"])
 
 
 def test_outside_sowing_window_is_visible_when_farmer_forces_date():
@@ -144,7 +185,39 @@ def test_outside_sowing_window_is_visible_when_farmer_forces_date():
         weather={"days": []},
     )
     assert plan["warnings"]
-    assert "outside" in plan["warnings"][0].lower()
+    assert any("outside" in warning.lower() for warning in plan["warnings"])
+
+
+def test_rainfed_mustard_uses_frg_all_basal_rule_and_no_irrigation_schedule():
+    plan = build_season_calendar(
+        crop_name="Mustard",
+        today=date(2026, 11, 15),
+        planting_date=date(2026, 11, 15),
+        fertilizer_products=[
+            {
+                "product": "Urea",
+                "element": "N",
+                "amount": {"value": 20.0, "unit": "kg"},
+                "is_alternative": False,
+            }
+        ],
+        weather={"days": []},
+        irrigation_available=False,
+        soil_texture="Clay Loam",
+        land_type="medium highland",
+    )
+
+    fertilizer_events = [
+        event for event in plan["events"] if event["category"] == "fertilizer"
+    ]
+    assert len(fertilizer_events) == 1
+    assert "rainfed" in fertilizer_events[0]["action"].lower()
+    assert fertilizer_events[0]["fertilizer_doses"][0]["amount"]["value"] == 20
+    assert not any(event["category"] == "irrigation" for event in plan["events"])
+    assert any(
+        event["category"] == "moisture_monitoring" for event in plan["events"]
+    )
+    assert plan["farm_context"]["irrigation_available"] is False
 
 
 def test_unsupported_crop_is_rejected_instead_of_inventing_calendar():

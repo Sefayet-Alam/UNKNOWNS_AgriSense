@@ -231,7 +231,6 @@ async def test_vague_opening_reaches_grounded_explained_costed_plan(
         "czis_crop_varieties",
         "search_knowledge_base",
         "generate_season_plan",
-        "calculate_crop_financials",
     } <= set(tool_names)
     assert tool_names.count("czis_crop_varieties") == 3
     assert all(isinstance(trace["args"], dict) and trace["result"] for trace in traces)
@@ -246,4 +245,4 @@ async def test_vague_opening_reaches_grounded_explained_costed_plan(
         for trace in message.get("tool_trace") or []
         if trace.get("result")
     }
-    assert {"rank_crop_candidates", "generate_season_plan", "calculate_crop_financials"} <= stored_tools
+    assert {"rank_crop_candidates", "generate_season_plan"} <= stored_tools

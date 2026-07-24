@@ -74,4 +74,3 @@ async def test_point_suitability_reports_upstream_failure():
             await czis_suitability.get_point_suitability(
                 24.6, 88.5, [3], client=client
             )
-

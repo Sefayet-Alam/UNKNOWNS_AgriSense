@@ -4,6 +4,7 @@
   "crops": {
     "wheat": {
       "price_bdt_per_kg": 36,
+      "reference_yield_t_ha": {"low": 4.05, "high": 4.95, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "90", "basis": "published 4.5 +/- 0.45 t/ha irrigated yield goal"},
       "cost_bdt_per_decimal": {
         "land_preparation": 100,
         "seed": 80,
@@ -17,6 +18,7 @@
     },
     "mustard": {
       "price_bdt_per_kg": 75,
+      "reference_yield_t_ha": {"low": 1.8, "high": 2.2, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "101", "basis": "published 2.0 +/- 0.2 t/ha yield goal"},
       "cost_bdt_per_decimal": {
         "land_preparation": 70,
         "seed": 30,
@@ -30,6 +32,7 @@
     },
     "potato": {
       "price_bdt_per_kg": 25,
+      "reference_yield_t_ha": {"low": 27.0, "high": 33.0, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "106", "basis": "published 30.0 +/- 3.0 t/ha yield goal"},
       "cost_bdt_per_decimal": {
         "land_preparation": 150,
         "seed": 500,
@@ -43,6 +46,7 @@
     },
     "maize": {
       "price_bdt_per_kg": 30,
+      "reference_yield_t_ha": {"low": 9.9, "high": 12.1, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "91", "basis": "published 11.0 +/- 1.1 t/ha yield goal"},
       "cost_bdt_per_decimal": {
         "land_preparation": 100,
         "seed": 110,
@@ -56,6 +60,7 @@
     },
     "boro dhan": {
       "price_bdt_per_kg": 28,
+      "reference_yield_t_ha": {"low": 6.75, "high": 8.25, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "87", "basis": "published 7.5 +/- 0.75 t/ha yield goal for the listed varieties"},
       "cost_bdt_per_decimal": {
         "land_preparation": 130,
         "seed": 70,

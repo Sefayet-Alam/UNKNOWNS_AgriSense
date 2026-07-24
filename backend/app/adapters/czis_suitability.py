@@ -67,7 +67,6 @@ async def get_point_suitability(
         "CQL_FILTER": f"crop_id IN ({','.join(str(i) for i in ids)})",
         "propertyName": _PROPERTIES,
     }
-
     owns_client = client is None
     http = client or httpx.AsyncClient(timeout=TIMEOUT_S)
     try:
@@ -118,4 +117,3 @@ async def get_point_suitability(
             },
         },
     }
-

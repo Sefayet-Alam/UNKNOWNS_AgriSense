@@ -54,6 +54,58 @@ def supported_finance_crops() -> list[str]:
     return sorted(_catalog()["crops"])
 
 
+def seeded_crop_cost(crop_name: str, area_decimal: float) -> dict:
+    """Return the disclosed demo cultivation-cost estimate for ranking.
+
+    This deliberately excludes yield and sale price. It lets the recommender
+    compare the farmer's one-season budget to a one-crop estimate instead of
+    incorrectly comparing it to CZIS full-rotation cost.
+    """
+    key = str(crop_name or "").strip().lower()
+    crop = _catalog()["crops"].get(key)
+    area = _d(area_decimal)
+    if crop is None:
+        raise ValueError("unsupported crop for seeded cost estimate")
+    if area <= 0:
+        raise ValueError("area must be greater than zero")
+    total = sum(
+        (_d(rate) * area for rate in crop["cost_bdt_per_decimal"].values()),
+        Decimal("0"),
+    )
+    return {
+        "total_cost_bdt": float(_money(total)),
+        "source_type": "seeded_demo_value",
+        "catalog_version": _catalog()["version"],
+        "warning": "Not a live quote; confirm actual input and labor costs locally.",
+    }
+
+
+def seeded_crop_rough_projection(crop_name: str, area_decimal: float) -> dict:
+    """Build the disclosed crop-only comparison used by the recommender.
+
+    Yield is an official FRG crop yield goal. Price and item costs remain
+    prominently labelled demo assumptions, so this is suitable for shortlist
+    comparison but never presented as a live quote or guaranteed return.
+    """
+    key = str(crop_name or "").strip().lower()
+    crop = _catalog()["crops"].get(key)
+    if crop is None:
+        raise ValueError("unsupported crop for seeded rough projection")
+    yield_ref = crop["reference_yield_t_ha"]
+    return build_financial_projection(
+        crop_name=crop_name,
+        area_decimal=area_decimal,
+        yield_low_t_ha=yield_ref["low"],
+        yield_high_t_ha=yield_ref["high"],
+        yield_source={
+            "source": yield_ref["source"],
+            "pages": yield_ref["pages"],
+            "basis": yield_ref["basis"],
+            "source_type": "official_reference_yield_goal",
+        },
+    )
+
+
 def build_financial_projection(
     *,
     crop_name: str,

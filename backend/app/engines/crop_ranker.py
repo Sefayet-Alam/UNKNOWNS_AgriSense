@@ -7,9 +7,11 @@ it must not replace the arithmetic.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Optional
 
-from .season_planner import CROP_PLANS
+from .finance import seeded_crop_cost, seeded_crop_rough_projection
+from .season_planner import CROP_PLANS, next_sowing_date
 
 
 def _bamis_source(url: str) -> dict[str, str]:
@@ -118,12 +120,43 @@ def _best_pattern_by_crop(patterns: list[dict], season: str) -> dict[str, dict]:
     return out
 
 
-def _weather_component(traits: dict, weather: dict) -> tuple[float, list[str]]:
+def _weather_component(
+    traits: dict,
+    weather: dict,
+    *,
+    crop_name: str,
+    today: Optional[date],
+) -> tuple[float, list[str]]:
+    if today is not None and traits.get("profile"):
+        forecast_dates = []
+        for row in weather.get("days") or []:
+            try:
+                forecast_dates.append(date.fromisoformat(str(row.get("date"))))
+            except (TypeError, ValueError):
+                continue
+        if forecast_dates:
+            sowing = next_sowing_date(crop_name, today)
+            forecast_start, forecast_end = min(forecast_dates), max(forecast_dates)
+            if not forecast_start <= sowing <= forecast_end:
+                return 5.0, [
+                    f"live forecast through {forecast_end.isoformat()} does not "
+                    f"cover the next sowing window from {sowing.isoformat()}; "
+                    "recheck weather closer to planting"
+                ]
     summary = weather.get("summary") or {}
     warnings: list[str] = []
     max_temp = _number(summary.get("max_temp_c"))
-    total_rain = _number(summary.get("total_rain_mm"))
-    if max_temp is None and total_rain is None:
+    daily_rain = [
+        value
+        for row in weather.get("days") or []
+        if (value := _number(row.get("rain_mm"))) is not None
+    ]
+    max_daily_rain = (
+        max(daily_rain)
+        if daily_rain
+        else _number(summary.get("max_daily_rain_mm"))
+    )
+    if max_temp is None and max_daily_rain is None:
         # Unknown is neither safe nor catastrophic: keep a neutral half-score
         # and make the uncertainty visible in the candidate risk reasons.
         return 5.0, ["live forecast values unavailable"]
@@ -133,9 +166,13 @@ def _weather_component(traits: dict, weather: dict) -> tuple[float, list[str]]:
             f"forecast maximum {max_temp:g}°C exceeds {traits['max_temp_c']}°C risk threshold"
         )
         score -= 5.0
-    if total_rain is not None and total_rain > traits["heavy_rain_mm"]:
+    if (
+        max_daily_rain is not None
+        and max_daily_rain > traits["heavy_rain_mm"]
+    ):
         warnings.append(
-            f"forecast rain {total_rain:g} mm exceeds {traits['heavy_rain_mm']} mm risk threshold"
+            f"forecast daily rain {max_daily_rain:g} mm exceeds "
+            f"{traits['heavy_rain_mm']} mm/day risk threshold"
         )
         score -= 5.0
     return max(score, 0.0), warnings
@@ -149,6 +186,7 @@ def rank_candidates(
     patterns: list[dict],
     weather: dict,
     limit: int = 5,
+    today: Optional[date] = None,
 ) -> list[dict]:
     """Rank eligible crops and return the PDF-required candidate fields."""
     season = str(profile.get("season") or "").strip().lower()
@@ -174,7 +212,7 @@ def rank_candidates(
     for item in ordered_catalog:
         name = str(item.get("name") or "").strip()
         key = name.lower()
-        if not name or key in excluded or key not in CROP_TRAITS:
+        if not name or key in excluded or key not in CROP_PLANS:
             continue
         if str(item.get("season") or "").strip().lower() != season:
             continue
@@ -205,11 +243,13 @@ def rank_candidates(
         )
         water_component = round(water_raw * 0.2, 2)
 
-        required = economics["total_cost_tk"]
+        crop_cost = seeded_crop_cost(name, area)
+        crop_projection = seeded_crop_rough_projection(name, area)
+        required = int(round(crop_cost["total_cost_bdt"]))
         fit_ratio = min(1.0, budget / required) if required > 0 else 0.0
         budget_component = round(fit_ratio * 20.0, 2)
         weather_component, weather_warnings = _weather_component(
-            CROP_TRAITS[key], weather
+            CROP_TRAITS[key], weather, crop_name=name, today=today
         )
 
         reasons: list[str] = []
@@ -229,7 +269,7 @@ def rank_candidates(
             medium_risk = True
         if required > budget:
             reasons.append(
-                f"recorded rotation total cost {required} Tk exceeds budget {int(budget)} Tk"
+                f"seeded demo crop cost {required} Tk exceeds budget {int(budget)} Tk"
             )
             high_risk = high_risk or fit_ratio < 0.5
             medium_risk = True
@@ -271,17 +311,37 @@ def rank_candidates(
                 "risk": {"level": risk_level, "reasons": reasons},
                 "budget_fit": {
                     "farmer_budget_tk": int(budget),
-                    "estimated_rotation_total_cost_tk": required,
+                    "estimated_crop_cost_tk": required,
                     "within_budget": required <= budget,
+                    "basis": "seeded_demo_crop_cost",
+                    "source_type": crop_cost["source_type"],
+                    "catalog_version": crop_cost["catalog_version"],
+                    "warning": crop_cost["warning"],
                 },
                 "rough_profit": {
-                    "estimate_tk": economics["net_return_tk"],
-                    "basis": "recorded_full_rotation_net_return",
+                    "estimate_tk": int(
+                        round(crop_projection["expected"]["net_profit_bdt"])
+                    ),
+                    "basis": "candidate_crop_projection",
                     "warning": (
-                        "CZIS records economics for the full named annual rotation, "
-                        "not this crop alone; use as a rough comparison only."
+                        "Yield is an official FRG reference goal, but price and "
+                        "costs are seeded demo values—not live quotes or a "
+                        "guaranteed return. Confirm them locally."
+                    ),
+                    "expected_yield_kg": crop_projection["expected"]["yield_kg"],
+                    "gross_revenue_tk": crop_projection["expected"]["revenue_bdt"],
+                    "total_cost_tk": crop_projection["total_cost_bdt"],
+                    "yield_assumption": crop_projection["yield_assumption"],
+                    "price_assumption": crop_projection["price_assumption"],
+                    "catalog_version": crop_projection["assumptions"]["catalog_version"],
+                },
+                "local_rotation_reference": {
+                    "warning": (
+                        "CZIS records economics for this full annual rotation, "
+                        "not for the candidate crop alone."
                     ),
                     "rotation": pattern.get("pattern"),
+                    "net_return_tk": economics["net_return_tk"],
                     "gross_margin_tk": economics["gross_margin_tk"],
                     "gross_revenue_tk": economics["gross_revenue_tk"],
                     "total_cost_tk": economics["total_cost_tk"],

@@ -103,7 +103,7 @@ async def test_season_plan_combines_bamis_frg_czis_weather_and_rag(
 
     async def fake_weather(lat, lon, days, **kwargs):
         assert (lat, lon, days) == (farm.latitude, farm.longitude, 16)
-        return _weather()
+        return _weather([{"date": "2026-11-15", "rain_mm": 0}])
 
     async def fake_context(crop_id, lat, lon, **kwargs):
         return _context(crop_id)
@@ -136,6 +136,7 @@ async def test_season_plan_combines_bamis_frg_czis_weather_and_rag(
     categories = {event["category"] for event in payload["calendar"]["events"]}
     assert {"sowing", "fertilizer", "irrigation", "weed", "pest", "harvest"} <= categories
     assert payload["knowledge_evidence"][0]["source"] == "FRG 2024"
+    assert payload["knowledge_claims"]["fertilizer_timing"]["status"] == "supported"
     assert payload["fertilizer_recommendation"]["evidence"]["computed_by"] == "CZIS server"
     doses = [
         dose
@@ -162,8 +163,8 @@ async def test_season_plan_weather_delay_changes_all_dependent_dates(
     async def rainy(*args, **kwargs):
         return _weather(
             [
-                {"date": "2026-11-15", "rain_mm": 30},
-                {"date": "2026-11-16", "rain_mm": 25},
+                {"date": "2026-11-15", "rain_mm": 60},
+                {"date": "2026-11-16", "rain_mm": 55},
                 {"date": "2026-11-17", "rain_mm": 1},
             ]
         )
@@ -192,6 +193,38 @@ async def test_season_plan_weather_delay_changes_all_dependent_dates(
     assert payload["calendar"]["planting_date"] == "2026-11-17"
     assert payload["calendar"]["harvest_date"] == "2027-03-16"
     assert payload["calendar"]["weather_adjustments"][0]["source"] == "Open-Meteo forecast API"
+
+
+@pytest.mark.asyncio
+async def test_season_plan_marks_future_forecast_outside_horizon_degraded(
+    auth_client, db_session, monkeypatch
+):
+    user, _farm = await _complete_farm(db_session)
+    await ingest_document(db_session, "Wheat season plan reference", source="FRG")
+
+    async def short_forecast(*args, **kwargs):
+        return _weather([{"date": "2026-07-24", "rain_mm": 0}])
+
+    async def context(*args, **kwargs):
+        return _context()
+
+    async def fertilizer(*args, **kwargs):
+        return _fertilizer()
+
+    async def varieties(*args, **kwargs):
+        return _varieties()
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", short_forecast)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_fertilizer_recommendation", fertilizer)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
+    payload = json.loads(
+        await build_season_plan_tool(user).ainvoke(
+            {"crop_name": "Wheat", "planting_date": "2026-11-15"}
+        )
+    )
+    assert payload["status"] == "degraded"
+    assert "weather_forecast_pending" in payload["unavailable_sources"]
 
 
 @pytest.mark.asyncio
@@ -285,6 +318,63 @@ async def test_season_plan_rejects_unknown_crop_before_network(
         await build_season_plan_tool(user).ainvoke({"crop_name": "Dragon fruit"})
     )
     assert payload["status"] == "UNSUPPORTED_CROP"
+
+
+@pytest.mark.asyncio
+async def test_season_plan_rejects_past_planting_date_before_network(
+    auth_client, db_session, monkeypatch
+):
+    user, _farm = await _complete_farm(db_session)
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("network must not run for an already-past planting date")
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", forbidden)
+    payload = json.loads(
+        await build_season_plan_tool(user).ainvoke(
+            {"crop_name": "Wheat", "planting_date": "2000-11-15"}
+        )
+    )
+    assert payload["status"] == "PAST_PLANTING_DATE"
+
+
+@pytest.mark.asyncio
+async def test_season_plan_rejects_non_rajshahi_calendar_before_network(
+    auth_client, db_session, monkeypatch
+):
+    user, farm = await _complete_farm(db_session)
+    farm.division_name = "Dhaka"
+    await db_session.commit()
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("Rajshahi calendar must not be applied outside its region")
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", forbidden)
+    payload = json.loads(
+        await build_season_plan_tool(user).ainvoke({"crop_name": "Wheat"})
+    )
+    assert payload["status"] == "UNSUPPORTED_CALENDAR_REGION"
+    assert payload["calendar_region"] == "Rajshahi"
+
+
+@pytest.mark.asyncio
+async def test_season_plan_rejects_high_water_crop_without_irrigation_before_network(
+    auth_client, db_session, monkeypatch
+):
+    user, farm = await _complete_farm(db_session)
+    farm.irrigation_available = False
+    farm.water_source = "rainfed"
+    await db_session.commit()
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("infeasible Boro plan must stop before external calls")
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", forbidden)
+    payload = json.loads(
+        await build_season_plan_tool(user).ainvoke({"crop_name": "Boro dhan"})
+    )
+    assert payload["status"] == "IRRIGATION_REQUIRED"
+    assert payload["crop"] == "Boro dhan"
 
 
 @pytest.mark.asyncio
