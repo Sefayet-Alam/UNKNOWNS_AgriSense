@@ -232,6 +232,9 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(16))  # "user" | "assistant"
     content: Mapped[str] = mapped_column(Text, default="")
     tool_trace: Mapped[list] = mapped_column(JSON, default=list)
+    # Compact refs to files the farmer sent with this turn ({id, kind, mime_type})
+    # so the photo can be rendered back in the thread after reload.
+    attachments: Mapped[list] = mapped_column(JSON, default=list)
     model: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now()
@@ -262,6 +265,30 @@ class KnowledgeChunk(Base):
     topic: Mapped[str] = mapped_column(String(120), default="")
     content: Mapped[str] = mapped_column(Text)
     embedding = mapped_column(Vector(settings.KB_EMBEDDING_DIM))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+
+
+class Attachment(Base):
+    """A farmer-uploaded file: a leaf photo (image) or a voice note (audio).
+
+    Stored on disk under ``UPLOAD_DIR/{user_id}/`` with only the path kept in the
+    row (user-scoped). Audio rows carry the Gemini transcript so the voice note
+    can flow through the normal text pipeline; image rows are read back by the
+    on-device disease classifier.
+    """
+
+    __tablename__ = "attachments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16))  # "image" | "audio"
+    mime_type: Mapped[str] = mapped_column(String(80))
+    path: Mapped[str] = mapped_column(String(400))
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now()
     )

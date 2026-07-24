@@ -10,13 +10,13 @@ import logging
 import os
 from typing import AsyncGenerator, Optional
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..logging_setup import trunc
-from ..models import ChatMessage, ChatSession, User
+from ..models import Attachment, ChatMessage, ChatSession, User
 from ..schemas import serialize_message
 from . import memory as memory_mod
 from .graph import build_graph
@@ -37,6 +37,7 @@ from .tools import (
     build_crop_recommendation_tool,
     build_financial_tool,
     build_research_tools,
+    build_disease_tool,
     build_scenario_tool,
     build_scheduler_tool,
     build_season_plan_tool,
@@ -164,6 +165,7 @@ async def stream_agent_turn(
     user: User,
     session_or_none: Optional[ChatSession],
     message: str,
+    attachment_ids: Optional[list[int]] = None,
 ) -> AsyncGenerator[dict, None]:
     """Run one user turn; yield event dicts matching the frozen contract."""
     session = session_or_none
@@ -184,9 +186,33 @@ async def stream_agent_turn(
 
         yield {"type": "session", "session_id": session.id}
 
+        # ---- resolve attachments (user-scoped) for this turn ------------ #
+        attachment_refs: list[dict] = []
+        if attachment_ids:
+            rows = (
+                (
+                    await db.execute(
+                        select(Attachment).where(
+                            Attachment.id.in_(attachment_ids),
+                            Attachment.user_id == user.id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            attachment_refs = [
+                {"id": row.id, "kind": row.kind, "mime_type": row.mime_type}
+                for row in rows
+            ]
+
         # ---- persist user message + echo bubble ------------------------- #
         user_msg = ChatMessage(
-            session_id=session.id, role="user", content=message, tool_trace=[]
+            session_id=session.id,
+            role="user",
+            content=message,
+            tool_trace=[],
+            attachments=attachment_refs,
         )
         db.add(user_msg)
         await db.commit()
@@ -202,6 +228,7 @@ async def stream_agent_turn(
         recommendation_tool = build_crop_recommendation_tool(user)
         financial_tool = build_financial_tool(user)
         season_plan_tool = build_season_plan_tool(user)
+        disease_tool = build_disease_tool(user)
         scheduler_tool = build_scheduler_tool(user)
         scenario_tool = build_scenario_tool(user)
         czis_tools = build_czis_tools(user)
@@ -215,7 +242,7 @@ async def stream_agent_turn(
             "advisor": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool, patterns_tool, scheduler_tool]
+            + [soil_tool, patterns_tool, disease_tool, scheduler_tool]
             + czis_tools
             + kb_tools
             + memory_tools,
@@ -277,6 +304,23 @@ async def stream_agent_turn(
             SYSTEM_PROMPT, session.summary, recalled, farmer_name=user.username
         )
         lc_messages.extend(history_to_lc_messages(history))
+
+        # ---- multimodal: nudge the advisor to diagnose attached photos --- #
+        if attachment_refs:
+            image_rows = [r for r in attachment_refs if r["kind"] == "image"]
+            if image_rows:
+                ids = ", ".join(f"attachment_id={row['id']}" for row in image_rows)
+                lc_messages.append(
+                    SystemMessage(
+                        content=(
+                            f"The farmer attached {len(image_rows)} leaf photo(s) "
+                            f"({ids}). Call classify_leaf_disease with the "
+                            "attachment id to get an on-device diagnosis, then "
+                            "explain the labelled result and confidence and advise "
+                            "next steps. Never guess a disease without the tool."
+                        )
+                    )
+                )
 
         # ---- run the graph ---------------------------------------------- #
         # Reply language lives in graph STATE: the classify node re-detects

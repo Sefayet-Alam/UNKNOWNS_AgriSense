@@ -95,7 +95,12 @@ export async function apiFetch(
   const { auth = true, _retried = false, headers, ...rest } = opts;
 
   const finalHeaders = new Headers(headers);
-  if (!finalHeaders.has("Content-Type") && rest.body) {
+  // FormData sets its own multipart boundary — never force JSON on it.
+  if (
+    !finalHeaders.has("Content-Type") &&
+    rest.body &&
+    !(rest.body instanceof FormData)
+  ) {
     finalHeaders.set("Content-Type", "application/json");
   }
   if (auth) {
@@ -320,4 +325,33 @@ export async function apiDeleteSession(sessionId: number): Promise<void> {
   if (!res.ok && res.status !== 204) {
     throw new ApiError(res.status, "Delete failed");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Uploads (Tier 2: leaf photo + voice note)
+// ---------------------------------------------------------------------------
+
+export interface UploadResult {
+  id: number;
+  kind: "image" | "audio";
+  mime_type: string;
+  transcript: string | null;
+  warning: string | null;
+}
+
+export async function apiUpload(file: File): Promise<UploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch("/api/uploads", { method: "POST", body: form });
+  if (!res.ok) {
+    let detail = `Upload failed (${res.status})`;
+    try {
+      const j = await res.json();
+      if (j?.detail) detail = j.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return json<UploadResult>(res);
 }

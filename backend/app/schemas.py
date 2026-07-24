@@ -186,6 +186,7 @@ class BillingCancelOut(BaseModel):
 class ChatStreamRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     session_id: int | None = None
+    attachment_ids: list[int] | None = None
 
 
 class ToolTraceEntry(BaseModel):
@@ -247,6 +248,7 @@ def serialize_message(msg) -> dict[str, Any]:
         "role": msg.role,
         "content": msg.content or "",
         "tool_trace": msg.tool_trace or [],
+        "attachments": getattr(msg, "attachments", None) or [],
         "model": msg.model or "",
         "created_at": _iso(msg.created_at),
     }
