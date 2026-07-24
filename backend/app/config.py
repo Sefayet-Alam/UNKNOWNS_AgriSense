@@ -29,7 +29,17 @@ class Settings(BaseSettings):
     MOCK_OTP_CODE: str = "1234"
     OTP_TTL_SECONDS: int = 300
     OTP_MAX_ATTEMPTS: int = 5
+    OTP_REQUEST_COOLDOWN_SECONDS: int = 60
     BDAPPS_BASE_URL: str = "https://developer.bdapps.com"
+    # Each BDApps subscription application has one provisioned tariff.
+    BDAPPS_PLUS_APPLICATION_ID: str = ""
+    BDAPPS_PLUS_PASSWORD: str = ""
+    BDAPPS_PLUS_APPLICATION_HASH: str = ""
+    BDAPPS_PRO_APPLICATION_ID: str = ""
+    BDAPPS_PRO_PASSWORD: str = ""
+    BDAPPS_PRO_APPLICATION_HASH: str = ""
+    # Legacy single-app values remain as a temporary Plus/Pro fallback based
+    # on BDAPPS_PLAN_ID, so existing deployments can migrate without downtime.
     BDAPPS_APPLICATION_ID: str = ""
     BDAPPS_PASSWORD: str = ""
     BDAPPS_APPLICATION_HASH: str = ""

@@ -15,9 +15,17 @@ Last updated by: Codex (Jul 24, 2026).
 - Frontend client functions live in `src/lib/api.ts`; subscription UI is in
   `src/app/profile/page.tsx` and `src/components/billing/BdAppsCheckout.tsx`.
 - Mock billing OTP is `1234`. Real BDApps mode never exposes the OTP.
+- `/api/billing/plans` returns `subscribable_plan_ids`; in real mode Plus and
+  Pro become available independently when their own BDApps app credentials are
+  configured.
 - `/api/billing/otp/verify` is the terminal subscription action. On success,
   `BdAppsCheckout` immediately calls `onSuccess`, updates the active plan, and closes;
   do not restore a receipt-gated “Continue with subscription” button.
+- Real checkout explicitly states the recurring monthly mobile charge before
+  requesting/verifying OTP. Keep this consent copy and the immediate activation behavior.
+- A user must cancel an active paid plan before switching to the other BDApps
+  application; do not enable direct switching because it could leave both
+  recurring carrier subscriptions active.
 - Password recovery route: `/forgot-password`, linked from login and registration.
 - Profile password change calls `/api/auth/password/change`.
 

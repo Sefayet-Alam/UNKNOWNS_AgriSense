@@ -170,7 +170,12 @@ class Subscription(Base):
     status: Mapped[str] = mapped_column(String(24), default="inactive")
     provider: Mapped[str] = mapped_column(String(24), default="mock")
     provider_status: Mapped[str] = mapped_column(String(64), default="")
-    subscriber_id: Mapped[str] = mapped_column(String(32), default="")
+    # BDApps Pro applications may return an opaque/masked subscriber token
+    # instead of the MSISDN. Keep the provider value verbatim so subsequent
+    # status, cancellation and notification calls can be correlated.
+    subscriber_id: Mapped[str] = mapped_column(
+        String(255), default="", index=True
+    )
     amount_bdt: Mapped[int] = mapped_column(Integer, default=0)
     billing_cycle: Mapped[str] = mapped_column(String(24), default="monthly")
     started_at: Mapped[datetime | None] = mapped_column(
