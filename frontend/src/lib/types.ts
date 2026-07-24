@@ -7,6 +7,8 @@ export interface Address {
   district_code: string;
   upazila_name: string;
   upazila_code: string;
+  union_name: string;
+  union_code: string;
 }
 
 export interface AuthUser {

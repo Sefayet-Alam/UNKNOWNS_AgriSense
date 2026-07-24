@@ -19,9 +19,13 @@ Req:
   "password1": str, "password2": str,
   "division_name": str, "division_code": str,     // e.g. "Rajshahi", "50"
   "district_name": str, "district_code": str,     // e.g. "Rajshahi", "5081"
-  "upazila_name":  str, "upazila_code":  str }     // e.g. "Tanore", "508194"
+  "upazila_name":  str, "upazila_code":  str,      // e.g. "Tanore", "508194"
+  "union_name":    str, "union_code":    str }     // e.g. "Badhair", "50819427" (REQUIRED)
 ```
-- 400 if `password1 != password2`, weak password, invalid phone, or phone already registered.
+- 400 if `password1 != password2`, weak password, invalid phone, phone already
+  registered, or `union_code` is not a real union of `upazila_code` (validated
+  against the bundled CZIS/BBS gazetteer). Union is required because its
+  centroid pins the farm to exact lat/lon for weather grounding.
 Res 201: `UserOut` (see Shapes).
 
 ### POST /api/auth/login
@@ -41,6 +45,13 @@ Res 204. Blacklists the refresh token `jti` (and the current access `jti`).
 
 ### GET /api/auth/me
 Res 200: `UserOut` (see Shapes). 401 if unauthenticated.
+
+## Gazetteer (public, no auth — used by the register form)
+
+### GET /api/geo/unions/{upazila_code}
+Res 200: `{ "upazila_code": str, "results": [ { "code": str, "name": str, "name_bn": str } ] }`
+- 404 for an unknown upazila code. Paurashava wards are labelled
+  `"<Paurashava> — Ward No-XX"`.
 
 ## Chat (all require Bearer)
 
@@ -73,7 +84,8 @@ UserOut = {
   address: {
     division_name: str, division_code: str,
     district_name: str, district_code: str,
-    upazila_name:  str, upazila_code:  str
+    upazila_name:  str, upazila_code:  str,
+    union_name:    str, union_code:    str
   }
 }
 Session = {

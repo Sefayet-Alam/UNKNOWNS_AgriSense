@@ -174,31 +174,48 @@ async def test_forecast_empty_daily_raises():
 
 
 # --------------------------------------------------------------------------- #
-# get_weather tool (adapter monkeypatched)
+# get_weather tool (adapter + farm lookup monkeypatched)
 # --------------------------------------------------------------------------- #
 def _fake_user():
     return SimpleNamespace(
-        upazila_name="Tanore", district_name="Rajshahi", division_name="Rajshahi"
+        upazila_name="Tanore",
+        upazila_code="508194",
+        district_name="Rajshahi",
+        district_code="5081",
+        division_name="Rajshahi",
+        union_name="Badhair",
+        union_code="50819427",
     )
 
 
-async def test_tool_defaults_to_registered_upazila(monkeypatch):
-    captured = {}
+def _fake_farm(**overrides):
+    base = dict(
+        union_name="Badhair",
+        union_geocode="50819427",
+        upazila_name="Tanore",
+        upazila_code="508194",
+        district_name="Rajshahi",
+        district_code="5081",
+        division_name="Rajshahi",
+        latitude=24.62968,
+        longitude=88.44103,
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
 
-    async def fake_geocode(name, district=None, client=None):
-        captured["name"] = name
-        captured["district"] = district
-        return {
-            "name": "Tanore",
-            "latitude": 24.588,
-            "longitude": 88.581,
-            "admin1": "",
-            "admin2": "",
-            "geocode_source": "open-meteo-geocoding",
-        }
 
+def _patch_farm(monkeypatch, farm):
+    import app.agent.tools as tools_mod
+
+    async def fake_get_farm(session, user):
+        return farm
+
+    monkeypatch.setattr(tools_mod, "_get_or_create_active_farm", fake_get_farm)
+
+
+def _forecast_stub(captured):
     async def fake_forecast(lat, lon, days, client=None):
-        captured["days"] = days
+        captured["lat"], captured["lon"], captured["days"] = lat, lon, days
         return {
             "source": "Open-Meteo forecast API",
             "fetched_at": "2026-07-24T00:00:00+00:00",
@@ -209,26 +226,68 @@ async def test_tool_defaults_to_registered_upazila(monkeypatch):
             "note": "",
         }
 
-    monkeypatch.setattr(weather_mod, "geocode_place", fake_geocode)
-    monkeypatch.setattr(weather_mod, "fetch_forecast", fake_forecast)
+    return fake_forecast
+
+
+async def test_tool_default_uses_farm_coordinates_no_geocoding(monkeypatch):
+    # The farmer's own field already has union-centroid lat/lon — the flaky
+    # geocoder must NOT be involved at all.
+    captured = {}
+
+    async def fail_geocode(name, district=None, client=None):
+        raise AssertionError("geocoder must not be called for the default farm")
+
+    monkeypatch.setattr(weather_mod, "geocode_place", fail_geocode)
+    monkeypatch.setattr(weather_mod, "fetch_forecast", _forecast_stub(captured))
+    _patch_farm(monkeypatch, _fake_farm())
 
     tool_obj = build_weather_tool(_fake_user())
     raw = await tool_obj.ainvoke({"location": "", "days": 5})
     payload = json.loads(raw)
 
-    assert captured["name"] == "Tanore"
-    assert captured["district"] == "Rajshahi"  # registered district used
+    assert captured["lat"] == 24.62968
+    assert captured["lon"] == 88.44103
     assert captured["days"] == 5
-    assert payload["location"]["name"] == "Tanore"
-    assert payload["summary"]["total_rain_mm"] == 0.0
+    assert payload["location"]["name"] == "Badhair"
+    assert payload["location"]["geocode_source"] == "farm_profile"
 
 
-async def test_tool_explicit_location_overrides_default(monkeypatch):
+async def test_tool_default_falls_back_to_gazetteer_centroid(monkeypatch):
+    # Farm without stored coords -> bundled gazetteer resolves the union code.
+    captured = {}
+    monkeypatch.setattr(weather_mod, "fetch_forecast", _forecast_stub(captured))
+    _patch_farm(monkeypatch, _fake_farm(latitude=None, longitude=None))
+
+    tool_obj = build_weather_tool(_fake_user())
+    raw = await tool_obj.ainvoke({"location": "", "days": 3})
+    payload = json.loads(raw)
+
+    assert payload["location"]["geocode_source"] == "gazetteer_union_centroid"
+    assert captured["lat"] == pytest.approx(24.62968)
+
+
+async def test_tool_named_admin_place_resolves_offline(monkeypatch):
+    # "Manda" is an upazila in the bundle -> offline centroid, no geocoder.
+    captured = {}
+
+    async def fail_geocode(name, district=None, client=None):
+        raise AssertionError("geocoder must not be called for gazetteer names")
+
+    monkeypatch.setattr(weather_mod, "geocode_place", fail_geocode)
+    monkeypatch.setattr(weather_mod, "fetch_forecast", _forecast_stub(captured))
+
+    tool_obj = build_weather_tool(_fake_user())
+    raw = await tool_obj.ainvoke({"location": "Manda", "days": 7})
+    payload = json.loads(raw)
+    assert payload["location"]["geocode_source"].startswith("gazetteer_")
+    assert payload["location"]["name"] == "Manda"
+
+
+async def test_tool_unknown_place_uses_geocoder_without_district_bias(monkeypatch):
     captured = {}
 
     async def fake_geocode(name, district=None, client=None):
-        captured["name"] = name
-        captured["district"] = district
+        captured["name"], captured["district"] = name, district
         return {
             "name": name,
             "latitude": 24.7,
@@ -238,25 +297,33 @@ async def test_tool_explicit_location_overrides_default(monkeypatch):
             "geocode_source": "open-meteo-geocoding",
         }
 
-    async def fake_forecast(lat, lon, days, client=None):
-        return {
-            "source": "Open-Meteo forecast API",
-            "fetched_at": "x",
-            "request_params": {},
-            "timezone": "Asia/Dhaka",
-            "days": [],
-            "summary": {},
-            "note": "",
-        }
-
     monkeypatch.setattr(weather_mod, "geocode_place", fake_geocode)
-    monkeypatch.setattr(weather_mod, "fetch_forecast", fake_forecast)
+    monkeypatch.setattr(weather_mod, "fetch_forecast", _forecast_stub(captured))
 
     tool_obj = build_weather_tool(_fake_user())
-    await tool_obj.ainvoke({"location": "Manda", "days": 7})
-    assert captured["name"] == "Manda"
+    await tool_obj.ainvoke({"location": "Some Village Bazar", "days": 7})
+    assert captured["name"] == "Some Village Bazar"
     # Explicit location -> registered district must NOT bias the geocoder.
     assert captured["district"] is None
+
+
+async def test_tool_explicit_coordinates_skip_all_lookup(monkeypatch):
+    captured = {}
+
+    async def fail_geocode(name, district=None, client=None):
+        raise AssertionError("geocoder must not be called with explicit coords")
+
+    monkeypatch.setattr(weather_mod, "geocode_place", fail_geocode)
+    monkeypatch.setattr(weather_mod, "fetch_forecast", _forecast_stub(captured))
+
+    tool_obj = build_weather_tool(_fake_user())
+    raw = await tool_obj.ainvoke(
+        {"location": "", "days": 2, "latitude": 23.9, "longitude": 90.1}
+    )
+    payload = json.loads(raw)
+    assert captured["lat"] == 23.9
+    assert captured["lon"] == 90.1
+    assert payload["location"]["geocode_source"] == "explicit_coordinates"
 
 
 async def test_tool_failure_returns_unavailable_not_invented(monkeypatch):
@@ -266,6 +333,6 @@ async def test_tool_failure_returns_unavailable_not_invented(monkeypatch):
     monkeypatch.setattr(weather_mod, "geocode_place", fake_geocode)
 
     tool_obj = build_weather_tool(_fake_user())
-    raw = await tool_obj.ainvoke({"location": "", "days": 7})
+    raw = await tool_obj.ainvoke({"location": "Nowhere Bazar", "days": 7})
     assert raw.startswith("WEATHER_UNAVAILABLE")
     assert "network down" in raw

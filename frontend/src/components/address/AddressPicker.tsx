@@ -1,13 +1,18 @@
 "use client";
 
-// Cascading Division -> District -> Upazila picker.
-// Source of truth: src/data/bd-geocodes.json (crawled from CZIS /services/*),
-// so every selection carries the real CZIS/BBS code (e.g. upazila 508194) that
-// the agent later feeds straight into CZIS + weather tools. Codes are NEVER
-// free-typed — this is the guard against the "HTTP 200 + null" bad-geocode trap.
+// Cascading Division -> District -> Upazila -> Union picker.
+// Divisions/districts/upazilas ship in src/data/bd-geocodes.json; unions are
+// fetched from the backend gazetteer (/api/geo/unions/{upazila_code}) — 7.7k
+// rows are too heavy to bundle client-side. Every selection carries the real
+// CZIS/BBS code (e.g. union 50819427) that the agent later feeds straight
+// into CZIS + weather tools. Codes are NEVER free-typed — this is the guard
+// against the "HTTP 200 + null" bad-geocode trap. Union is REQUIRED: its
+// centroid pins the farm to exact lat/lon for weather.
 
+import { useEffect, useState } from "react";
 import { Select, type SelectOption } from "@/components/ui/Select";
 import geo from "@/data/bd-geocodes.json";
+import { apiUnions, type UnionOption } from "@/lib/api";
 import type { Address } from "@/lib/types";
 
 interface Upazila {
@@ -34,6 +39,8 @@ export const EMPTY_ADDRESS: Address = {
   district_code: "",
   upazila_name: "",
   upazila_code: "",
+  union_name: "",
+  union_code: "",
 };
 
 interface Props {
@@ -51,9 +58,34 @@ export function AddressPicker({ value, onChange, onBlur, error }: Props) {
   const division = DIVISIONS.find((d) => d.code === value.division_code);
   const district = division?.districts.find((z) => z.code === value.district_code);
 
+  const [unions, setUnions] = useState<UnionOption[]>([]);
+  const [unionsLoading, setUnionsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!value.upazila_code) {
+      setUnions([]);
+      return;
+    }
+    let cancelled = false;
+    setUnionsLoading(true);
+    apiUnions(value.upazila_code)
+      .then((rows) => {
+        if (!cancelled) setUnions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setUnions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setUnionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [value.upazila_code]);
+
   const onDivision = (code: string) => {
     const d = DIVISIONS.find((x) => x.code === code);
-    // Changing the division invalidates district + upazila — reset them.
+    // Changing the division invalidates district + upazila + union — reset.
     onChange({
       ...EMPTY_ADDRESS,
       division_name: d?.name ?? "",
@@ -70,6 +102,8 @@ export function AddressPicker({ value, onChange, onBlur, error }: Props) {
       district_code: z?.code ?? "",
       upazila_name: "",
       upazila_code: "",
+      union_name: "",
+      union_code: "",
     });
   };
 
@@ -79,6 +113,17 @@ export function AddressPicker({ value, onChange, onBlur, error }: Props) {
       ...value,
       upazila_name: u?.name ?? "",
       upazila_code: u?.code ?? "",
+      union_name: "",
+      union_code: "",
+    });
+  };
+
+  const onUnion = (code: string) => {
+    const u = unions.find((x) => x.code === code);
+    onChange({
+      ...value,
+      union_name: u?.name ?? "",
+      union_code: u?.code ?? "",
     });
   };
 
@@ -109,6 +154,21 @@ export function AddressPicker({ value, onChange, onBlur, error }: Props) {
         onBlur={onBlur}
         disabled={!district}
         options={toOpts(district?.upazilas ?? [])}
+      />
+      <Select
+        label="Union"
+        placeholder={
+          !value.upazila_code
+            ? "Select upazila first"
+            : unionsLoading
+              ? "Loading unions…"
+              : "Select union"
+        }
+        value={value.union_code}
+        onChange={onUnion}
+        onBlur={onBlur}
+        disabled={!value.upazila_code || unionsLoading}
+        options={toOpts(unions)}
       />
       {error && <p className="text-xs text-status-error">{error}</p>}
     </div>

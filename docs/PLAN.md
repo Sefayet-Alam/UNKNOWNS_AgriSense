@@ -172,6 +172,14 @@ Estimated wall-clock in parentheses; ~20h remain. Tests accompany each task
 
 ### Task 3 — CZIS adapter + variety data (≈2.5h) — grounding backbone
 
+> **Partially pre-empted (2026-07-24):** the full admin hierarchy incl. all
+> 7,761 unions is already harvested + committed as
+> `backend/app/data/bd_admin.json` (accessors in `app/geo.py`), with OCHA
+> COD-AB centroids joined by BBS code. Registration now REQUIRES a union and
+> every farm carries exact lat/lon — `get_weather` is coordinates-first and no
+> longer depends on live geocoding. Task 3 therefore shrinks to the
+> crop-specific endpoints below (`get_unions` is done — read the bundle).
+
 1. `backend/app/adapters/czis.py`: `get_unions(upazila_code)`,
    `get_union_info(geocode)`, `get_varieties(crop_id)` (parse yield/duration),
    `get_fertilizer_recommendation(crop_id, union_geocode, variety, land_type,

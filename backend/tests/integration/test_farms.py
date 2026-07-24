@@ -44,6 +44,12 @@ async def test_first_profile_read_creates_farm_prefilled_from_registration(
     assert payload["location"]["upazila"] == "Tanore"
     assert payload["location"]["upazila_code"] == "508194"
     assert payload["location"]["district"] == "Rajshahi"
+    # Registration union pins the farm to its gazetteer centroid — weather
+    # never needs live geocoding for the farmer's own field.
+    assert payload["location"]["union"] == "Badhair"
+    assert payload["location"]["union_geocode"] == "50819427"
+    assert payload["location"]["latitude"] == pytest.approx(24.62968)
+    assert payload["location"]["longitude"] == pytest.approx(88.44103)
     # Location satisfied by prefill; the rest is still missing.
     missing = payload["missing_required_fields"]
     assert "location" not in missing
@@ -142,18 +148,39 @@ async def test_implausible_area_budget_flagged_not_blocked(client, db_session):
     assert any("unusually large" in w for w in p["warnings"])
 
 
-async def test_location_change_clears_stale_geocodes(client, db_session):
+async def test_location_change_reresolves_geocodes_and_coords(client, db_session):
     # EXAMPLE_FLOW #2: registered in Rajshahi, jomi in Naogaon (Manda).
+    # Stale Rajshahi geocodes are cleared, then the bundled gazetteer
+    # re-resolves "Manda" -> real upazila code + centroid coordinates.
+    from app import geo
+
     tools = await _tools_for(client, db_session, "01712345005")
     p = json.loads(
         await tools["update_farm_profile"].ainvoke(
             {"upazila_name": "Manda", "district_name": "Naogaon"}
         )
     )
+    manda = geo.find_upazila_by_name("Manda")
+    assert manda is not None
     assert p["location"]["upazila"] == "Manda"
-    assert p["location"]["upazila_code"] == ""  # stale code cleared
+    assert p["location"]["upazila_code"] == manda["code"]
     assert p["location"]["district"] == "Naogaon"
+    # Old union cannot survive an upazila change.
+    assert p["location"]["union"] == ""
+    # Coordinates re-pinned to the NEW place, not stale Rajshahi ones.
+    assert p["location"]["latitude"] == pytest.approx(manda["lat"])
+    assert p["location"]["longitude"] == pytest.approx(manda["lon"])
     assert any("location changed" in w for w in p["warnings"])
+
+
+async def test_union_change_within_upazila_resolves_geocode(client, db_session):
+    tools = await _tools_for(client, db_session, "01712345015")
+    p = json.loads(
+        await tools["update_farm_profile"].ainvoke({"union_name": "Kalma"})
+    )
+    assert p["location"]["union"] == "Kalma"
+    assert p["location"]["union_geocode"] == "50819454"
+    assert p["location"]["latitude"] is not None
 
 
 # --------------------------------------------------------------------------- #

@@ -157,6 +157,24 @@ export interface RegisterPayload {
   district_code: string;
   upazila_name: string;
   upazila_code: string;
+  union_name: string;
+  union_code: string;
+}
+
+export interface UnionOption {
+  code: string;
+  name: string;
+  name_bn: string;
+}
+
+/** Unions under an upazila (public gazetteer endpoint, no auth). */
+export async function apiUnions(upazilaCode: string): Promise<UnionOption[]> {
+  const res = await apiFetch(`/api/geo/unions/${upazilaCode}`, {
+    method: "GET",
+    auth: false,
+  });
+  const data = await json<{ results: UnionOption[] }>(res);
+  return data.results;
 }
 
 export async function apiRegister(payload: RegisterPayload): Promise<AuthUser> {

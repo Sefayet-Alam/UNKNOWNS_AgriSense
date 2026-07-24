@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import geo
 from ..database import get_db
 from ..deps import bearer_scheme, get_current_user
 from ..models import TokenBlacklist, User
@@ -57,6 +58,14 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
             status_code=400, detail="Password must be at least 8 characters."
         )
 
+    # Union must be a real union under the chosen upazila (bundled CZIS/BBS
+    # gazetteer) — this is what guarantees the farm resolves to coordinates.
+    if not geo.union_valid(payload.union_code, payload.upazila_code):
+        raise HTTPException(
+            status_code=400,
+            detail="Select a valid union for the chosen upazila.",
+        )
+
     # payload.phone is already normalized to 01XXXXXXXXX by the schema validator.
     dup = await db.execute(select(User).where(User.phone == payload.phone))
     if dup.scalar_one_or_none() is not None:
@@ -74,6 +83,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         district_code=payload.district_code,
         upazila_name=payload.upazila_name,
         upazila_code=payload.upazila_code,
+        union_name=payload.union_name,
+        union_code=payload.union_code,
     )
     db.add(user)
     await db.commit()

@@ -253,6 +253,8 @@ def register_payload(phone: str, password: str = DEFAULT_PASSWORD, **overrides) 
         "district_code": "5081",
         "upazila_name": "Tanore",
         "upazila_code": "508194",
+        "union_name": "Badhair",
+        "union_code": "50819427",
     }
     body.update(overrides)
     return body

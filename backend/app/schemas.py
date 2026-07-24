@@ -41,6 +41,11 @@ class RegisterRequest(BaseModel):
     district_code: str = Field(min_length=1, max_length=8)
     upazila_name: str = Field(min_length=1, max_length=80)
     upazila_code: str = Field(min_length=1, max_length=12)
+    # Union is REQUIRED — it pins the farm to a coordinate (union centroid)
+    # so weather is always fetched with explicit lat/lon, never a flaky
+    # name-geocode. Codes come from the bundled CZIS/BBS gazetteer.
+    union_name: str = Field(min_length=1, max_length=80)
+    union_code: str = Field(min_length=1, max_length=12)
 
     @field_validator("phone")
     @classmethod
@@ -55,6 +60,8 @@ class Address(BaseModel):
     district_code: str = ""
     upazila_name: str = ""
     upazila_code: str = ""
+    union_name: str = ""
+    union_code: str = ""
 
 
 class UserOut(BaseModel):
@@ -143,6 +150,8 @@ def user_out(user) -> "UserOut":
             district_code=user.district_code,
             upazila_name=user.upazila_name,
             upazila_code=user.upazila_code,
+            union_name=getattr(user, "union_name", "") or "",
+            union_code=getattr(user, "union_code", "") or "",
         ),
     )
 

@@ -22,7 +22,37 @@ async def test_register_returns_profile_with_phone_and_address(client):
     assert body["username"] == "Test Farmer"
     assert body["address"]["division_name"] == "Rajshahi"
     assert body["address"]["upazila_code"] == "508194"
+    assert body["address"]["union_name"] == "Badhair"
+    assert body["address"]["union_code"] == "50819427"
     assert "id" in body
+
+
+async def test_register_requires_union(client):
+    payload = register_payload("01712345671")
+    del payload["union_name"]
+    del payload["union_code"]
+    resp = await client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 422  # schema-required
+
+
+async def test_register_rejects_union_not_in_upazila(client):
+    # A real union code, but under a different upazila -> 400.
+    payload = register_payload("01712345672", union_name="Kalma", union_code="99999999")
+    resp = await client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 400
+    assert "union" in resp.json()["detail"].lower()
+
+
+async def test_geo_unions_endpoint_lists_upazila_unions(client):
+    resp = await client.get("/api/geo/unions/508194")
+    assert resp.status_code == 200
+    rows = resp.json()["results"]
+    names = {r["name"] for r in rows}
+    assert "Badhair" in names
+    codes = {r["code"] for r in rows}
+    assert "50819427" in codes
+    # Unknown upazila -> 404, not an empty 200 (guards typo'd codes).
+    assert (await client.get("/api/geo/unions/000000")).status_code == 404
 
 
 async def test_register_duplicate_phone_400(client):

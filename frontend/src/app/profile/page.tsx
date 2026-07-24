@@ -184,6 +184,12 @@ export default function ProfilePage() {
                   ["Division", `${user.address.division_name} (${user.address.division_code})`],
                   ["District", `${user.address.district_name} (${user.address.district_code})`],
                   ["Upazila", `${user.address.upazila_name} (${user.address.upazila_code})`],
+                  [
+                    "Union",
+                    user.address.union_name
+                      ? `${user.address.union_name} (${user.address.union_code})`
+                      : "",
+                  ],
                 ].map(([k, v]) => (
                   <div key={k} className="flex items-center justify-between py-2.5">
                     <dt className="text-text-muted">{k}</dt>
