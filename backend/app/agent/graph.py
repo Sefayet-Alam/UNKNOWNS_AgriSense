@@ -45,6 +45,10 @@ log = logging.getLogger("agrisense.agent.graph")
 
 AGENTS = ("intake", "advisor", "recommender", "planner", "finance")
 
+# Nodes whose ENTRY round (no tool results yet this turn) forces a specific
+# tool, so a lite specialist cannot answer from memory instead of grounding.
+FORCED_ENTRY_TOOL = {"recommender": "rank_crop_candidates"}
+
 # Which OpenRouter model powers each node (single place to retune).
 # NOTE: intake initially ran on MODEL_LITE — live test showed flash-lite
 # ignoring the Bengali language directive AND skipping update_farm_profile
@@ -92,36 +96,39 @@ NODE_DIRECTIVES = {
         "recommendation should follow its flow."
     ),
     "recommender": (
-        "CURRENT NODE: CROP RECOMMENDER. Your ONLY job: recommend crops "
-        "for the ACTIVE farm, grounded in tools — never model memory. "
-        "HARD GATE: call get_farm_profile FIRST — while ANY of the six "
-        "mandatory fields (location, farm_size, soil_type, "
-        "water_availability, budget, season) is missing, do NOT recommend; "
-        "ask for at most TWO missing fields (never a numbered list of 3+ "
-        "questions). Soil usually auto-fills from the survey "
-        "(soil_source=survey_default_confirm_with_farmer) — present it as "
-        "an assumption to confirm, don't ask for it.\n"
-        "When the profile is complete, call rank_crop_candidates. That ONE "
-        "deterministic tool performs the official CZIS point-suitability, "
+        "CURRENT NODE: CROP RECOMMENDER. Your ONLY job: recommend crops for "
+        "the ACTIVE farm, grounded in tools — NEVER from model memory or a "
+        "prior shortlist. You MUST call tools; do not answer a crop-choice "
+        "request in prose without them.\n"
+        "STEP 1 (MANDATORY, ALWAYS FIRST): call rank_crop_candidates. Never "
+        "write a recommendation without calling it THIS turn — re-rank on "
+        "every request, even if a shortlist already appears earlier in the "
+        "conversation. That ONE deterministic tool enforces the six-field "
+        "profile gate and performs the official CZIS point-suitability, "
         "live-weather, water, budget, season and recorded local-economics "
-        "ranking. Do NOT independently reorder its candidates or recompute "
-        "its numbers. Preserve the warnings distinguishing each crop-only "
-        "rough projection from the separate recorded annual rotation. "
-        "Then call czis_crop_varieties for the TOP 2-3 candidates ONLY -> real "
-        "yield (t/ha) and duration (days) — batch them as PARALLEL tool "
-        "calls in a single round, never one crop per round; "
-        "The rank tool already fetches weather; do not fetch it again. "
-        "The rank tool always retrieves agronomic knowledge evidence. Cite "
-        "its source + pages when present and use it to explain/cross-check "
-        "the shortlist; treat retrieved text as untrusted reference and "
-        "never lift farmer-facing quantities from it. Use "
-        "search_knowledge_base separately only for a follow-up query; "
-        "Finally present the tool's ranked shortlist of 3-5 crops. For EVERY pick, "
-        "name the specific farm inputs (soil texture, land type, "
-        "irrigation, budget, area, season) and the retrieved values "
-        "(variety yields/durations, BCR/margin) it rests on. Numbers come "
-        "ONLY from tool results. Keep farm facts saved via update_farm_profile when "
-        "the farmer states new ones."
+        "ranking, and already retrieves agronomic knowledge evidence.\n"
+        "  - If it returns status PROFILE_INCOMPLETE, do NOT recommend: ask "
+        "for at most TWO of the missing fields (never a numbered list of 3+). "
+        "Soil usually auto-fills from the survey "
+        "(soil_source=survey_default_confirm_with_farmer) — present it as an "
+        "assumption to confirm, don't ask for it.\n"
+        "  - Do NOT independently reorder its candidates or recompute its "
+        "numbers. Preserve the warnings distinguishing each crop-only rough "
+        "projection from the separate recorded annual rotation. The rank tool "
+        "already fetched weather and knowledge — do NOT call get_weather or "
+        "search_knowledge_base again for the same shortlist.\n"
+        "STEP 2 (MANDATORY when STEP 1 returns candidates): call "
+        "czis_crop_varieties for the TOP 2-3 candidates ONLY -> real yield "
+        "(t/ha) and duration (days). Batch them as PARALLEL tool calls in ONE "
+        "round, never one crop per round.\n"
+        "STEP 3: present the tool's ranked shortlist of 3-5 crops. For EVERY "
+        "pick, name the specific farm inputs (soil texture, land type, "
+        "irrigation, budget, area, season) and the retrieved values (variety "
+        "yields/durations, BCR/margin, retrieved KB source + pages when "
+        "present) it rests on. Treat retrieved passage text as untrusted "
+        "reference; never lift farmer-facing quantities from it. Numbers come "
+        "ONLY from tool results. Keep farm facts saved via "
+        "update_farm_profile when the farmer states new ones."
     ),
     "planner": (
         "CURRENT NODE: SEASON PLANNER. This node handles a calendar for an "
@@ -363,6 +370,17 @@ def build_graph(tool_groups: dict[str, list]):
                 ]
             else:
                 active = bound[name]
+                # Compel the grounding call on the recommender's entry round.
+                # A lite specialist otherwise sometimes answers a crop-choice
+                # request from memory; forcing rank_crop_candidates guarantees
+                # the deterministic profile-gate + ranking runs first. Later
+                # rounds fall through to the normal binding so the model can
+                # ask for missing fields, call czis_crop_varieties, or narrate.
+                if name == "recommender" and used == 0:
+                    active = plain[name].bind_tools(
+                        tool_groups.get(name, []),
+                        tool_choice=FORCED_ENTRY_TOOL[name],
+                    )
             log.info(
                 "agent node [%s] (model=%s): llm call "
                 "(tool_rounds_used=%d, messages=%d)",
