@@ -1,18 +1,22 @@
 "use client";
 
-import { Sprout, Wrench } from "lucide-react";
+import { Sprout } from "lucide-react";
 import { memo } from "react";
 import { PlanCard } from "@/components/plan/PlanCard";
 import { planParse } from "@/lib/plan";
-import type { Message } from "@/lib/types";
+import type { Message, ProgressFrame } from "@/lib/types";
 import { Markdown } from "./Markdown";
+import { StatusPill } from "./StatusPill";
 
 interface Props {
   message: Message;
-  onOpenTrace?: (id: number) => void;
+  live?: boolean; // is this the currently-streaming turn?
+  thinking?: ProgressFrame[]; // live turn only
+  activeTrace?: boolean; // panel currently showing this turn
+  onToggleTrace?: (id: number) => void;
 }
 
-function MessageBubbleImpl({ message, onOpenTrace }: Props) {
+function MessageBubbleImpl({ message, live, thinking, activeTrace, onToggleTrace }: Props) {
   if (message.role === "user") {
     return (
       <div className="flex animate-fade-in justify-end">
@@ -23,14 +27,11 @@ function MessageBubbleImpl({ message, onOpenTrace }: Props) {
     );
   }
 
-  // Tool calls live in the Agent Trace panel; the bubble shows a compact summary
-  // that opens/focuses that turn's trace on click (ChatGPT-style).
   const { plan, display } = planParse(message.content);
   const n = message.tool_trace.length;
 
-  // Intermediate tool-only steps with no text/plan are noise in the chat — the
-  // trace panel already shows their calls. Don't render an empty bubble.
-  if (!display && !plan && n === 0) return null;
+  // Hide fully-empty intermediate tool steps that aren't the live turn.
+  if (!display && !plan && n === 0 && !live) return null;
 
   return (
     <div className="flex animate-fade-in gap-3">
@@ -44,19 +45,16 @@ function MessageBubbleImpl({ message, onOpenTrace }: Props) {
           </div>
         )}
         {plan && <PlanCard plan={plan} />}
-        {n > 0 && (
-          <button
-            type="button"
-            onClick={() => onOpenTrace?.(message.id)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-text-muted transition hover:border-primary-300 hover:text-primary-700"
-          >
-            <Wrench size={12} className="text-primary-600" />
-            Used {n} {n === 1 ? "tool" : "tools"} · view trace
-          </button>
+        {(n > 0 || live) && (
+          <StatusPill
+            live={!!live}
+            calls={message.tool_trace}
+            thinking={thinking}
+            active={!!activeTrace}
+            onClick={() => onToggleTrace?.(message.id)}
+          />
         )}
-        {message.model && (
-          <p className="mt-1.5 text-xs text-text-muted">{message.model}</p>
-        )}
+        {message.model && <p className="mt-1.5 text-xs text-text-muted">{message.model}</p>}
       </div>
     </div>
   );
@@ -69,6 +67,9 @@ export const MessageBubble = memo(MessageBubbleImpl, (prev, next) => {
     a.id === b.id &&
     a.content === b.content &&
     a.tool_trace === b.tool_trace &&
-    a.model === b.model
+    a.model === b.model &&
+    prev.live === next.live &&
+    prev.activeTrace === next.activeTrace &&
+    prev.thinking === next.thinking
   );
 });

@@ -1,37 +1,34 @@
 "use client";
 
-// The workspace running against the MOCK agent (no backend).
-// Sidebar · chat (inline PlanCard + image/doc attachments) · collapsible Trace panel
-// (thinking timeline + tool calls). In M5 the mock emitter is swapped for the live
-// SSE stream — frame handling here is already contract-shaped, so the swap is local.
+// The workspace running against the MOCK agent (no backend). Used by /demo and /guest.
+// Sidebar · chat (inline PlanCard + attachments + per-turn status pill) · single-prompt
+// Trace panel. Mirrors the real /chat UX so both stay consistent.
 
-import { FileText, Leaf, Lock, Paperclip, Plus, Send, Square, User, Wrench, X } from "lucide-react";
+import { FileText, Leaf, Lock, Paperclip, Plus, Send, Square, User, X } from "lucide-react";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
-import { WorkingIndicator } from "@/components/chat/WorkingIndicator";
+import { StatusPill } from "@/components/chat/StatusPill";
 import { PlanCard } from "@/components/plan/PlanCard";
-import { TracePanel } from "@/components/trace/TracePanel";
+import { TracePanel, type FocusedTurn } from "@/components/trace/TracePanel";
 import { DEMO_OPENER, runMockTurn } from "@/lib/mockAgent";
 import { planParse } from "@/lib/plan";
 import type { Message, ProgressFrame } from "@/lib/types";
-import {
-  type Attachment,
-  formatBytes,
-  toAttachment,
-  uploadAttachment,
-} from "@/lib/upload";
+import { type Attachment, formatBytes, toAttachment, uploadAttachment } from "@/lib/upload";
 import { upsertMessage } from "@/lib/upsert";
 
-const DEMO_SESSIONS = ["Boro plan · Tanore", "Aman '25 · Rangpur", "Onion costing"];
-
-// Simple, plain-language prompts a farmer can just tap (no metrics to operate).
 const SUGGESTIONS = [
   "What should I plant this winter?",
   "How much will it cost, and what profit?",
   "Diagnose my crop — I'll add a leaf photo",
   "Best crop for my land and budget",
 ];
+
+function promptFor(messages: Message[], turnId: number): string {
+  const idx = messages.findIndex((m) => m.id === turnId);
+  for (let j = idx - 1; j >= 0; j--) if (messages[j].role === "user") return messages[j].content;
+  return "";
+}
 
 function AttachmentThumb({ att, onRemove }: { att: Attachment; onRemove?: () => void }) {
   return (
@@ -85,10 +82,16 @@ function UserBubble({ text, attachments }: { text: string; attachments?: Attachm
 
 function AssistantBubble({
   message,
-  onOpenTrace,
+  live,
+  thinking,
+  activeTrace,
+  onToggleTrace,
 }: {
   message: Message;
-  onOpenTrace?: (id: number) => void;
+  live?: boolean;
+  thinking?: ProgressFrame[];
+  activeTrace?: boolean;
+  onToggleTrace?: (id: number) => void;
 }) {
   const { plan, display } = planParse(message.content);
   const n = message.tool_trace.length;
@@ -104,19 +107,16 @@ function AssistantBubble({
           </div>
         )}
         {plan && <PlanCard plan={plan} />}
-        {n > 0 && (
-          <button
-            type="button"
-            onClick={() => onOpenTrace?.(message.id)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-hairline bg-panel px-2.5 py-1 text-xs text-ink-dim transition hover:border-signal/50 hover:text-signal"
-          >
-            <Wrench size={12} className="text-signal" />
-            Used {n} {n === 1 ? "tool" : "tools"} · view trace
-          </button>
+        {(n > 0 || live) && (
+          <StatusPill
+            live={!!live}
+            calls={message.tool_trace}
+            thinking={thinking}
+            active={!!activeTrace}
+            onClick={() => onToggleTrace?.(message.id)}
+          />
         )}
-        {message.model && (
-          <p className="mt-1.5 font-mono text-[11px] text-ink-dim">{message.model}</p>
-        )}
+        {message.model && <p className="mt-1.5 font-mono text-[11px] text-ink-dim">{message.model}</p>}
       </div>
     </div>
   );
@@ -126,25 +126,32 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [thinking, setThinking] = useState<ProgressFrame[]>([]);
+  const [streamingTurnId, setStreamingTurnId] = useState<number | null>(null);
   const [traceCollapsed, setTraceCollapsed] = useState(false);
-  const [focusedTraceId, setFocusedTraceId] = useState<number | null>(null);
+  const [focusedTurnId, setFocusedTurnId] = useState<number | null>(null);
   const [input, setInput] = useState(DEMO_OPENER);
-
-  const openTrace = (id: number) => {
-    setTraceCollapsed(false);
-    setFocusedTraceId(null);
-    requestAnimationFrame(() => setFocusedTraceId(id));
-  };
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attByMsg, setAttByMsg] = useState<Record<number, Attachment[]>>({});
   const abortRef = useRef<AbortController | null>(null);
   const pendingAttRef = useRef<Attachment[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (streamingTurnId != null) setFocusedTurnId(streamingTurnId);
+  }, [streamingTurnId]);
+
+  const toggleTrace = (id: number | null) => {
+    if (!traceCollapsed && focusedTurnId === id) setTraceCollapsed(true);
+    else {
+      setFocusedTurnId(id);
+      setTraceCollapsed(false);
+    }
+  };
+
   const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length) setAttachments((cur) => [...cur, ...files.map(toAttachment)]);
-    e.target.value = ""; // allow re-picking the same file
+    e.target.value = "";
   };
 
   const removeAttachment = (id: string) => {
@@ -158,18 +165,17 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
   const send = async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || streaming) return;
-
     const atts = attachments;
     const firstImage = atts.find((a) => a.kind === "image");
     setInput("");
     setAttachments([]);
     setThinking([]);
+    setStreamingTurnId(null);
     setStreaming(true);
     pendingAttRef.current = atts;
     const ac = new AbortController();
     abortRef.current = ac;
 
-    // "Send to backend" — stubbed upload of each attachment (see lib/upload.ts).
     await Promise.all(atts.map((a) => uploadAttachment(a).catch(() => undefined)));
 
     await runMockTurn({
@@ -189,10 +195,12 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
               setAttByMsg((prev) => ({ ...prev, [m.id]: p }));
               pendingAttRef.current = [];
             }
+            if (m.role === "assistant") setStreamingTurnId(m.id);
             setMessages((cur) => upsertMessage(cur, m));
             break;
           }
           case "message_update":
+            if (frame.message.role === "assistant") setStreamingTurnId(frame.message.id);
             setMessages((cur) => upsertMessage(cur, frame.message));
             break;
           case "progress":
@@ -206,12 +214,14 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
     });
 
     setStreaming(false);
+    setStreamingTurnId(null);
     abortRef.current = null;
   };
 
   const stop = () => {
     abortRef.current?.abort();
     setStreaming(false);
+    setStreamingTurnId(null);
   };
 
   const newChat = () => {
@@ -219,10 +229,18 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
     setMessages([]);
     setThinking([]);
     setAttByMsg({});
+    setFocusedTurnId(null);
     setInput(DEMO_OPENER);
   };
 
   const canSend = (input.trim().length > 0 || attachments.length > 0) && !streaming;
+
+  const focusedMsg = focusedTurnId != null ? messages.find((m) => m.id === focusedTurnId) : undefined;
+  const isLive = streaming && (focusedTurnId == null || focusedTurnId === streamingTurnId);
+  const focusedTurn: FocusedTurn | null = focusedMsg
+    ? { id: focusedMsg.id, prompt: promptFor(messages, focusedMsg.id), calls: focusedMsg.tool_trace }
+    : null;
+  const model = messages.filter((m) => m.role === "assistant" && m.model).slice(-1)[0]?.model ?? "";
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas text-ink">
@@ -247,7 +265,7 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
           </button>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3">
-          {DEMO_SESSIONS.map((s, i) => (
+          {["Boro plan · Tanore", "Aman '25 · Rangpur", "Onion costing"].map((s, i) => (
             <div
               key={s}
               className={`truncate rounded-lg px-2.5 py-2 text-sm ${
@@ -317,15 +335,31 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
                     {m.role === "user" ? (
                       <UserBubble text={m.content} attachments={attByMsg[m.id]} />
                     ) : (
-                      <AssistantBubble message={m} onOpenTrace={openTrace} />
+                      <AssistantBubble
+                        message={m}
+                        live={streaming && m.id === streamingTurnId}
+                        thinking={m.id === streamingTurnId ? thinking : undefined}
+                        activeTrace={!traceCollapsed && focusedTurnId === m.id}
+                        onToggleTrace={toggleTrace}
+                      />
                     )}
                   </div>
                 ))}
-                {streaming && (
-                  <WorkingIndicator
-                    thinking={thinking}
-                    onOpenTrace={() => setTraceCollapsed(false)}
-                  />
+                {streaming && streamingTurnId == null && (
+                  <div className="flex gap-3">
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-signal/30 bg-signal/10 text-signal">
+                      <Leaf size={15} />
+                    </span>
+                    <div>
+                      <StatusPill
+                        live
+                        calls={[]}
+                        thinking={thinking}
+                        active={!traceCollapsed && focusedTurnId == null}
+                        onClick={() => toggleTrace(null)}
+                      />
+                    </div>
+                  </div>
                 )}
               </>
             )}
@@ -396,14 +430,14 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
         </div>
       </div>
 
-      {/* Trace panel */}
+      {/* Trace panel — single prompt */}
       <TracePanel
-        messages={messages}
-        thinking={thinking}
-        streaming={streaming}
+        turn={focusedTurn}
+        thinking={isLive ? thinking : []}
+        isLive={isLive}
+        model={model}
         collapsed={traceCollapsed}
         onToggle={() => setTraceCollapsed((c) => !c)}
-        focusedId={focusedTraceId}
       />
     </div>
   );

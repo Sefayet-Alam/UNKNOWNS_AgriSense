@@ -2,11 +2,13 @@
 
 import {
   ArrowLeft,
+  ArrowRight,
   BadgeCheck,
   Check,
   CreditCard,
   History,
   LogOut,
+  MessageSquare,
   Sprout,
   UserRound,
 } from "lucide-react";
@@ -16,7 +18,9 @@ import { useEffect, useState } from "react";
 import { PieChart } from "@/components/profile/PieChart";
 import { LeafMark } from "@/components/ui/LeafMark";
 import { useAuth } from "@/lib/auth";
+import { useChat } from "@/lib/chat/ChatProvider";
 import { bdt } from "@/lib/finance";
+import { useSessions } from "@/lib/hooks";
 import { formatBdPhone } from "@/lib/phone";
 import { getAccess } from "@/lib/tokens";
 
@@ -264,10 +268,21 @@ export default function ProfilePage() {
 
 // --------------------------------------------------------------------------- //
 function HistoryTab() {
+  // Real chat sessions (fetched on-demand when this tab opens).
+  const { data: sessions } = useSessions();
+  const { selectSession } = useChat();
+  const router = useRouter();
+  const list = sessions ?? [];
+
+  const continueChat = (id: number) => {
+    selectSession(id);
+    router.push("/chat");
+  };
+
+  // Illustrative summary graphs (backend doesn't track these yet).
   const accepted = HISTORY.filter((h) => h.crop).length;
   const totalMoney = HISTORY.reduce((s, h) => s + h.money, 0);
   const avgSat = (HISTORY.reduce((s, h) => s + h.satisfaction, 0) / HISTORY.length).toFixed(1);
-
   const satSegments = [5, 4, 3, 2, 1]
     .map((star, i) => ({
       label: `${star} star`,
@@ -275,7 +290,6 @@ function HistoryTab() {
       color: VIZ[i % VIZ.length],
     }))
     .filter((s) => s.value > 0);
-
   const moneySegments = HISTORY.filter((h) => h.money > 0).map((h, i) => ({
     label: h.name,
     value: h.money,
@@ -285,50 +299,59 @@ function HistoryTab() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Chats" value={String(HISTORY.length)} />
+        <Stat label="Chats" value={String(list.length)} />
         <Stat label="Plans accepted" value={String(accepted)} />
         <Stat label="Money planned" value={bdt(totalMoney)} />
         <Stat label="Avg. rating" value={`${avgSat}/5`} />
       </div>
 
+      {/* Real sessions with Continue */}
+      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+        <h3 className="mb-3 font-display text-sm font-semibold">Your chats</h3>
+        {list.length === 0 ? (
+          <p className="text-sm text-text-muted">No chats yet — start one from the chat page.</p>
+        ) : (
+          <div className="space-y-2">
+            {list.map((s) => (
+              <div
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-sm"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <MessageSquare size={15} className="shrink-0 text-primary-600" />
+                  <div className="min-w-0">
+                    <span className="block truncate font-medium text-text-primary">
+                      {s.title || "New chat"}
+                    </span>
+                    <span className="text-xs text-text-muted">{s.message_count} messages</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => continueChat(s.id)}
+                  className="flex items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-700"
+                >
+                  Continue chat <ArrowRight size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Illustrative graphs */}
       <div className="grid gap-4 sm:grid-cols-2">
         <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-          <h3 className="mb-3 font-display text-sm font-semibold">Satisfaction</h3>
+          <h3 className="font-display text-sm font-semibold">Satisfaction</h3>
+          <p className="mb-3 text-[11px] text-text-muted">Illustrative — not yet tracked by the backend.</p>
           <PieChart segments={satSegments} />
         </section>
         <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-          <h3 className="mb-3 font-display text-sm font-semibold">Where money went</h3>
+          <h3 className="font-display text-sm font-semibold">Where money went</h3>
+          <p className="mb-3 text-[11px] text-text-muted">Illustrative — not yet tracked by the backend.</p>
           <PieChart segments={moneySegments} unit="৳" />
         </section>
       </div>
-
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h3 className="mb-3 font-display text-sm font-semibold">Your chats</h3>
-        <div className="space-y-2">
-          {HISTORY.map((h) => (
-            <div
-              key={h.name}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-sm"
-            >
-              <div className="min-w-0">
-                <span className="block font-medium text-text-primary">{h.name}</span>
-                <span className="text-xs text-text-muted">{h.when}</span>
-              </div>
-              <div className="flex items-center gap-3 text-xs">
-                {h.crop ? (
-                  <span className="rounded-full bg-primary-100 px-2 py-0.5 font-medium text-primary-700">
-                    accepted: {h.crop}
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-surface-muted px-2 py-0.5 text-text-muted">explored</span>
-                )}
-                <span className="nums font-mono text-text-primary">{h.money ? bdt(h.money) : "—"}</span>
-                <span className="text-accent-500">{"*".repeat(h.satisfaction)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

@@ -1,11 +1,8 @@
 "use client";
 
-// The judge-facing proof surface. Right panel, collapsible. Tool calls are grouped
-// BY TURN — each group is labelled with the prompt that triggered it, so you can
-// tell which tools ran for which question. The newest turn is accented + auto-open;
-// older turns collapse. `focusedId` (set when a chat bubble's trace summary is
-// clicked) opens + scrolls to that turn. A live "thinking" timeline shows the
-// in-flight turn's step narration.
+// Single-prompt trace panel (#4). Shows the trace of ONE prompt only — the one whose
+// status pill was clicked, or the live streaming turn. No history of other prompts.
+// Right side, collapsible (the pill and the panel's own button both toggle it).
 
 import {
   Activity,
@@ -16,8 +13,19 @@ import {
   PanelRightOpen,
   Wrench,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import type { Message, ProgressFrame, ToolCall } from "@/lib/types";
+import { useState } from "react";
+import type { ProgressFrame, ToolCall } from "@/lib/types";
+
+// Pretty-print a raw tool result: JSON if parseable, otherwise the raw string.
+function prettyResult(s: string): string {
+  const t = s.trim();
+  if (!t) return "—";
+  try {
+    return JSON.stringify(JSON.parse(t), null, 2);
+  } catch {
+    return s;
+  }
+}
 
 function summarizeArgs(args: Record<string, unknown>): string {
   return Object.entries(args)
@@ -28,20 +36,15 @@ function summarizeArgs(args: Record<string, unknown>): string {
     .join(", ");
 }
 
-const truncate = (s: string, n = 46) =>
-  s.trim().length > n ? s.trim().slice(0, n) + "…" : s.trim() || "(no prompt)";
-
 function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-
   const copy = () => {
     navigator.clipboard?.writeText(call.result || "").then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     });
   };
-
   return (
     <div
       className={`animate-stream-in rounded-lg border bg-panel-2 ${
@@ -87,7 +90,7 @@ function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
               )}
             </div>
             <pre className="nums max-h-40 overflow-auto rounded bg-panel p-2 font-mono text-[11px] text-signal-deep">
-              {call.result || "—"}
+              {prettyResult(call.result)}
             </pre>
           </div>
         </div>
@@ -124,58 +127,23 @@ function ThinkingTimeline({ thinking, streaming }: { thinking: ProgressFrame[]; 
   );
 }
 
-interface Turn {
+export interface FocusedTurn {
   id: number;
   prompt: string;
   calls: ToolCall[];
 }
 
-function buildTurns(messages: Message[]): Turn[] {
-  const turns: Turn[] = [];
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
-    if (m.role === "assistant" && m.tool_trace.length > 0) {
-      let prompt = "";
-      for (let j = i - 1; j >= 0; j--) {
-        if (messages[j].role === "user") {
-          prompt = messages[j].content;
-          break;
-        }
-      }
-      turns.push({ id: m.id, prompt, calls: m.tool_trace });
-    }
-  }
-  return turns;
-}
-
 interface Props {
-  messages: Message[];
-  thinking: ProgressFrame[];
-  streaming: boolean;
+  turn: FocusedTurn | null;
+  thinking: ProgressFrame[]; // shown only when isLive
+  isLive: boolean;
+  model?: string;
   collapsed: boolean;
   onToggle: () => void;
-  focusedId?: number | null;
 }
 
-export function TracePanel({ messages, thinking, streaming, collapsed, onToggle, focusedId }: Props) {
-  const turns = useMemo(() => buildTurns(messages), [messages]);
-  const latestId = turns.length ? turns[turns.length - 1].id : null;
-  const totalCalls = turns.reduce((n, t) => n + t.calls.length, 0);
-  const model = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "assistant" && messages[i].model) return messages[i].model;
-    }
-    return "";
-  }, [messages]);
-  const [openMap, setOpenMap] = useState<Record<number, boolean>>({});
-
-  // A chat bubble's summary was clicked → open + scroll to that turn.
-  useEffect(() => {
-    if (focusedId == null) return;
-    setOpenMap((o) => ({ ...o, [focusedId]: true }));
-    const el = document.getElementById(`trace-turn-${focusedId}`);
-    el?.scrollIntoView({ block: "start", behavior: "smooth" });
-  }, [focusedId]);
+export function TracePanel({ turn, thinking, isLive, model, collapsed, onToggle }: Props) {
+  const count = turn?.calls.length ?? 0;
 
   if (collapsed) {
     return (
@@ -186,9 +154,9 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle,
         className="relative flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-hairline bg-panel py-4 text-ink-dim transition hover:text-signal"
       >
         <PanelRightOpen size={18} />
-        {totalCalls > 0 && (
+        {count > 0 && (
           <span className="nums absolute right-1.5 top-1.5 rounded-full bg-signal px-1.5 text-[10px] font-semibold text-canvas">
-            {totalCalls}
+            {count}
           </span>
         )}
         <span className="[writing-mode:vertical-rl] font-mono text-[11px] tracking-widest">
@@ -198,18 +166,14 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle,
     );
   }
 
-  const shown = [...turns].reverse(); // newest turn first
-
   return (
     <aside className="flex h-full w-[340px] shrink-0 flex-col border-l border-hairline bg-panel">
       <div className="flex items-center justify-between border-b border-hairline px-3 py-3">
         <span className="min-w-0">
           <span className="block font-mono text-xs uppercase tracking-widest text-ink-dim">
-            Agent Trace{totalCalls > 0 ? ` · ${totalCalls}` : ""}
+            Agent Trace{count > 0 ? ` · ${count}` : ""}
           </span>
-          {model && (
-            <span className="block truncate font-mono text-[10px] text-signal">{model}</span>
-          )}
+          {model && <span className="block truncate font-mono text-[10px] text-signal">{model}</span>}
         </span>
         <button
           type="button"
@@ -222,67 +186,46 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle,
       </div>
 
       <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-3">
-        {turns.length === 0 && thinking.length === 0 && !streaming && (
-          <p className="px-1 py-4 font-mono text-xs text-ink-dim">
-            No tool calls yet. Ask AgriSense about your farm — every call it makes shows here.
-          </p>
-        )}
+        {!turn ? (
+          isLive && thinking.length > 0 ? (
+            <ThinkingTimeline thinking={thinking} streaming />
+          ) : (
+            <p className="px-1 py-4 font-mono text-xs text-ink-dim">
+              Click a prompt&apos;s status (e.g. “thinking finished · 2 tools”) to see its trace here.
+            </p>
+          )
+        ) : (
+          <>
+            {turn.prompt && (
+              <p className="rounded-lg border border-hairline bg-panel-2 px-2.5 py-2 text-xs italic text-ink">
+                “{turn.prompt.length > 90 ? turn.prompt.slice(0, 90) + "…" : turn.prompt}”
+              </p>
+            )}
 
-        <ThinkingTimeline thinking={thinking} streaming={streaming} />
+            {isLive && <ThinkingTimeline thinking={thinking} streaming={isLive} />}
 
-        {shown.map((t, idx) => {
-          const isLatest = t.id === latestId;
-          // Default every turn open so history tool calls are always visible.
-          const isOpen = openMap[t.id] ?? true;
-          return (
-            <section
-              key={t.id}
-              id={`trace-turn-${t.id}`}
-              className={`scroll-mt-2 rounded-xl border ${
-                isLatest ? "border-signal/30 bg-signal/5" : "border-hairline"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => setOpenMap((o) => ({ ...o, [t.id]: !isOpen }))}
-                className="flex w-full items-start gap-2 px-2.5 py-2 text-left"
-              >
-                <ChevronRight
-                  size={13}
-                  className={`mt-0.5 shrink-0 text-ink-dim transition-transform ${isOpen ? "rotate-90" : ""}`}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className={`font-mono text-[10px] uppercase tracking-widest ${
-                        isLatest ? "text-signal" : "text-ink-dim"
-                      }`}
-                    >
-                      {isLatest ? "current" : `turn ${shown.length - idx}`}
-                    </span>
-                    <span className="nums rounded bg-panel-2 px-1.5 font-mono text-[10px] text-ink-dim">
-                      {t.calls.length} {t.calls.length === 1 ? "call" : "calls"}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs italic text-ink">
-                    “{truncate(t.prompt)}”
-                  </span>
-                </span>
-              </button>
-              {isOpen && (
-                <div className="space-y-1.5 px-1.5 pb-1.5">
-                  {t.calls.map((c, i) => (
+            {turn.calls.length === 0 ? (
+              <p className="px-1 font-mono text-xs text-ink-dim">
+                {isLive ? "No tools called yet for this prompt." : "This prompt used no tools."}
+              </p>
+            ) : (
+              <section>
+                <p className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-signal">
+                  <Wrench size={12} /> Tool calls
+                </p>
+                <div className="space-y-1.5">
+                  {turn.calls.map((c, i) => (
                     <ToolCallRow
-                      key={`${t.id}-${i}`}
+                      key={`${turn.id}-${i}`}
                       call={c}
-                      newest={isLatest && streaming && i === t.calls.length - 1}
+                      newest={isLive && i === turn.calls.length - 1 && !c.result}
                     />
                   ))}
                 </div>
-              )}
-            </section>
-          );
-        })}
+              </section>
+            )}
+          </>
+        )}
       </div>
     </aside>
   );

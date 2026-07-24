@@ -131,12 +131,6 @@ export default function HomePage() {
             <span className="font-display text-lg font-semibold tracking-tight">AgriSense</span>
           </span>
           <nav className="flex items-center gap-2">
-            <Link
-              href="/guest"
-              className="hidden rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition hover:text-primary-700 sm:block"
-            >
-              Try as guest
-            </Link>
             {authed ? (
               <Link
                 href="/chat"
@@ -208,10 +202,10 @@ export default function HomePage() {
                 Get started — it's free
               </Link>
               <Link
-                href="/guest"
+                href="/login"
                 className="rounded-xl border border-border bg-surface px-6 py-3 font-medium text-text-primary transition hover:border-primary-300"
               >
-                Try without signing up
+                Log in
               </Link>
             </div>
           </Reveal>
@@ -295,10 +289,10 @@ export default function HomePage() {
               Create your account
             </Link>
             <Link
-              href="/guest"
+              href="/login"
               className="rounded-xl border border-border bg-surface px-6 py-3 font-medium text-text-primary transition hover:border-primary-300"
             >
-              Try as guest
+              Log in
             </Link>
           </div>
         </Reveal>
