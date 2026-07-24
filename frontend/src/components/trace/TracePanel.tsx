@@ -57,7 +57,7 @@ function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
         className="flex w-full items-center gap-2 px-2.5 py-2 text-left"
       >
         <Wrench size={13} strokeWidth={2} className="shrink-0 text-signal" />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">
+        <span className="min-w-0 flex-1 truncate font-mono text-sm text-ink">
           {call.tool}
           <span className="text-ink-dim">({summarizeArgs(call.args)})</span>
         </span>
@@ -70,7 +70,7 @@ function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
         <div className="space-y-2 border-t border-hairline px-2.5 py-2">
           <div>
             <p className="mb-1 font-mono text-[10px] uppercase tracking-wide text-ink-dim">params sent</p>
-            <pre className="nums overflow-x-auto rounded bg-panel p-2 font-mono text-[11px] text-ink">
+            <pre className="nums overflow-x-auto rounded bg-panel p-2 font-mono text-xs text-ink">
               {JSON.stringify(call.args, null, 2)}
             </pre>
           </div>
@@ -89,7 +89,7 @@ function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
                 </button>
               )}
             </div>
-            <pre className="nums max-h-40 overflow-auto rounded bg-panel p-2 font-mono text-[11px] text-signal-deep">
+            <pre className="nums max-h-40 overflow-auto rounded bg-panel p-2 font-mono text-xs text-signal-deep">
               {prettyResult(call.result)}
             </pre>
           </div>
@@ -116,7 +116,7 @@ function ThinkingTimeline({ thinking, streaming }: { thinking: ProgressFrame[]; 
                   last && streaming ? "animate-pulse-dot bg-signal" : "bg-signal/50"
                 }`}
               />
-              <span className="font-mono text-[11px] leading-snug text-ink">
+              <span className="font-mono text-xs leading-snug text-ink">
                 <span className="text-ink-dim">{t.stage}:</span> {t.detail}
               </span>
             </li>
@@ -159,7 +159,7 @@ export function TracePanel({ turn, thinking, isLive, model, collapsed, onToggle 
             {count}
           </span>
         )}
-        <span className="[writing-mode:vertical-rl] font-mono text-[11px] tracking-widest">
+        <span className="[writing-mode:vertical-rl] font-mono text-xs tracking-widest">
           AGENT TRACE
         </span>
       </button>

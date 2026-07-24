@@ -97,6 +97,14 @@ const config: Config = {
           "35%": { boxShadow: "0 0 0 3px rgba(21,128,61,0.18)" },
           "100%": { boxShadow: "0 0 0 0 rgba(21,128,61,0.0)" },
         },
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-8px)" },
+        },
+        sway: {
+          "0%, 100%": { transform: "rotate(-2.5deg)" },
+          "50%": { transform: "rotate(2.5deg)" },
+        },
       },
       animation: {
         "pulse-dot": "pulse-dot 1.2s ease-in-out infinite",
@@ -104,6 +112,8 @@ const config: Config = {
         "stream-in": "stream-in 0.22s ease-out both",
         reveal: "reveal 0.5s ease-out both",
         "glow-pulse": "glow-pulse 1.4s ease-out 1",
+        float: "float 6s ease-in-out infinite",
+        sway: "sway 4s ease-in-out infinite",
       },
     },
   },

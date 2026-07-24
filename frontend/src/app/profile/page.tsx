@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BdAppsCheckout } from "@/components/billing/BdAppsCheckout";
 import { PieChart } from "@/components/profile/PieChart";
 import { LeafMark } from "@/components/ui/LeafMark";
 import { useAuth } from "@/lib/auth";
@@ -62,6 +63,7 @@ const TIERS = [
 
 type TierId = (typeof TIERS)[number]["id"];
 const RANK: Record<TierId, number> = { free: 0, plus: 1, pro: 2 };
+const PRICE: Record<TierId, number> = { free: 0, plus: 199, pro: 499 };
 const TIER_KEY = "agri_tier";
 
 const VIZ = ["#15803D", "#2DD4BF", "#C2740B", "#8AD5A4", "#E3B45C"];
@@ -81,6 +83,9 @@ export default function ProfilePage() {
   const { user, loading, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("info");
   const [tier, setTier] = useState<TierId>("free");
+  const [checkout, setCheckout] = useState<{ id: TierId; name: string; amount: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!getAccess()) router.replace("/login");
@@ -125,8 +130,14 @@ export default function ProfilePage() {
       <div className="mx-auto max-w-4xl px-5 py-6">
         {/* Identity strip */}
         <div className="mb-5 flex items-center gap-4">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 text-primary-700">
-            <UserRound size={26} />
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 font-display text-xl font-semibold text-white">
+            {user.username
+              .split(" ")
+              .map((w) => w[0])
+              .filter(Boolean)
+              .slice(0, 2)
+              .join("")
+              .toUpperCase() || "·"}
           </span>
           <div>
             <h1 className="font-display text-2xl font-semibold tracking-tight">{user.username}</h1>
@@ -239,7 +250,7 @@ export default function ProfilePage() {
                       ) : canUpgrade ? (
                         <button
                           type="button"
-                          onClick={() => changeTier(t.id)}
+                          onClick={() => setCheckout({ id: t.id, name: t.name, amount: PRICE[t.id] })}
                           className="w-full rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700"
                         >
                           Upgrade to {t.name}
@@ -262,6 +273,19 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {checkout && (
+        <BdAppsCheckout
+          tierName={checkout.name}
+          amount={checkout.amount}
+          mobile={user.phone}
+          onClose={() => setCheckout(null)}
+          onSuccess={() => {
+            changeTier(checkout.id);
+            setCheckout(null);
+          }}
+        />
+      )}
     </main>
   );
 }

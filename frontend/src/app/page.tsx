@@ -4,17 +4,11 @@
 // 2.5D scroll-parallax, how-it-works, BD farmer testimonials, and CTAs to sign up,
 // log in, or try as a guest (no signup).
 
-import {
-  BarChart3,
-  CloudSun,
-  Leaf,
-  MessageSquareText,
-  Sprout,
-  Star,
-} from "lucide-react";
+import { BarChart3, CloudSun, MessageSquareText, Sprout, Star } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Reveal } from "@/components/home/Reveal";
+import { Logo, LogoMark } from "@/components/ui/Logo";
 import { getAccess } from "@/lib/tokens";
 
 const FEATURES = [
@@ -124,12 +118,7 @@ export default function HomePage() {
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
-          <span className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-600">
-              <Leaf size={18} />
-            </span>
-            <span className="font-display text-lg font-semibold tracking-tight">AgriSense</span>
-          </span>
+          <Logo />
           <nav className="flex items-center gap-2">
             {authed ? (
               <Link
@@ -174,6 +163,25 @@ export default function HomePage() {
           className="topo-bg pointer-events-none absolute inset-0 opacity-70"
           style={{ transform: `translateY(${scrollY * 0.05}px)` }}
         />
+
+        {/* Floating sun */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute right-[12%] top-16 h-24 w-24 animate-float rounded-full bg-accent-300 opacity-40 blur-md"
+        />
+
+        {/* Rolling fields (parallax) */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0"
+          style={{ transform: `translateY(${scrollY * -0.06}px)` }}
+        >
+          <svg viewBox="0 0 1440 220" preserveAspectRatio="none" className="h-40 w-full sm:h-56">
+            <path d="M0 140 Q360 90 720 130 T1440 120 V220 H0Z" fill="#DCF3E3" />
+            <path d="M0 170 Q360 130 720 165 T1440 158 V220 H0Z" fill="#8AD5A4" opacity="0.75" />
+            <path d="M0 196 Q360 166 720 190 T1440 184 V220 H0Z" fill="#22A55B" opacity="0.5" />
+          </svg>
+        </div>
 
         <div className="relative mx-auto max-w-4xl px-5 pb-16 pt-20 text-center sm:pt-28">
           <Reveal>
@@ -299,8 +307,8 @@ export default function HomePage() {
       </section>
 
       <footer className="border-t border-border py-8 text-center text-sm text-text-muted">
-        <span className="flex items-center justify-center gap-1.5">
-          <Leaf size={14} className="text-primary-600" /> AgriSense — IUT Bdapps Agentic AI Hackathon
+        <span className="flex items-center justify-center gap-2">
+          <LogoMark size={18} /> AgriSense — IUT Bdapps Agentic AI Hackathon
         </span>
       </footer>
     </main>

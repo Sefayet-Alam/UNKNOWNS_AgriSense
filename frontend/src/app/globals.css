@@ -39,6 +39,13 @@ body {
     background-repeat: repeat;
   }
 
+  /* WhatsApp-style light chat backdrop — a soft warm tint with scattered
+     low-opacity leaf/seed doodles. Professional, never dark. */
+  .chat-bg {
+    background-color: #f6f9f3;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Cg fill='%2315803D' fill-opacity='0.045'%3E%3Cpath d='M22 34 q9 -13 19 -6 q-4 13 -19 6z'/%3E%3Ccircle cx='74' cy='22' r='2.2'/%3E%3Cpath d='M104 64 q11 -9 17 4 q-11 9 -17 -4z'/%3E%3Ccircle cx='42' cy='96' r='2.2'/%3E%3Cpath d='M116 116 q9 -13 19 -6 q-4 13 -19 6z'/%3E%3Ccircle cx='96' cy='128' r='2.2'/%3E%3Cpath d='M20 120 q11 -9 17 4 q-11 9 -17 -4z'/%3E%3Ccircle cx='128' cy='40' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
+  }
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 9px;
     height: 9px;

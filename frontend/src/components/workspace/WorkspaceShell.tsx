@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
 import { StatusPill } from "@/components/chat/StatusPill";
+import { Logo } from "@/components/ui/Logo";
 import { PlanCard } from "@/components/plan/PlanCard";
 import { TracePanel, type FocusedTurn } from "@/components/trace/TracePanel";
 import { DEMO_OPENER, runMockTurn } from "@/lib/mockAgent";
@@ -247,10 +248,7 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
       {/* Sidebar */}
       <aside className="flex w-[260px] shrink-0 flex-col border-r border-hairline bg-panel">
         <div className="flex items-center gap-2 px-4 py-4">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-signal/15 text-signal">
-            <Leaf size={16} />
-          </span>
-          <span className="font-display text-sm font-semibold tracking-tight">AgriSense</span>
+          <Logo size="sm" />
           <span className="ml-auto rounded border border-hairline px-1.5 py-0.5 font-mono text-[9px] uppercase text-ink-dim">
             {mode}
           </span>
@@ -302,7 +300,7 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
             </Link>
           </div>
         )}
-        <div className="scrollbar-thin flex-1 overflow-y-auto">
+        <div className="chat-bg scrollbar-thin flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-5 py-6">
             {messages.length === 0 && !streaming ? (
               <div className="mt-16 text-center">

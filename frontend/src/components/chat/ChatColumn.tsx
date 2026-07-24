@@ -70,7 +70,7 @@ export function ChatColumn() {
   return (
     <div className="flex h-full flex-1 overflow-hidden bg-background">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="chat-bg flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
             {showEmpty ? (
               <EmptyState onPick={handlePick} />
