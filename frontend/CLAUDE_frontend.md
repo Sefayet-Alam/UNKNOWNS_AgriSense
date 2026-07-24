@@ -71,7 +71,7 @@ Last updated by: Codex (Jul 24, 2026).
 - `npm run typecheck` passes.
 - `npm run build` passes.
 - The production route manifest contains no `/demo`.
-- Full backend suite: 189 tests pass on merge commit `149b6a8`.
+- Full backend suite: 196 tests pass after merging current `origin/main`.
 - Focused streaming/tool-trace suite: 6 tests pass.
 - Direct frontend state assertions cover live-over-persisted precedence, final-turn aggregation,
   and persisted turn-duration formatting.
