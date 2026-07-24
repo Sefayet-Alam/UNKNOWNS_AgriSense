@@ -65,12 +65,17 @@ that runs end-to-end in a 4-minute demo.
   ([backend/app/routers/auth.py](backend/app/routers/auth.py), [backend/app/security.py](backend/app/security.py), [backend/app/schemas.py](backend/app/schemas.py))
 - **Chat**: SSE streaming, user-scoped sessions/messages, tool-trace display.
   ([backend/app/routers/chat.py](backend/app/routers/chat.py), [backend/app/agent/runner.py](backend/app/agent/runner.py))
-- **Agent**: single-agent LangGraph ReAct loop with composite deterministic tools
-  (the locked architecture — see PLAN.md D1: NO interrupt()/checkpointer/Send).
-  Model: **`google/gemini-2.5-flash`** via OpenRouter (strongest Bengali/Banglish +
-  reliable tool calling; single family, no language router — PLAN.md D2). Prompt:
-  Bengali-first persona, slot-filling policy, weather grounding rules.
-  ([backend/app/agent/graph.py](backend/app/agent/graph.py), [backend/app/agent/tools.py](backend/app/agent/tools.py), [backend/app/agent/runner.py](backend/app/agent/runner.py))
+- **Agent**: **multi-node specialist workflow** (PLAN.md D1 rev 2):
+  `classify` (flash-lite + keyword fallback; heuristic-only under TESTING) routes
+  each turn to a specialist — `intake` (slot-filling, farm tools), `weather`
+  (forecast grounding), `advisor` (general, full toolset) — all sharing ONE
+  ToolNode that returns control to `state.active_agent`. **Per-node LLMs** via
+  `build_chat_model(model)` (`OPENROUTER_MODEL` = gemini-2.5-flash for
+  specialists, `OPENROUTER_MODEL_LITE` = flash-lite for routing only — lite was
+  tested and rejected for extraction). Still NO interrupt()/checkpointer/Send;
+  trace chips + frozen SSE contract unchanged; routing surfaces as a `progress`
+  frame. Tier 0 planning lands as a future `planner` node.
+  ([backend/app/agent/graph.py](backend/app/agent/graph.py), [backend/app/agent/state.py](backend/app/agent/state.py), [backend/app/agent/tools.py](backend/app/agent/tools.py), [backend/app/agent/runner.py](backend/app/agent/runner.py), [backend/app/agent/messages.py](backend/app/agent/messages.py))
 - **Weather (Task 1)**: `get_weather` tool → [backend/app/adapters/weather.py](backend/app/adapters/weather.py)
   (Open-Meteo, keyless, 16-day max, ET0, retry + WEATHER_UNAVAILABLE sentinel,
   geocoding w/ bundled centroid fallback, evidence metadata). Defaults to the

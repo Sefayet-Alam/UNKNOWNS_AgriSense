@@ -158,9 +158,12 @@ REQUIRED_SLOTS = ("location", "farm_size", "water_availability", "budget", "seas
 
 _SEASON_ALIASES = {
     "rabi": "rabi",
+    "robi": "rabi",
+    "রবি": "rabi",
     "winter": "rabi",
     "শীত": "rabi",
     "shit": "rabi",
+    "sheet": "rabi",
     "kharif-1": "kharif-1",
     "kharif1": "kharif-1",
     "summer": "kharif-1",

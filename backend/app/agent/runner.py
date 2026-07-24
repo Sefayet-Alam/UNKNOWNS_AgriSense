@@ -151,14 +151,29 @@ async def stream_agent_turn(
         await db.refresh(user_msg)
         yield {"type": "message", "message": serialize_message(user_msg)}
 
-        # ---- build tools ------------------------------------------------ #
+        # ---- build tool groups (per specialist node) -------------------- #
+        static_tools = build_static_tools()
+        weather_tool = build_weather_tool(user)
+        farm_tools = build_farm_tools(user)
         memory_tools = build_memory_tools(user.id, db)
-        tools = (
-            build_static_tools()
-            + [build_weather_tool(user)]
-            + build_farm_tools(user)
-            + memory_tools
+        tool_groups = {
+            "intake": static_tools + farm_tools,
+            "weather": static_tools + [weather_tool] + farm_tools,
+            "advisor": static_tools + [weather_tool] + farm_tools + memory_tools,
+        }
+        all_tool_names = sorted(
+            {t.name for group in tool_groups.values() for t in group}
         )
+
+        # ---- preload farm context for routing/state --------------------- #
+        from .tools import _farm_payload, _get_or_create_active_farm
+
+        try:
+            farm = await _get_or_create_active_farm(db, user)
+            farm_context = _farm_payload(farm)
+        except Exception:
+            log.exception("farm context preload failed — continuing without")
+            farm_context = {}
 
         # ---- auto-recall top-K memories --------------------------------- #
         yield {
@@ -188,17 +203,23 @@ async def stream_agent_turn(
         lc_messages.append(reply_language_directive(message))
 
         # ---- run the graph ---------------------------------------------- #
-        graph = build_graph(tools)
-        inputs = {"messages": lc_messages}
+        graph = build_graph(tool_groups)
+        inputs = {
+            "messages": lc_messages,
+            "intent": "",
+            "active_agent": "",
+            "farm_context": farm_context,
+        }
         log.info(
-            "graph invoke: session=%s model=%s history_msgs=%d lc_msgs=%d "
-            "recalled_memories=%d tools=%s",
+            "graph invoke: session=%s models=[%s|lite=%s] history_msgs=%d "
+            "lc_msgs=%d recalled_memories=%d tools=%s",
             session.id,
             settings.OPENROUTER_MODEL,
+            settings.OPENROUTER_MODEL_LITE,
             len(history),
             len(lc_messages),
             len(recalled),
-            [t.name for t in tools],
+            all_tool_names,
         )
 
         # tool_call_id -> (db ChatMessage, index in its tool_trace)
@@ -224,6 +245,14 @@ async def stream_agent_turn(
 
             for _node, payload in chunk.items():
                 if not isinstance(payload, dict):
+                    continue
+                # Routing decision from the classify node -> progress frame.
+                if _node == "classify" and payload.get("intent"):
+                    yield {
+                        "type": "progress",
+                        "stage": "routing",
+                        "detail": f"specialist: {payload['intent']}",
+                    }
                     continue
                 for msg in payload.get("messages", []) or []:
                     if isinstance(msg, AIMessage):

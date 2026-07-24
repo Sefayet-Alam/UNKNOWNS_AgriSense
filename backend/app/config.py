@@ -24,7 +24,9 @@ class Settings(BaseSettings):
 
     # ---- LLM: OpenRouter (default chat provider) ----
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "deepseek/deepseek-chat"
+    OPENROUTER_MODEL: str = "google/gemini-2.5-flash"
+    # Cheap/fast model for narrow tasks (intent classification, extraction).
+    OPENROUTER_MODEL_LITE: str = "google/gemini-2.5-flash-lite"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
     # ---- LLM: Ollama (optional secondary provider) ----

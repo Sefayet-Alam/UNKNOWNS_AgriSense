@@ -163,35 +163,40 @@ _SEQUENCE_SCENARIOS: Dict[str, List[Callable[[], List[BaseMessage]]]] = {
 }
 
 
-def make_fake_llm(scenario: str) -> Callable[[], FakeChatModel]:
-    """Return a no-arg factory building a fresh scripted ``FakeChatModel``.
+def make_fake_llm(scenario: str) -> Callable[..., FakeChatModel]:
+    """Return a factory yielding ONE shared scripted ``FakeChatModel``.
 
-    Monkeypatch this over ``build_chat_model`` in the graph/runner so each
-    ``build_graph`` (one per turn) gets a model whose cursor starts at 0.
+    Monkeypatch this over ``build_chat_model`` everywhere. The multi-node
+    graph builds several per-node models per turn, so the factory must
+    return the SAME instance regardless of call count or the ``model``
+    argument — only the active specialist actually consumes responses, so a
+    single global cursor walks the script in conversation order.
 
-    Single-turn scenarios (``_SCENARIOS``) return the same script every call.
-    Multi-turn scenarios (``_SEQUENCE_SCENARIOS``) advance one script per
-    call — i.e. per agent turn — sticking on the last script afterwards.
+    Single-turn scenarios (``_SCENARIOS``) provide one script; the fake
+    sticks on its last response for any later turns. Multi-turn scenarios
+    (``_SEQUENCE_SCENARIOS``) are concatenated in turn order — each turn
+    consumes exactly its own script's responses.
+
+    The classify node never consumes responses: under TESTING it uses the
+    deterministic keyword heuristic.
     """
     if scenario in _SCENARIOS:
+        responses = _SCENARIOS[scenario]()
+    elif scenario in _SEQUENCE_SCENARIOS:
+        responses = [
+            msg
+            for script in _SEQUENCE_SCENARIOS[scenario]
+            for msg in script()
+        ]
+    else:
+        raise ValueError(f"unknown fake-llm scenario: {scenario!r}")
 
-        def factory() -> FakeChatModel:
-            return FakeChatModel(responses=_SCENARIOS[scenario]())
+    shared = FakeChatModel(responses=responses)
 
-        return factory
+    def factory(*args, **kwargs) -> FakeChatModel:
+        return shared
 
-    if scenario in _SEQUENCE_SCENARIOS:
-        scripts = _SEQUENCE_SCENARIOS[scenario]
-        calls = {"n": 0}
-
-        def seq_factory() -> FakeChatModel:
-            idx = min(calls["n"], len(scripts) - 1)
-            calls["n"] += 1
-            return FakeChatModel(responses=scripts[idx]())
-
-        return seq_factory
-
-    raise ValueError(f"unknown fake-llm scenario: {scenario!r}")
+    return factory
 
 
 # --------------------------------------------------------------------------- #
