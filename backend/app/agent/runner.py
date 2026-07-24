@@ -1,10 +1,15 @@
-"""Agent turn runner: drives the graph and yields contract SSE event dicts."""
+"""Agent turn runner: orchestration only.
+
+Message construction/replay/persistence-mapping lives in ``messages.py``
+(separated by type: System / Human / AI tool_calls / Tool responses); this
+module drives the graph and yields contract SSE event dicts.
+"""
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,8 +20,14 @@ from ..schemas import serialize_message
 from . import memory as memory_mod
 from .graph import build_graph
 from .llm import build_chat_model
-
-log = logging.getLogger("agrisense.agent")
+from .messages import (
+    build_system_messages,
+    fill_trace_result,
+    history_to_lc_messages,
+    reply_language_directive,
+    text_of,
+    tool_call_traces,
+)
 from .tools import (
     build_farm_tools,
     build_memory_tools,
@@ -24,12 +35,21 @@ from .tools import (
     build_weather_tool,
 )
 
+log = logging.getLogger("agrisense.agent")
+
 SYSTEM_PROMPT = (
     "You are AgriSense, an expert agricultural advisor for Bangladeshi "
-    "farmers. Reply in the language the farmer uses (Bengali, Banglish, or "
-    "English); prefer natural Bengali when they write Bengali or Banglish. "
-    "Give practical, accurate, concise advice on crops, soil, pests, "
-    "weather, irrigation, and markets.\n"
+    "farmers. Give practical, accurate, concise advice on crops, soil, "
+    "pests, weather, irrigation, and markets.\n"
+    "\n"
+    "LANGUAGE: pick the reply language from the farmer's LAST message ONLY "
+    "(not earlier turns; switch immediately when they switch):\n"
+    "- Bengali script (বাংলা) -> reply in Bengali.\n"
+    "- Banglish (Bengali written in Latin letters, e.g. 'amar jomi ase') -> "
+    "reply in Bengali script.\n"
+    "- English -> reply in English.\n"
+    "- Mixed -> use the dominant language of that message (Banglish counts "
+    "as Bengali).\n"
     "\n"
     "FARM PROFILE & INTAKE (slot-filling):\n"
     "- At the start of a planning conversation call get_farm_profile to see "
@@ -79,66 +99,6 @@ SYSTEM_PROMPT = (
     "recall_memory for durable personal facts (preferences, experiences) — "
     "farm facts belong in the farm profile, not memory. Be clear and friendly."
 )
-
-
-def _text_of(content: Any) -> str:
-    """Flatten LangChain message content (str or list-of-parts) to plain text."""
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for part in content:
-            if isinstance(part, str):
-                parts.append(part)
-            elif isinstance(part, dict):
-                if part.get("type") == "text" and "text" in part:
-                    parts.append(part["text"])
-        return "".join(parts)
-    return str(content)
-
-
-def _history_to_lc_messages(history: list[ChatMessage]) -> list:
-    """Replay persisted history as NATIVE LangChain messages.
-
-    Assistant rows carrying a ``tool_trace`` are reconstructed as an
-    ``AIMessage`` with real ``tool_calls`` plus one ``ToolMessage`` per trace
-    entry (synthetic ids). Never flatten tool traces into plain text: models
-    imitate that text — observed live as a fabricated
-    ``[tool get_weather ... -> {...}]`` block pasted verbatim into the chat
-    instead of a real tool call.
-    """
-    lc: list = []
-    for m in history:
-        if m.role == "user":
-            lc.append(HumanMessage(content=m.content))
-            continue
-        trace = m.tool_trace or []
-        if not trace:
-            lc.append(AIMessage(content=m.content or ""))
-            continue
-        tool_calls = []
-        tool_msgs = []
-        for idx, entry in enumerate(trace):
-            call_id = f"hist_{m.id}_{idx}"
-            tool_calls.append(
-                {
-                    "name": entry.get("tool", ""),
-                    "args": entry.get("args", {}) or {},
-                    "id": call_id,
-                    "type": "tool_call",
-                }
-            )
-            tool_msgs.append(
-                ToolMessage(
-                    content=entry.get("result", "") or "",
-                    tool_call_id=call_id,
-                )
-            )
-        lc.append(AIMessage(content=m.content or "", tool_calls=tool_calls))
-        lc.extend(tool_msgs)
-    return lc
 
 
 async def _touch_session(db: AsyncSession, session: ChatSession) -> None:
@@ -220,38 +180,12 @@ async def stream_agent_turn(
         history = list(reversed(hist_result.scalars().all()))
         total_count = await _message_count(db, session.id)
 
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-
-        now_dhaka = datetime.now(ZoneInfo("Asia/Dhaka"))
-        lc_messages: list = [
-            SystemMessage(content=SYSTEM_PROMPT),
-            SystemMessage(
-                content=(
-                    "CURRENT DATE & TIME (Asia/Dhaka): "
-                    f"{now_dhaka.strftime('%A, %d %B %Y, %H:%M')} "
-                    f"({now_dhaka.date().isoformat()}). This is authoritative "
-                    "— use it for every 'today'/season/date computation."
-                )
-            ),
-        ]
-        if session.summary:
-            lc_messages.append(
-                SystemMessage(
-                    content=f"Conversation summary so far:\n{session.summary}"
-                )
-            )
-        if recalled:
-            joined = "\n".join(f"- {r}" for r in recalled)
-            lc_messages.append(
-                SystemMessage(
-                    content=(
-                        "Relevant long-term memories about this user:\n"
-                        f"{joined}"
-                    )
-                )
-            )
-        lc_messages.extend(_history_to_lc_messages(history))
+        lc_messages: list = build_system_messages(
+            SYSTEM_PROMPT, session.summary, recalled
+        )
+        lc_messages.extend(history_to_lc_messages(history))
+        # Deterministic per-turn language directive (last user message wins).
+        lc_messages.append(reply_language_directive(message))
 
         # ---- run the graph ---------------------------------------------- #
         graph = build_graph(tools)
@@ -293,21 +227,14 @@ async def stream_agent_turn(
                     continue
                 for msg in payload.get("messages", []) or []:
                     if isinstance(msg, AIMessage):
-                        text = _text_of(msg.content)
-                        traces = []
-                        for tc in msg.tool_calls or []:
+                        text = text_of(msg.content)
+                        traces = tool_call_traces(msg)
+                        for entry in traces:
                             log.info(
                                 "model tool_call [%s]: %s args=%s",
                                 _node,
-                                tc.get("name", ""),
-                                trunc(tc.get("args", {}), 300),
-                            )
-                            traces.append(
-                                {
-                                    "tool": tc.get("name", ""),
-                                    "args": tc.get("args", {}) or {},
-                                    "result": "",
-                                }
+                                entry["tool"],
+                                trunc(entry["args"], 300),
                             )
                         if text:
                             log.info(
@@ -351,17 +278,16 @@ async def stream_agent_turn(
                         if owner is None:
                             continue
                         db_msg, idx = owner
-                        trace = list(db_msg.tool_trace or [])
-                        if 0 <= idx < len(trace):
-                            updated = dict(trace[idx])
-                            updated["result"] = _text_of(msg.content)
+                        new_trace = fill_trace_result(
+                            list(db_msg.tool_trace or []), idx, msg
+                        )
+                        if new_trace is not None:
                             log.info(
                                 "tool result: %s -> %s",
-                                updated.get("tool", "?"),
-                                trunc(updated["result"], 400),
+                                new_trace[idx].get("tool", "?"),
+                                trunc(new_trace[idx]["result"], 400),
                             )
-                            trace[idx] = updated
-                            db_msg.tool_trace = trace  # reassign -> tracked
+                            db_msg.tool_trace = new_trace  # reassign -> tracked
                             await db.commit()
                             await db.refresh(db_msg)
                             yield {
