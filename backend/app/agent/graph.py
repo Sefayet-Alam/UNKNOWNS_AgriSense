@@ -39,7 +39,7 @@ from .llm import build_chat_model
 from .messages import detect_reply_language, language_directive
 from .state import OrchestratorState
 
-MAX_TURNS = 8  # tool rounds per REQUEST turn (history rounds excluded)
+MAX_TURNS = 12  # tool rounds per REQUEST turn (history rounds excluded)
 
 log = logging.getLogger("agrisense.agent.graph")
 
@@ -106,15 +106,21 @@ NODE_DIRECTIVES = {
         "using the profile + survey data); "
         "(2) get_soil_context for the full soil breakdown (texture, land "
         "type, drainage, pH) and match candidates against it; "
-        "(3) czis_crop_varieties for the top candidates -> real yield "
-        "(t/ha) and duration (days); "
-        "(4) get_weather when near-term conditions matter for "
+        "(3) get_cropping_patterns for the RECORDED rotation economics of "
+        "this upazila (BCR + gross margin Tk/decimal, most profitable "
+        "first) — profitability claims MUST come from these values "
+        "(gm_tk_per_decimal x area_decimal via the calculator tool), never "
+        "from memory; "
+        "(4) czis_crop_varieties for the TOP 2-3 candidates ONLY -> real "
+        "yield (t/ha) and duration (days) — batch them as PARALLEL tool "
+        "calls in a single round, never one crop per round; "
+        "(5) get_weather when near-term conditions matter for "
         "sowing/water; "
-        "(5) present a ranked shortlist of 3-5 crops. For EVERY pick, "
+        "(6) present a ranked shortlist of 3-5 crops. For EVERY pick, "
         "name the specific farm inputs (soil texture, land type, "
         "irrigation, budget, area, season) and the retrieved values "
-        "(variety yields/durations) it rests on. Numbers come ONLY from "
-        "tool results. Keep farm facts saved via update_farm_profile when "
+        "(variety yields/durations, BCR/margin) it rests on. Numbers come "
+        "ONLY from tool results. Keep farm facts saved via update_farm_profile when "
         "the farmer states new ones."
     ),
 }
@@ -252,6 +258,7 @@ def build_graph(tool_groups: dict[str, list]):
         async def agent_node(state: OrchestratorState):
             messages = state["messages"]
             used = _current_turn_tool_rounds(messages)
+            forced_final: list = []
             if used >= MAX_TURNS:
                 log.warning(
                     "[%s] MAX_TURNS (%d) reached — forcing final answer",
@@ -259,6 +266,19 @@ def build_graph(tool_groups: dict[str, list]):
                     MAX_TURNS,
                 )
                 active = plain[name]
+                # Without an explicit instruction the tool-less model can
+                # return empty content — tell it plainly what to do.
+                forced_final = [
+                    SystemMessage(
+                        content=(
+                            "TOOL BUDGET EXHAUSTED: no more tool calls are "
+                            "possible this turn. Write your FINAL answer NOW "
+                            "using only the tool results already above. If "
+                            "some data is missing, say so honestly instead "
+                            "of inventing it."
+                        )
+                    )
+                ]
             else:
                 active = bound[name]
             log.info(
@@ -280,7 +300,7 @@ def build_graph(tool_groups: dict[str, list]):
             )
             lang_directive = language_directive(lang)
             response = await active.ainvoke(
-                [directive] + list(messages) + [lang_directive]
+                [directive] + list(messages) + [lang_directive] + forced_final
             )
             return {"messages": [response], "active_agent": name}
 

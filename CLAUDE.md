@@ -102,6 +102,14 @@ that runs end-to-end in a 4-minute demo.
   never recomputed). `CzisError`/`CZIS_UNAVAILABLE` → fall back to FRG KB.
   Advisor tools `czis_list_crops/czis_crop_varieties/czis_crop_context/
   czis_fertilizer_recommendation` default to the active farm's coordinates.
+- **Cropping-pattern economics**: [backend/app/data/bd_cropping_patterns.json](backend/app/data/bd_cropping_patterns.json)
+  — recorded per-upazila cropping patterns from CZIS `/croppingpattern/{code}`
+  (rabi/kharif-1/kharif-2 rotation + **BCR** over variable/total cost + **gross
+  margin Tk/decimal**). Accessors in [backend/app/patterns.py](backend/app/patterns.py); agent tool
+  `get_cropping_patterns` (advisor + recommender) serves the active farm's
+  upazila sorted most-profitable-first, PATTERNS_UNKNOWN sentinel when
+  uncovered. THE grounding source for "rough profit" claims —
+  `gm_tk_per_decimal x area_decimal` via the calculator tool, never invented.
 - **Weather (Task 1)**: `get_weather` tool → [backend/app/adapters/weather.py](backend/app/adapters/weather.py)
   (Open-Meteo, keyless, 16-day max, ET0, retry + WEATHER_UNAVAILABLE sentinel,
   evidence metadata). **Coordinates-first**: default = the active farm's stored
@@ -188,7 +196,7 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 180 tests: unit (security/phone/tools/weather adapter/czis
+  (or `make test`). 187 tests: unit (security/phone/tools/weather adapter/czis
   adapter/geo
   gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
