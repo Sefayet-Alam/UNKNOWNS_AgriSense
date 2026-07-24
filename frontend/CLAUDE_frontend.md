@@ -26,6 +26,9 @@ Last updated by: Codex (Jul 24, 2026).
   overlay; the earlier abstract React Three Fiber scene is no longer rendered.
 - The planning route has five steps. Its yellow SVG reveal uses `getTotalLength()` at runtime;
   do not restore a hard-coded dash length or it will stop before the fifth node.
+- The unauthenticated `/demo` route, `WorkspaceShell`, `mockAgent`, and its local upload helper
+  were removed. Do not restore a parallel mock workspace; the real authenticated chat is the only
+  workspace. On the authenticated landing header, `Open workspace` stays left of `Log out`.
 - Bangladesh photographs are local under `public/images/`; licensing and source URLs are in
   `public/images/IMAGE_CREDITS.md`.
 - Auth routes share `components/layout/AuthShell.tsx`. Keep each page's existing handlers intact.
@@ -42,6 +45,7 @@ Last updated by: Codex (Jul 24, 2026).
 
 - `npm run typecheck` passes.
 - `npm run build` passes.
+- The production route manifest contains no `/demo`.
 - Full backend suite: 135 tests pass.
 - Backend test command from inside Compose:
   `docker compose exec -T -e TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test backend pytest -q`.
