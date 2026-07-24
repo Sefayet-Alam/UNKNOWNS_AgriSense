@@ -9,23 +9,34 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from .season_planner import CROP_PLANS
+
+
+def _bamis_source(url: str) -> dict[str, str]:
+    return {"source": "BAMIS Crop Weather Calendar", "region": "Rajshahi", "url": url}
+
 
 # Qualitative water demand and conservative weather limits for the focused
 # Bangladesh Rabi path.  These are agronomic profile metadata, not irrigation
 # quantities.  Farmer-facing quantities are produced only by later scheduler
 # tools.  Source references are carried into every candidate.
 CROP_TRAITS: dict[str, dict[str, Any]] = {
-    "boro dhan": {"water": "high", "max_temp_c": 35, "heavy_rain_mm": 60},
-    "wheat": {"water": "medium", "max_temp_c": 32, "heavy_rain_mm": 40},
-    "maize": {"water": "medium", "max_temp_c": 35, "heavy_rain_mm": 50},
-    "mustard": {"water": "low", "max_temp_c": 32, "heavy_rain_mm": 35},
-    "potato": {"water": "medium", "max_temp_c": 30, "heavy_rain_mm": 35},
-    "lentil": {"water": "low", "max_temp_c": 32, "heavy_rain_mm": 35},
-    "tomato": {"water": "medium", "max_temp_c": 32, "heavy_rain_mm": 35},
-    "onion": {"water": "medium", "max_temp_c": 32, "heavy_rain_mm": 35},
-    "garlic": {"water": "medium", "max_temp_c": 32, "heavy_rain_mm": 35},
-    "brinjal": {"water": "medium", "max_temp_c": 35, "heavy_rain_mm": 40},
+    "boro dhan": {"water": "high", "max_temp_c": 35, "heavy_rain_mm": 50, "profile": "boro dhan"},
+    "wheat": {"water": "medium", "max_temp_c": 30, "heavy_rain_mm": 50, "profile": "wheat"},
+    "maize": {"water": "high", "max_temp_c": 35, "heavy_rain_mm": 50, "profile": "maize"},
+    "mustard": {"water": "low", "max_temp_c": 30, "heavy_rain_mm": 50, "profile": "mustard"},
+    "potato": {"water": "medium", "max_temp_c": 30, "heavy_rain_mm": 25, "profile": "potato"},
+    "lentil": {"water": "low", "max_temp_c": 32, "heavy_rain_mm": 35, "source": _bamis_source("https://www.bamis.gov.bd/res/public/calendars/2019/11/14/8725.pdf")},
+    "tomato": {"water": "medium", "max_temp_c": 32, "heavy_rain_mm": 35, "source": _bamis_source("https://www.bamis.gov.bd/res/public/calendars/2023/03/16/26464.pdf")},
+    "onion": {"water": "medium", "max_temp_c": 32, "heavy_rain_mm": 35, "source": _bamis_source("https://www.bamis.gov.bd/res/public/calendars/2023/03/16/26482.pdf")},
+    "garlic": {"water": "medium", "max_temp_c": 32, "heavy_rain_mm": 35, "source": _bamis_source("https://www.bamis.gov.bd/res/public/calendars/2023/03/17/26526.pdf")},
+    "brinjal": {"water": "medium", "max_temp_c": 35, "heavy_rain_mm": 40, "source": _bamis_source("https://www.bamis.gov.bd/res/public/calendars/2023/04/17/27419.pdf")},
 }
+
+for _trait in CROP_TRAITS.values():
+    if profile_key := _trait.get("profile"):
+        _trait["source"] = CROP_PLANS[profile_key]["bamis"]
+        _trait["water_requirement"] = CROP_PLANS[profile_key]["water_requirement"]
 
 TRAITS_SOURCE = {
     "source": "BARC Fertilizer Recommendation Guide 2024 + BAMIS crop calendars",
@@ -254,7 +265,8 @@ def rank_candidates(
                 "water_need": {
                     "level": water_level,
                     "irrigation_available": irrigation,
-                    "source": TRAITS_SOURCE,
+                    "published_requirement": CROP_TRAITS[key].get("water_requirement"),
+                    "source": CROP_TRAITS[key].get("source", TRAITS_SOURCE),
                 },
                 "risk": {"level": risk_level, "reasons": reasons},
                 "budget_fit": {

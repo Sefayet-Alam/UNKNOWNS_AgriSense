@@ -5,7 +5,8 @@ import ast
 import json
 import logging
 import operator
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from typing import Optional
 
@@ -20,6 +21,7 @@ from ..adapters import czis_suitability as czis_suitability_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
 from ..engines import crop_ranker as crop_ranker_mod
+from ..engines import season_planner as season_planner_mod
 from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
 from ..models import Farm
@@ -1222,6 +1224,225 @@ def build_crop_recommendation_tool(user):
         )
 
     return rank_crop_candidates
+
+
+# --------------------------------------------------------------------------- #
+# Complete selected-crop season plan (live inputs + RAG + deterministic dates)
+# --------------------------------------------------------------------------- #
+def build_season_plan_tool(user):
+    """Return the PDF Tier-0 dated season-plan tool for this farmer."""
+
+    @tool
+    async def generate_season_plan(
+        crop_name: str,
+        planting_date: str = "",
+        variety_id: Optional[int] = None,
+    ) -> str:
+        """Generate a grounded, DATED land-preparation-to-harvest calendar.
+
+        Use only after the farmer has selected a crop. Supported focused-path
+        crops: Wheat, Mustard, Potato, Maize and Boro dhan. The tool combines a
+        Rajshahi BAMIS crop-weather calendar, FRG 2024 fertilizer timing, live
+        CZIS farm-scaled fertilizer products, live Open-Meteo weather and RAG
+        evidence. It returns sowing, fertilizer, irrigation, weed/pest and
+        harvest dates; do not recompute or invent dates/quantities in the reply.
+
+        Args:
+            crop_name: Selected crop name.
+            planting_date: Optional farmer-selected ISO date (YYYY-MM-DD).
+                Empty chooses the next BAMIS-calendar-derived sowing window.
+            variety_id: Optional CZIS variety id. Empty selects the first live
+                variety only as an explicit provisional reference.
+        """
+        _emit("planning", f"building dated season plan for {crop_name}")
+        try:
+            canonical = season_planner_mod.canonical_crop_name(crop_name)
+        except ValueError as exc:
+            return json.dumps(
+                {"status": "UNSUPPORTED_CROP", "message": str(exc)},
+                ensure_ascii=False,
+            )
+
+        requested_date: Optional[date] = None
+        if planting_date.strip():
+            try:
+                requested_date = date.fromisoformat(planting_date.strip())
+            except ValueError:
+                return json.dumps(
+                    {
+                        "status": "INVALID_PLANTING_DATE",
+                        "message": "planting_date must be YYYY-MM-DD",
+                    },
+                    ensure_ascii=False,
+                )
+
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+            if missing:
+                return json.dumps(
+                    {
+                        "status": "PROFILE_INCOMPLETE",
+                        "missing_required_fields": missing,
+                        "instruction": "Complete the six farm fields before planning.",
+                    },
+                    ensure_ascii=False,
+                )
+            farm_inputs = {
+                "area_decimal": farm.area_decimal,
+                "soil_texture": farm.soil_texture,
+                "land_type": farm.land_type,
+                "irrigation_available": farm.irrigation_available,
+                "water_source": farm.water_source,
+                "budget_bdt": farm.budget_bdt,
+                "season": farm.season,
+                "location": {
+                    "label": farm.union_name or farm.upazila_name,
+                    "upazila": farm.upazila_name,
+                    "latitude": farm.latitude,
+                    "longitude": farm.longitude,
+                },
+            }
+
+        lat = farm_inputs["location"]["latitude"]
+        lon = farm_inputs["location"]["longitude"]
+        if lat is None or lon is None:
+            return json.dumps(
+                {"status": "LOCATION_UNRESOLVED", "farm_inputs": farm_inputs},
+                ensure_ascii=False,
+            )
+
+        catalog = sorted(
+            [
+                item
+                for item in czis_mod.list_crops(season=farm_inputs["season"])
+                if str(item["name"]).strip().lower() == canonical.lower()
+            ],
+            key=lambda item: (
+                str(item.get("variety_group") or "").lower()
+                != "favourable environment",
+                int(item["crop_id"]),
+            ),
+        )
+        if not catalog:
+            return json.dumps(
+                {
+                    "status": "CROP_SEASON_MISMATCH",
+                    "crop": canonical,
+                    "farm_season": farm_inputs["season"],
+                },
+                ensure_ascii=False,
+            )
+        selected_crop = {"crop_id": int(catalog[0]["crop_id"]), "name": canonical}
+
+        unavailable: list[str] = []
+        _emit("weather", "fetching 16-day forecast for schedule adjustments")
+        try:
+            weather = await weather_mod.fetch_forecast(lat, lon, 16)
+        except weather_mod.WeatherError as exc:
+            unavailable.append("weather")
+            weather = {
+                "source": "Open-Meteo forecast API",
+                "status": "WEATHER_UNAVAILABLE",
+                "error": str(exc),
+                "days": [],
+                "summary": {},
+            }
+
+        _emit("kb", f"retrieving FRG support for {canonical}")
+        try:
+            from .. import rag
+
+            async with AsyncSessionLocal() as session:
+                knowledge_hits = await rag.search_kb(
+                    session,
+                    f"{canonical} fertilizer application timing irrigation season plan",
+                    k=3,
+                    crop=canonical.lower(),
+                )
+        except Exception as exc:
+            log.warning("season-plan KB retrieval failed: %s", exc)
+            knowledge_hits = []
+        if not knowledge_hits:
+            unavailable.append("knowledge_base")
+
+        selected_variety: Optional[dict] = None
+        fertilizer: dict = {
+            "status": "CZIS_FERTILIZER_UNAVAILABLE",
+            "products": [],
+        }
+        _emit("czis", f"fetching varieties and fertilizer for crop {selected_crop['crop_id']}")
+        try:
+            context = await czis_mod.get_crop_context(
+                selected_crop["crop_id"], lat, lon
+            )
+            choices = context.get("varieties") or []
+            if variety_id is not None:
+                selected_variety = next(
+                    (
+                        item
+                        for item in choices
+                        if int(item["variety_id"]) == int(variety_id)
+                    ),
+                    None,
+                )
+                if selected_variety is None:
+                    return json.dumps(
+                        {
+                            "status": "INVALID_VARIETY",
+                            "requested_variety_id": variety_id,
+                            "available_varieties": choices,
+                        },
+                        ensure_ascii=False,
+                    )
+            elif choices:
+                selected_variety = {**choices[0], "selection": "provisional_first_live_option"}
+            if selected_variety is None:
+                raise czis_mod.CzisError("no live variety available at farm point")
+            fertilizer = await czis_mod.get_fertilizer_recommendation(
+                selected_crop["crop_id"],
+                lat,
+                lon,
+                int(selected_variety["variety_id"]),
+                float(farm_inputs["area_decimal"]),
+            )
+        except czis_mod.CzisError as exc:
+            unavailable.append("fertilizer")
+            fertilizer = {
+                "status": "CZIS_FERTILIZER_UNAVAILABLE",
+                "error": str(exc),
+                "products": [],
+            }
+
+        today = datetime.now(ZoneInfo("Asia/Dhaka")).date()
+        calendar = season_planner_mod.build_season_calendar(
+            crop_name=canonical,
+            today=today,
+            planting_date=requested_date,
+            fertilizer_products=fertilizer.get("products") or [],
+            weather=weather,
+        )
+        return json.dumps(
+            {
+                "status": "degraded" if unavailable else "ok",
+                "unavailable_sources": unavailable,
+                "selected_crop": selected_crop,
+                "selected_variety": selected_variety,
+                "farm_inputs": farm_inputs,
+                "weather": weather,
+                "fertilizer_recommendation": fertilizer,
+                "knowledge_evidence": knowledge_hits,
+                "calendar": calendar,
+                "grounding_rule": (
+                    "Calendar stages/weather risks come from BAMIS; fertilizer "
+                    "timing from FRG 2024; displayed fertilizer amounts only from "
+                    "the live CZIS farm-scaled response."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return generate_season_plan
 
 
 def build_czis_tools(user):

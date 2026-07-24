@@ -73,6 +73,9 @@ def test_ranker_returns_pdf_required_fields_and_three_candidates():
         assert isinstance(crop["rough_profit"]["estimate_tk"], int)
         assert crop["rough_profit"]["basis"] == "recorded_full_rotation_net_return"
         assert crop["score"] == pytest.approx(sum(crop["score_components"].values()))
+        assert crop["water_need"]["source"]["url"].startswith(
+            "https://www.bamis.gov.bd/"
+        )
 
 
 def test_ranker_penalizes_high_water_crop_without_irrigation_and_honors_exclusion():

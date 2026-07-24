@@ -135,8 +135,9 @@ Production configuration and portal field values are documented in
 ## Agent
 LangGraph specialist loop (`app/agent/`): tools include live weather, official
 CZIS crop/variety/fertilizer and point-suitability lookups, deterministic
-`rank_crop_candidates`, RAG search, farm profiles, `calculator`, `save_memory`,
-and `recall_memory`. Long-term memory is user-scoped pgvector
+`rank_crop_candidates`, dated `generate_season_plan` calendars grounded in
+BAMIS/FRG/RAG, farm profiles, `calculator`, `save_memory`, and `recall_memory`.
+Long-term memory is user-scoped pgvector
 semantic recall; each session also keeps a rolling `summary`. The stream
 runner emits `session` / `message` / `message_update` / `progress` / `done` /
 `error` frames per the contract.

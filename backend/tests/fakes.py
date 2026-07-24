@@ -210,12 +210,61 @@ def _recommendation_degraded_script() -> List[BaseMessage]:
     ]
 
 
+def _season_plan_script() -> List[BaseMessage]:
+    return [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "generate_season_plan",
+                    "args": {"crop_name": "Wheat", "planting_date": "2026-11-15"},
+                    "id": "call_plan_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
+            content=(
+                "গমের তারিখভিত্তিক পরিকল্পনা প্রস্তুত। BAMIS রাজশাহী ক্যালেন্ডার, "
+                "FRG 2024 (পৃষ্ঠা ৯০), Open-Meteo এবং CZIS-এর ৫০ শতকের "
+                "সার-পরিমাণ ব্যবহার করা হয়েছে; বপন ১৫ নভেম্বর ২০২৬ এবং "
+                "ফসল তোলা ১৪ মার্চ ২০২৭।"
+            )
+        ),
+    ]
+
+
+def _season_plan_degraded_script() -> List[BaseMessage]:
+    return [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "generate_season_plan",
+                    "args": {"crop_name": "Wheat", "planting_date": "2026-11-15"},
+                    "id": "call_plan_degraded",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
+            content=(
+                "পরিকল্পনাটি degraded: একটি প্রয়োজনীয় উৎস অনুপলব্ধ। আমি কোনো "
+                "অনুপস্থিত সার-পরিমাণ বা আবহাওয়ার মান অনুমান করিনি; raw trace-এ "
+                "অনুপলব্ধ উৎসটি দেখা যাবে।"
+            )
+        ),
+    ]
+
+
 _SCENARIOS: Dict[str, Callable[[], List[BaseMessage]]] = {
     "plain": _plain_script,
     "tool": _tool_script,
     "weather": _weather_script,
     "recommendation": _recommendation_script,
     "recommendation_degraded": _recommendation_degraded_script,
+    "season_plan": _season_plan_script,
+    "season_plan_degraded": _season_plan_degraded_script,
 }
 
 # Multi-turn scenarios: one script per agent TURN (per graph build). The

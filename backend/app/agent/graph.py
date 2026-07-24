@@ -43,7 +43,7 @@ MAX_TURNS = 12  # tool rounds per REQUEST turn (history rounds excluded)
 
 log = logging.getLogger("agrisense.agent.graph")
 
-AGENTS = ("intake", "advisor", "recommender")
+AGENTS = ("intake", "advisor", "recommender", "planner")
 
 # Which OpenRouter model powers each node (single place to retune).
 # NOTE: intake initially ran on MODEL_LITE — live test showed flash-lite
@@ -55,6 +55,7 @@ def _node_models() -> dict[str, str]:
         "intake": settings.OPENROUTER_MODEL,
         "advisor": settings.OPENROUTER_MODEL,
         "recommender": settings.OPENROUTER_MODEL,
+        "planner": settings.OPENROUTER_MODEL,
     }
 
 
@@ -121,6 +122,17 @@ NODE_DIRECTIVES = {
         "ONLY from tool results. Keep farm facts saved via update_farm_profile when "
         "the farmer states new ones."
     ),
+    "planner": (
+        "CURRENT NODE: SEASON PLANNER. This node handles a calendar for an "
+        "ALREADY-SELECTED crop. Call generate_season_plan with the selected "
+        "crop and any farmer-specified planting date/variety. The tool itself "
+        "hard-gates the farm profile and retrieves live weather, live CZIS "
+        "fertilizer amounts, BAMIS/FRG structure and RAG evidence. Relay its "
+        "dates and quantities exactly; never invent missing fertilizer amounts. "
+        "Explain any weather adjustment and degraded source. The result must "
+        "cover land preparation, sowing, fertilizer, irrigation, weed/pest "
+        "checkpoints and harvest."
+    ),
 }
 
 # --------------------------------------------------------------------------- #
@@ -143,12 +155,21 @@ _RECOMMEND_WORDS = re.compile(
     r"কী ফসল|কি চাষ|কী চাষ|চাষ কর|লাগাব|বুনব|লাভজনক|সুপারিশ|ফলন ভালো)",
     re.IGNORECASE,
 )
+_PLAN_WORDS = re.compile(
+    r"(season plan|crop plan|dated plan|calendar|schedule|plan for (?:wheat|"
+    r"mustard|potato|maize|boro)|i (?:choose|chose|selected) (?:wheat|mustard|"
+    r"potato|maize|boro)|পরিকল্পনা|ক্যালেন্ডার|সময়সূচি|গমের প্ল্যান|সরিষার প্ল্যান|"
+    r"আলুর প্ল্যান|ভুট্টার প্ল্যান|বোরোর প্ল্যান)",
+    re.IGNORECASE,
+)
 
 _CLASSIFY_PROMPT = (
     "You route a Bangladeshi farmer's message to ONE specialist. Reply with "
     "exactly one word:\n"
     "- recommender : asking WHICH crop to plant / crop suggestions / what "
     "would be profitable to grow\n"
+    "- planner : the crop is already selected and the farmer asks for a dated "
+    "season plan/calendar/schedule\n"
     "- intake  : stating or correcting farm facts (land size, budget, "
     "irrigation, soil, season, location)\n"
     "- advisor : anything else (weather questions, pests, fertilizer for a "
@@ -161,6 +182,8 @@ def classify_heuristic(text: str) -> str:
     # so "kon fosol labjonok hobe?" outranks generic advice routing.
     if _RECOMMEND_WORDS.search(text or ""):
         return "recommender"
+    if _PLAN_WORDS.search(text or ""):
+        return "planner"
     # Weather questions go to the advisor (it owns the get_weather tool) —
     # checked before intake so "brishti + jomi" turns get grounded weather
     # answers instead of slot-filling.

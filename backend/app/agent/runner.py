@@ -35,6 +35,7 @@ from .tools import (
     build_memory_tools,
     build_patterns_tool,
     build_crop_recommendation_tool,
+    build_season_plan_tool,
     build_soil_tool,
     build_static_tools,
     build_weather_tool,
@@ -195,6 +196,7 @@ async def stream_agent_turn(
         soil_tool = build_soil_tool(user)
         patterns_tool = build_patterns_tool(user)
         recommendation_tool = build_crop_recommendation_tool(user)
+        season_plan_tool = build_season_plan_tool(user)
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
@@ -219,6 +221,9 @@ async def stream_agent_turn(
             + [soil_tool, patterns_tool, recommendation_tool]
             + czis_tools
             + kb_tools,
+            "planner": static_tools
+            + farm_tools
+            + [soil_tool, season_plan_tool],
         }
         all_tool_names = sorted(
             {t.name for group in tool_groups.values() for t in group}

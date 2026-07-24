@@ -35,6 +35,9 @@ pytestmark = pytest.mark.unit
         ("ki chash korle labjonok hobe?", "recommender"),
         ("এই মৌসুমে কোন ফসল চাষ করব?", "recommender"),
         ("কোন ফসল লাভজনক হবে?", "recommender"),
+        ("I chose wheat. Make a season plan", "planner"),
+        ("Create a calendar for potato", "planner"),
+        ("সরিষার প্ল্যান বানাও", "planner"),
     ],
 )
 def test_classify_heuristic(text, expected):
@@ -60,7 +63,14 @@ def test_recommend_beats_intake_and_weather():
 
 
 def test_agents_registry():
-    assert set(AGENTS) == {"intake", "advisor", "recommender"}
+    assert set(AGENTS) == {"intake", "advisor", "recommender", "planner"}
+
+
+def test_crop_choice_beats_plan_when_crop_is_not_selected_yet():
+    assert (
+        classify_heuristic("Recommend a crop and then make a season plan")
+        == "recommender"
+    )
 
 
 def test_tool_rounds_exclude_replayed_history():

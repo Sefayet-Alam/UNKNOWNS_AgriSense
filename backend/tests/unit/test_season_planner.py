@@ -1,0 +1,157 @@
+"""Gold-date and quantity invariants for deterministic season calendars."""
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+import pytest
+
+from app.engines.season_planner import build_season_calendar, next_sowing_date
+
+
+def test_next_sowing_date_uses_next_official_window_not_stale_model_year():
+    assert next_sowing_date("Wheat", date(2026, 7, 24)) == date(2026, 11, 15)
+    assert next_sowing_date("Wheat", date(2026, 11, 20)) == date(2026, 11, 20)
+    assert next_sowing_date("Wheat", date(2026, 12, 20)) == date(2027, 11, 15)
+
+
+def test_next_sowing_date_handles_boro_window_across_new_year():
+    assert next_sowing_date("Boro dhan", date(2026, 1, 10)) == date(2026, 1, 10)
+    assert next_sowing_date("Boro dhan", date(2026, 2, 1)) == date(2026, 12, 1)
+
+
+@pytest.mark.parametrize(
+    "crop,expected_duration",
+    [
+        ("Wheat", 119),
+        ("Mustard", 90),
+        ("Potato", 105),
+        ("Maize", 112),
+        ("Boro dhan", 153),
+    ],
+)
+def test_calendar_covers_every_pdf_required_stage(crop, expected_duration):
+    plan = build_season_calendar(
+        crop_name=crop,
+        today=date(2026, 7, 24),
+        fertilizer_products=[],
+        weather={"days": []},
+    )
+
+    categories = {event["category"] for event in plan["events"]}
+    assert {
+        "land_preparation",
+        "sowing",
+        "fertilizer",
+        "irrigation",
+        "weed",
+        "pest",
+        "harvest",
+    } <= categories
+    assert plan["duration_days"] == expected_duration
+    assert plan["harvest_date"] == (
+        date.fromisoformat(plan["planting_date"]) + timedelta(days=expected_duration)
+    ).isoformat()
+    assert [e["date"] for e in plan["events"]] == sorted(
+        e["date"] for e in plan["events"]
+    )
+    assert all(event["source"] for event in plan["events"])
+
+
+def test_wheat_calendar_exposes_bamis_phase_water_values_and_source():
+    plan = build_season_calendar(
+        crop_name="Wheat",
+        today=date(2026, 7, 24),
+        fertilizer_products=[],
+        weather={"days": []},
+    )
+    water = plan["agronomic_reference"]["water_requirement"]
+    assert water["phase_mm"] == [47, 128, 77, 137, 39]
+    assert water["total_mm"] == 428
+    assert plan["sources"]["crop_calendar"]["url"].endswith("/5116.pdf")
+
+
+def test_fertilizer_splits_preserve_exact_czis_total_amounts():
+    plan = build_season_calendar(
+        crop_name="Wheat",
+        today=date(2026, 7, 24),
+        planting_date=date(2026, 11, 20),
+        fertilizer_products=[
+            {
+                "product": "Urea",
+                "element": "N",
+                "amount": {"value": 30.0, "unit": "kg", "raw": "30 kg"},
+                "is_alternative": False,
+            },
+            {
+                "product": "TSP",
+                "element": "P",
+                "amount": {"value": 12.5, "unit": "kg", "raw": "12.5 kg"},
+                "is_alternative": False,
+            },
+        ],
+        weather={"days": []},
+    )
+
+    applications = [
+        dose
+        for event in plan["events"]
+        if event["category"] == "fertilizer"
+        for dose in event.get("fertilizer_doses", [])
+    ]
+    urea = [d for d in applications if d["product"] == "Urea"]
+    tsp = [d for d in applications if d["product"] == "TSP"]
+    assert sum(d["amount"]["value"] for d in urea) == pytest.approx(30.0)
+    assert sorted(d["amount"]["value"] for d in urea) == [10.0, 20.0]
+    assert sum(d["amount"]["value"] for d in tsp) == pytest.approx(12.5)
+    assert len(tsp) == 1  # non-N fertilizer is basal for wheat
+
+
+def test_heavy_rain_delays_near_term_planting_to_first_dry_forecast_day():
+    weather = {
+        "source": "Open-Meteo forecast API",
+        "days": [
+            {"date": "2026-11-15", "rain_mm": 35.0},
+            {"date": "2026-11-16", "rain_mm": 28.0},
+            {"date": "2026-11-17", "rain_mm": 2.0},
+        ],
+    }
+    plan = build_season_calendar(
+        crop_name="Wheat",
+        today=date(2026, 11, 15),
+        planting_date=date(2026, 11, 15),
+        fertilizer_products=[],
+        weather=weather,
+    )
+
+    assert plan["planting_date"] == "2026-11-17"
+    assert plan["weather_adjustments"] == [
+        {
+            "type": "planting_delay",
+            "from": "2026-11-15",
+            "to": "2026-11-17",
+            "reason": "35.0 mm rain forecast on requested planting date",
+            "source": "Open-Meteo forecast API",
+        }
+    ]
+
+
+def test_outside_sowing_window_is_visible_when_farmer_forces_date():
+    plan = build_season_calendar(
+        crop_name="Mustard",
+        today=date(2026, 7, 24),
+        planting_date=date(2026, 8, 1),
+        fertilizer_products=[],
+        weather={"days": []},
+    )
+    assert plan["warnings"]
+    assert "outside" in plan["warnings"][0].lower()
+
+
+def test_unsupported_crop_is_rejected_instead_of_inventing_calendar():
+    with pytest.raises(ValueError, match="supported crop"):
+        build_season_calendar(
+            crop_name="Dragon fruit",
+            today=date(2026, 7, 24),
+            fertilizer_products=[],
+            weather={"days": []},
+        )
