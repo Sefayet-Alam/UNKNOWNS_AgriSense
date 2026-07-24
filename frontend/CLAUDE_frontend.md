@@ -80,6 +80,10 @@ Last updated by: Codex (Jul 25, 2026).
 
 ## Verification
 
+- Jul 25 push/PR: branch `feat/bdapps-plus` was fetched, confirmed up to date with `origin/main`,
+  committed as `2925629` (`feat: finalize bdapps plus mobile polish`), pushed to origin, and opened
+  as PR #16 into `main`: `https://github.com/abrar-nazib/UNKNOWNS_AgriSense/pull/16`. Verification:
+  frontend typecheck/build pass and focused billing integration test passes with 13 tests.
 - Jul 25 mobile viewport pass: landing/home typography, spacing, photo overlays, and stats were
   tightened for phones; chat now uses a mobile top bar + drawer session list, floating trace
   trigger, `100dvh`, and tighter composer; profile/billing rows wrap and scroll safely on narrow
