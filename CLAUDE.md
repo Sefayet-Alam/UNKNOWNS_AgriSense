@@ -65,7 +65,9 @@ that runs end-to-end in a 4-minute demo.
   exact lat/lon, else the upazila centroid does. JWT register/login/me +
   refresh with rotation, jti blacklisting, reuse detection, logout blacklist.
   ([backend/app/routers/auth.py](backend/app/routers/auth.py), [backend/app/security.py](backend/app/security.py), [backend/app/schemas.py](backend/app/schemas.py))
-- **Chat**: SSE streaming, user-scoped sessions/messages, tool-trace display.
+- **Chat**: SSE streaming, user-scoped sessions/messages, reliable per-prompt agent trace display.
+  Every completed final reply has a persisted `Thought for …` trace, even when it used no tools;
+  tool-using turns aggregate native tool-step rows onto that final reply.
   ([backend/app/routers/chat.py](backend/app/routers/chat.py), [backend/app/agent/runner.py](backend/app/agent/runner.py))
 - **Agent**: **multi-node specialist workflow** (PLAN.md D1 rev 2):
   `classify` (flash-lite + keyword fallback; heuristic-only under TESTING) routes
@@ -215,7 +217,8 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 208 tests: unit (security/phone/tools/weather adapter/KB
+  (or `make test`). 208+ tests (recount after billing merge): unit
+  (security/phone/tools/weather adapter/KB
   chunker/czis adapter/geo gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
@@ -224,6 +227,9 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
   Realtime transport is **SSE, not WebSocket**. Add tests with any new feature.
   NOTE: the container has no source volume mount — `docker compose up -d --build
   backend` (or `docker cp` for a quick single file) before re-running tests.
+- Frontend trace display aggregates native tool-step rows onto the final answer
+  per user turn (`frontend/src/lib/chatTurns.ts`). Live SSE rows must win stale
+  persisted query rows, and stream frames are written through to React Query.
 - Frontend http://localhost:3000 · Backend http://localhost:8080 (docs `/docs`) ·
   Postgres localhost:5433. (Host ports 8080/5433 avoid local clashes; container
   ports are 8000/5432. `NEXT_PUBLIC_API_URL` in `.env` is baked into the frontend at
