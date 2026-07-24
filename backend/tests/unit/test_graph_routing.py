@@ -16,9 +16,11 @@ pytestmark = pytest.mark.unit
 @pytest.mark.parametrize(
     "text,expected",
     [
-        ("আবহাওয়া কেমন?", "weather"),
-        ("Will it rain tomorrow?", "weather"),
-        ("agami 3 dine bristi hobe?", "weather"),
+        # Weather is a TOOL on the advisor, not a node — weather questions
+        # route to the advisor for grounded get_weather answers.
+        ("আবহাওয়া কেমন?", "advisor"),
+        ("Will it rain tomorrow?", "advisor"),
+        ("agami 3 dine bristi hobe?", "advisor"),
         ("amar 3 bigha jomi ase", "intake"),
         ("budget 80k, sech ase", "intake"),
         ("আমার জমির মাটি বেলে", "intake"),
@@ -32,12 +34,13 @@ def test_classify_heuristic(text, expected):
 
 
 def test_weather_beats_intake_when_both_present():
-    # "brishti" (weather) + "jomi" (intake) -> weather grounding first.
-    assert classify_heuristic("amar jomi te bristi hobe ki?") == "weather"
+    # "brishti" (weather) + "jomi" (intake) -> the advisor grounds the
+    # weather answer instead of slot-filling.
+    assert classify_heuristic("amar jomi te bristi hobe ki?") == "advisor"
 
 
 def test_agents_registry():
-    assert set(AGENTS) == {"intake", "weather", "advisor"}
+    assert set(AGENTS) == {"intake", "advisor"}
 
 
 def test_tool_rounds_exclude_replayed_history():
