@@ -60,7 +60,7 @@ export default function LoginPage() {
           <LeafMark size="lg" />
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface p-7 shadow-sm">
+        <div className="rounded-2xl border border-border bg-surface p-7 shadow-card">
           <h1 className="mb-1 font-display text-2xl font-semibold tracking-tight text-text-primary">
             Welcome back
           </h1>

@@ -72,7 +72,8 @@ const config: Config = {
         mono: ["var(--font-jetbrains-mono)", "JetBrains Mono", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        card: "0 1px 2px rgba(16, 33, 27, 0.04), 0 4px 16px rgba(16, 33, 27, 0.05)",
+        card: "0 1px 3px rgba(16, 33, 27, 0.04), 0 10px 28px -10px rgba(16, 33, 27, 0.12)",
+        lift: "0 2px 6px rgba(16, 33, 27, 0.05), 0 20px 44px -14px rgba(16, 33, 27, 0.18)",
       },
       keyframes: {
         "pulse-dot": {

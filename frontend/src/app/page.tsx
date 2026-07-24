@@ -244,10 +244,22 @@ export default function HomePage() {
               </Link>
               <Link
                 href="/login"
-                className="rounded-xl border border-border bg-surface px-6 py-3 font-medium text-text-primary transition hover:border-primary-300"
+                className="rounded-xl border border-border bg-surface px-6 py-3 font-medium text-text-primary transition hover:border-primary-300 hover:shadow-card"
               >
                 Log in
               </Link>
+            </div>
+          </Reveal>
+          <Reveal delay={320}>
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 font-mono text-xs text-text-muted">
+              {["Real weather", "84 crops ranked", "Grounded in FRG 2024", "No card needed"].map(
+                (s) => (
+                  <span key={s} className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
+                    {s}
+                  </span>
+                ),
+              )}
             </div>
           </Reveal>
         </div>
@@ -263,7 +275,7 @@ export default function HomePage() {
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map((f, i) => (
             <Reveal key={f.title} delay={i * 90}>
-              <div className="h-full rounded-2xl border border-border bg-surface p-5 shadow-card transition hover:-translate-y-1 hover:border-primary-200">
+              <div className="h-full rounded-2xl border border-border bg-surface p-5 shadow-card transition duration-300 hover:-translate-y-1.5 hover:border-primary-200 hover:shadow-lift">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
                   <f.icon size={20} />
                 </span>
