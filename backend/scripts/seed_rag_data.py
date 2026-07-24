@@ -11,13 +11,17 @@ runs in seconds.
 Usage (inside the backend container):
 
     docker compose exec backend python -m scripts.seed_rag_data
+    docker compose exec backend python -m scripts.seed_rag_data --if-needed
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
+from collections import Counter
 
 import numpy as np
+from sqlalchemy import func, select
 
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -86,17 +90,56 @@ async def seed(db) -> dict:
     }
 
 
-async def _run() -> None:
-    async with AsyncSessionLocal() as db:
-        stats = await seed(db)
-    print(
-        f"seeded {stats['chunks']} chunks from backup "
-        f"({stats['replaced']} previous replaced) — sources: {stats['sources']}"
+async def ensure_seeded(db) -> dict:
+    """Restore the backup only when one of its managed sources is incomplete.
+
+    A mere non-empty table is not enough: an interrupted restore or an
+    unrelated custom document must not prevent the committed FRG corpus from
+    being present. Sources not represented in the backup remain untouched.
+    """
+    chunks, _vectors = load_seed()
+    expected = Counter(chunk["source"] for chunk in chunks)
+    rows = await db.execute(
+        select(KnowledgeChunk.source, func.count(KnowledgeChunk.id))
+        .where(KnowledgeChunk.source.in_(list(expected)))
+        .group_by(KnowledgeChunk.source)
     )
+    actual = {source: int(count) for source, count in rows.all()}
+    if all(actual.get(source, 0) == count for source, count in expected.items()):
+        return {
+            "action": "skipped",
+            "chunks": len(chunks),
+            "replaced": 0,
+            "sources": sorted(expected),
+        }
+    return {"action": "seeded", **(await seed(db))}
+
+
+async def _run(*, if_needed: bool = False) -> None:
+    async with AsyncSessionLocal() as db:
+        stats = await (ensure_seeded(db) if if_needed else seed(db))
+    action = stats.get("action", "seeded")
+    if action == "skipped":
+        print(
+            f"RAG seed already complete ({stats['chunks']} chunks) — "
+            f"sources: {stats['sources']}"
+        )
+    else:
+        print(
+            f"seeded {stats['chunks']} chunks from backup "
+            f"({stats['replaced']} previous replaced) — sources: {stats['sources']}"
+        )
 
 
 def main() -> None:
-    asyncio.run(_run())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--if-needed",
+        action="store_true",
+        help="skip when every source in the committed backup is already complete",
+    )
+    args = parser.parse_args()
+    asyncio.run(_run(if_needed=args.if_needed))
 
 
 if __name__ == "__main__":

@@ -160,7 +160,10 @@ that runs end-to-end in a 4-minute demo.
   doses as final numbers); registered on advisor AND recommender (step 5b of
   its directive). Corpus: [backend/app/data/kb_corpus/frg2024.md](backend/app/data/kb_corpus/frg2024.md)
   (Rahi's `frg_ocr_pipeline.py` output — embedded text + tesseract OCR,
-  pages 10-239) → 287 chunks. **Seeding a fresh db**: `docker compose exec
+  pages 10-239) → 287 chunks. **Container startup automatically verifies and
+  restores the seed after Alembic** with `python -m scripts.seed_rag_data
+  --if-needed`; the check repairs partial managed sources, preserves unrelated
+  sources and skips a complete store. Manual seeding: `docker compose exec
   backend python -m scripts.seed_rag_data` restores from the committed
   backup ([backend/app/data/kb_seed/](backend/app/data/kb_seed/): `kb_chunks.jsonl` + row-aligned
   `kb_embeddings.npy`) with zero embedding calls. Only after corpus edits:
@@ -231,7 +234,7 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 305 tests: unit (security/phone/tools/weather adapter/KB
+  (or `make test`). 308 tests: unit (security/phone/tools/weather adapter/KB
   chunker/czis adapter/geo gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather

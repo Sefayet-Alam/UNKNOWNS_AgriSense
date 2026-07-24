@@ -18,6 +18,11 @@ cp .env.example .env
 # edit .env: set JWT_SECRET_KEY and OPENROUTER_API_KEY
 docker compose up --build
 ```
+
+Backend startup runs Alembic and then verifies/restores the committed 287-chunk
+FRG 2024 vector seed before serving. The restore uses committed embeddings and
+does not spend embedding API calls; complete databases are left untouched.
+
 - Frontend: http://localhost:3000
 - Backend:  http://localhost:8080  (docs at /docs)
 - Postgres: localhost:5433

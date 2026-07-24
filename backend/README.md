@@ -20,8 +20,11 @@ backend:
 
 Schema is owned by **Alembic migrations**. The container entrypoint
 (`entrypoint.sh`) runs `alembic upgrade head` (the first migration creates the
-`vector` extension) and then launches uvicorn. The app no longer calls
-`create_all` on startup.
+`vector` extension), runs `python -m scripts.seed_rag_data --if-needed` to
+ensure the committed FRG vector corpus is complete, and then launches uvicorn.
+The seed check repairs missing/partial managed sources, preserves unrelated
+sources, and skips a complete store. The app no longer calls `create_all` on
+startup.
 
 ### Local
 ```bash

@@ -85,3 +85,63 @@ async def test_seed_rejects_dim_mismatch(db_session, tmp_path, monkeypatch):
     np.save(tmp_path / "kb_embeddings.npy", np.zeros((1, 8), dtype=np.float32))
     with pytest.raises(SystemExit, match="dim"):
         seed_rag_data.load_seed()
+
+
+@pytest.mark.asyncio
+async def test_ensure_seeded_restores_empty_store_then_skips_complete_store(
+    db_session, tmp_path, monkeypatch
+):
+    _point_at(tmp_path, monkeypatch)
+    await ingest_document(db_session, DOC, source="FRG 2024")
+    await backup_kb.backup(db_session)
+    await db_session.execute(delete(KnowledgeChunk))
+    await db_session.commit()
+
+    first = await seed_rag_data.ensure_seeded(db_session)
+    assert first == {
+        "action": "seeded",
+        "chunks": 1,
+        "replaced": 0,
+        "sources": ["FRG 2024"],
+    }
+    row = (await db_session.execute(select(KnowledgeChunk))).scalar_one()
+    row_id = row.id
+
+    second = await seed_rag_data.ensure_seeded(db_session)
+    assert second == {
+        "action": "skipped",
+        "chunks": 1,
+        "replaced": 0,
+        "sources": ["FRG 2024"],
+    }
+    assert (await db_session.execute(select(KnowledgeChunk))).scalar_one().id == row_id
+
+
+@pytest.mark.asyncio
+async def test_ensure_seeded_repairs_partial_seed_and_preserves_other_sources(
+    db_session, tmp_path, monkeypatch
+):
+    _point_at(tmp_path, monkeypatch)
+    await ingest_document(db_session, DOC, source="FRG 2024")
+    await ingest_document(
+        db_session,
+        "<!-- Page 4 (embedded) -->\n\nWheat crop weather calendar.",
+        source="BAMIS",
+    )
+    await backup_kb.backup(db_session)
+
+    # Simulate an interrupted deployment plus a source that is not managed by
+    # the committed seed. The missing seed source must be repaired without
+    # deleting the unrelated row.
+    await db_session.execute(
+        delete(KnowledgeChunk).where(KnowledgeChunk.source == "BAMIS")
+    )
+    await ingest_document(db_session, "Local extension note.", source="Local note")
+
+    result = await seed_rag_data.ensure_seeded(db_session)
+    assert result["action"] == "seeded"
+    assert result["replaced"] == 1
+    sources = (
+        await db_session.execute(select(KnowledgeChunk.source))
+    ).scalars().all()
+    assert sorted(sources) == ["BAMIS", "FRG 2024", "Local note"]
