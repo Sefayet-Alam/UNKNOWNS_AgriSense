@@ -21,9 +21,8 @@ export function Reveal({ children, delay = 0, className = "", as = "div", y = 28
       if (!motionAllowed() || !ref.current) return;
       gsap.fromTo(
         ref.current,
-        { autoAlpha: 0, y },
+        { y },
         {
-          autoAlpha: 1,
           y: 0,
           delay: delay / 1000,
           duration: 0.76,

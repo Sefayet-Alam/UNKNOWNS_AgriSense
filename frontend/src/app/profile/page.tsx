@@ -13,10 +13,9 @@ import {
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { BdAppsCheckout } from "@/components/billing/BdAppsCheckout";
-import { PieChart } from "@/components/profile/PieChart";
 import { LeafMark } from "@/components/ui/LeafMark";
 import {
   apiBillingPlans,
@@ -26,23 +25,16 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useChat } from "@/lib/chat/ChatProvider";
-import { bdt } from "@/lib/finance";
 import { useSessions } from "@/lib/hooks";
 import { formatBdPhone } from "@/lib/phone";
 import { getAccess } from "@/lib/tokens";
-import type { Subscription } from "@/lib/types";
+import type { Session, Subscription } from "@/lib/types";
 
-type Tab = "info" | "history" | "billing";
+type ProfileTab = "info" | "history" | "billing";
 
-// --------------------------------------------------------------------------- //
-// Seeded history (STUB — no backend endpoint yet; illustrates the summary view).
-// --------------------------------------------------------------------------- //
-const HISTORY = [
-  { name: "Boro plan · Tanore", crop: "Wheat", money: 11300, satisfaction: 5, when: "Nov 2025" },
-  { name: "Aman '25 · Rangpur", crop: "BRRI dhan87", money: 14200, satisfaction: 4, when: "Jun 2025" },
-  { name: "Onion costing", crop: null, money: 0, satisfaction: 3, when: "Oct 2025" },
-  { name: "Tomato leaf check", crop: null, money: 320, satisfaction: 5, when: "Sep 2025" },
-];
+function parseProfileTab(value: string | null): ProfileTab {
+  return value === "history" || value === "billing" ? value : "info";
+}
 
 const TIERS = [
   {
@@ -73,11 +65,9 @@ type PaidTierId = Exclude<TierId, "free">;
 const RANK: Record<TierId, number> = { free: 0, plus: 1, pro: 2 };
 const PRICE: Record<TierId, number> = { free: 0, plus: 199, pro: 499 };
 
-const VIZ = ["#15803D", "#2DD4BF", "#C2740B", "#8AD5A4", "#E3B45C"];
-
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-3 text-center shadow-card">
+    <div className="atlas-panel p-3 text-center transition duration-300 hover:-translate-y-1 hover:shadow-lift">
       <p className="font-mono text-[10px] uppercase tracking-wide text-text-muted">{label}</p>
       <p className="nums mt-0.5 font-display text-lg font-semibold text-text-primary">{value}</p>
     </div>
@@ -86,9 +76,26 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 // --------------------------------------------------------------------------- //
 export default function ProfilePage() {
+  return (
+    <Suspense fallback={<ProfileLoading />}>
+      <ProfileContent />
+    </Suspense>
+  );
+}
+
+function ProfileLoading() {
+  return (
+    <div className="atlas-grid flex h-screen items-center justify-center text-ink-500">
+      Opening your field ledger…
+    </div>
+  );
+}
+
+function ProfileContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const [tab, setTab] = useState<Tab>("info");
+  const activeTab = parseProfileTab(searchParams.get("tab"));
   const [tier, setTier] = useState<TierId>("free");
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [serverPrices, setServerPrices] = useState<Record<string, number>>({});
@@ -152,28 +159,32 @@ export default function ProfilePage() {
     }
   };
 
+  const selectTab = (tab: ProfileTab) => {
+    const query = new URLSearchParams(searchParams.toString());
+    query.set("tab", tab);
+    router.replace(`/profile?${query.toString()}`, { scroll: false });
+  };
+
   if (loading || !user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background text-text-muted">
-        Loading…
-      </div>
+      <ProfileLoading />
     );
   }
 
-  const tabs: { id: Tab; label: string; icon: typeof UserRound }[] = [
-    { id: "info", label: "User info", icon: UserRound },
-    { id: "history", label: "History", icon: History },
-    { id: "billing", label: "Billing", icon: CreditCard },
+  const tabs: { id: ProfileTab; label: string; icon: typeof UserRound }[] = [
+    { id: "info", label: "Personal info", icon: UserRound },
+    { id: "history", label: "Season history", icon: History },
+    { id: "billing", label: "Plan & billing", icon: CreditCard },
   ];
 
   return (
-    <main className="min-h-screen bg-background text-text-primary">
+    <main className="atlas-grid min-h-screen bg-background text-text-primary">
       {/* Header */}
-      <div className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3">
+      <div className="border-b border-jute-300/55 bg-surface/90 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
           <Link
             href="/chat"
-            className="flex items-center gap-1.5 text-sm font-medium text-primary-700 hover:text-primary-800"
+            className="flex items-center gap-1.5 text-sm font-semibold text-field-700 transition hover:-translate-x-1 hover:text-clay-500"
           >
             <ArrowLeft size={16} /> Back to chat
           </Link>
@@ -181,10 +192,10 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-4xl px-5 py-6">
+      <div className="mx-auto max-w-5xl px-5 py-8 sm:py-12">
         {/* Identity strip */}
-        <div className="mb-5 flex items-center gap-4">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 font-display text-xl font-semibold text-white">
+        <div className="mb-8 flex items-center gap-4 border-b border-jute-300/55 pb-8">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-field-900 font-display text-xl font-semibold text-jute-300 shadow-card">
             {user.username
               .split(" ")
               .map((w) => w[0])
@@ -194,11 +205,12 @@ export default function ProfilePage() {
               .toUpperCase() || "·"}
           </span>
           <div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight">{user.username}</h1>
+            <p className="atlas-kicker">Personal field ledger</p>
+            <h1 className="mt-1 font-display text-3xl tracking-[-0.04em]">{user.username}</h1>
             <p className="nums text-sm text-text-muted">{formatBdPhone(user.phone)}</p>
           </div>
           <span
-            className={`ml-auto flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+            className={`ml-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ${
               tier === "free"
                 ? "bg-surface-muted text-text-muted"
                 : "bg-primary-100 text-primary-700"
@@ -209,16 +221,17 @@ export default function ProfilePage() {
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex gap-1 rounded-xl border border-border bg-surface-muted p-1">
+        <div className="mb-8 grid gap-2 border-b border-jute-300/55 pb-5 sm:grid-cols-3">
           {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
-              onClick={() => setTab(t.id)}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                tab === t.id
-                  ? "bg-surface text-primary-700 shadow-card"
-                  : "text-text-muted hover:text-text-primary"
+              onClick={() => selectTab(t.id)}
+              aria-current={activeTab === t.id ? "page" : undefined}
+              className={`flex min-h-11 items-center justify-center gap-2 border px-3 py-2 text-sm font-semibold transition duration-200 hover:-translate-y-0.5 ${
+                activeTab === t.id
+                  ? "border-field-700 bg-field-700 text-paper-50 shadow-card"
+                  : "border-jute-300/60 bg-surface text-text-muted hover:border-field-400 hover:text-field-700 hover:shadow-card"
               }`}
             >
               <t.icon size={15} /> {t.label}
@@ -227,10 +240,11 @@ export default function ProfilePage() {
         </div>
 
         {/* --- Info --- */}
-        {tab === "info" && (
+        {activeTab === "info" && (
           <div className="space-y-5">
-            <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-              <h2 className="mb-3 font-display text-sm font-semibold">Account</h2>
+            <section className="atlas-panel p-5 sm:p-7">
+              <p className="atlas-kicker">Identity & location</p>
+              <h2 className="mb-4 mt-2 font-display text-2xl">Account details</h2>
               <dl className="divide-y divide-border text-sm">
                 {[
                   ["Name", user.username],
@@ -252,7 +266,7 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={() => logout()}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-status-error transition hover:bg-status-error-chip"
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-status-error/35 bg-surface px-4 py-2.5 text-sm font-semibold text-status-error transition hover:-translate-y-0.5 hover:bg-status-error-chip hover:shadow-card"
             >
               <LogOut size={16} /> Log out
             </button>
@@ -260,10 +274,10 @@ export default function ProfilePage() {
         )}
 
         {/* --- History --- */}
-        {tab === "history" && <HistoryTab />}
+        {activeTab === "history" && <HistoryTab />}
 
         {/* --- Billing --- */}
-        {tab === "billing" && (
+        {activeTab === "billing" && (
           <div className="space-y-4">
             <p className="text-sm text-text-muted">
               Your plan controls model quality and thinking depth. Subscription
@@ -277,8 +291,8 @@ export default function ProfilePage() {
                 return (
                   <div
                     key={t.id}
-                    className={`flex flex-col rounded-2xl border p-5 shadow-card ${
-                      current ? "border-primary-400 ring-1 ring-primary-200" : "border-border"
+                    className={`flex flex-col border p-5 shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-lift ${
+                      current ? "border-field-500 ring-1 ring-field-200" : "border-jute-300/60"
                     } bg-surface`}
                   >
                     <div className="flex items-center justify-between">
@@ -309,7 +323,7 @@ export default function ProfilePage() {
                               amount: serverPrices[t.id] ?? PRICE[t.id],
                             })
                           }
-                          className="w-full rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700"
+                          className="atlas-button w-full"
                         >
                           Upgrade to {t.name}
                         </button>
@@ -377,47 +391,117 @@ export default function ProfilePage() {
 }
 
 // --------------------------------------------------------------------------- //
+function nowMinusMonths(months: number) {
+  const date = new Date();
+  date.setDate(1);
+  date.setMonth(date.getMonth() - months);
+  return date.getTime();
+}
+
 function HistoryTab() {
-  // Real chat sessions (fetched on-demand when this tab opens).
-  const { data: sessions } = useSessions();
+  const { data: sessions, isError } = useSessions();
   const { selectSession } = useChat();
   const router = useRouter();
   const list = sessions ?? [];
+  const illustrative: Session[] = [
+    {
+      id: -1,
+      title: "Boro crop comparison",
+      message_count: 12,
+      created_at: new Date(nowMinusMonths(5)).toISOString(),
+      updated_at: new Date(nowMinusMonths(4)).toISOString(),
+    },
+    {
+      id: -2,
+      title: "Aman seasonal calendar",
+      message_count: 9,
+      created_at: new Date(nowMinusMonths(3)).toISOString(),
+      updated_at: new Date(nowMinusMonths(2)).toISOString(),
+    },
+    {
+      id: -3,
+      title: "Tomato leaf check",
+      message_count: 4,
+      created_at: new Date(nowMinusMonths(1)).toISOString(),
+      updated_at: new Date(nowMinusMonths(1)).toISOString(),
+    },
+  ];
+  const usingFallback = list.length === 0;
+  const summaryList = usingFallback ? illustrative : list;
 
   const continueChat = (id: number) => {
     selectSession(id);
     router.push("/chat");
   };
 
-  // Illustrative summary graphs (backend doesn't track these yet).
-  const accepted = HISTORY.filter((h) => h.crop).length;
-  const totalMoney = HISTORY.reduce((s, h) => s + h.money, 0);
-  const avgSat = (HISTORY.reduce((s, h) => s + h.satisfaction, 0) / HISTORY.length).toFixed(1);
-  const satSegments = [5, 4, 3, 2, 1]
-    .map((star, i) => ({
-      label: `${star} star`,
-      value: HISTORY.filter((h) => h.satisfaction === star).length,
-      color: VIZ[i % VIZ.length],
-    }))
-    .filter((s) => s.value > 0);
-  const moneySegments = HISTORY.filter((h) => h.money > 0).map((h, i) => ({
-    label: h.name,
-    value: h.money,
-    color: VIZ[i % VIZ.length],
-  }));
+  const totalMessages = summaryList.reduce((sum, session) => sum + session.message_count, 0);
+  const averageDepth = summaryList.length ? totalMessages / summaryList.length : 0;
+  const now = Date.now();
+  const activeRecently = summaryList.filter(
+    (session) => now - new Date(session.updated_at).getTime() <= 30 * 24 * 60 * 60 * 1000,
+  ).length;
+  const deepest = [...summaryList].sort((a, b) => b.message_count - a.message_count).slice(0, 6);
+  const maxDepth = Math.max(...deepest.map((session) => session.message_count), 1);
+  const depthGroups = [
+    {
+      label: "Quick checks",
+      description: "1–4 messages",
+      value: summaryList.filter((session) => session.message_count <= 4).length,
+      color: "bg-river-500",
+    },
+    {
+      label: "Working sessions",
+      description: "5–10 messages",
+      value: summaryList.filter(
+        (session) => session.message_count >= 5 && session.message_count <= 10,
+      ).length,
+      color: "bg-field-500",
+    },
+    {
+      label: "Deep planning",
+      description: "11+ messages",
+      value: summaryList.filter((session) => session.message_count >= 11).length,
+      color: "bg-clay-500",
+    },
+  ];
+  const maxGroup = Math.max(...depthGroups.map((group) => group.value), 1);
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() - (5 - index));
+    const key = `${date.getFullYear()}-${date.getMonth()}`;
+    return {
+      key,
+      label: date.toLocaleDateString("en-BD", { month: "short" }),
+      value: summaryList.filter((session) => {
+        const updated = new Date(session.updated_at);
+        return `${updated.getFullYear()}-${updated.getMonth()}` === key;
+      }).length,
+    };
+  });
+  const maxMonth = Math.max(...months.map((month) => month.value), 1);
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Chats" value={String(list.length)} />
-        <Stat label="Plans accepted" value={String(accepted)} />
-        <Stat label="Money planned" value={bdt(totalMoney)} />
-        <Stat label="Avg. rating" value={`${avgSat}/5`} />
+        <Stat label="Chats" value={String(summaryList.length)} />
+        <Stat label="Messages" value={String(totalMessages)} />
+        <Stat label="Avg. depth" value={averageDepth.toFixed(1)} />
+        <Stat label="Active · 30d" value={String(activeRecently)} />
       </div>
 
-      {/* Real sessions with Continue */}
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h3 className="mb-3 font-display text-sm font-semibold">Your chats</h3>
+      {usingFallback && (
+        <p className="border border-clay-200 bg-clay-50 px-4 py-3 text-xs leading-5 text-clay-700">
+          {isError
+            ? "The sessions endpoint could not be reached, so the charts below use an illustrative season sample."
+            : "No saved sessions are available yet, so the charts below show an illustrative season sample."}{" "}
+          Your real backend activity replaces this sample automatically.
+        </p>
+      )}
+
+      <section className="atlas-panel p-5 sm:p-7">
+        <p className="atlas-kicker">Conversation ledger</p>
+        <h3 className="mb-4 mt-2 font-display text-2xl">Your chats</h3>
         {list.length === 0 ? (
           <p className="text-sm text-text-muted">No chats yet — start one from the chat page.</p>
         ) : (
@@ -425,7 +509,7 @@ function HistoryTab() {
             {list.map((s) => (
               <div
                 key={s.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 border border-jute-300/55 px-3 py-3 text-sm transition duration-200 hover:-translate-y-0.5 hover:border-field-400 hover:bg-field-50 hover:shadow-card"
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <MessageSquare size={15} className="shrink-0 text-primary-600" />
@@ -433,13 +517,20 @@ function HistoryTab() {
                     <span className="block truncate font-medium text-text-primary">
                       {s.title || "New chat"}
                     </span>
-                    <span className="text-xs text-text-muted">{s.message_count} messages</span>
+                    <span className="text-xs text-text-muted">
+                      {s.message_count} messages · updated{" "}
+                      {new Date(s.updated_at).toLocaleDateString("en-BD", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </span>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => continueChat(s.id)}
-                  className="flex items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-700"
+                  className="flex items-center gap-1 rounded-full bg-field-700 px-3 py-1.5 text-xs font-semibold text-paper-50 transition hover:-translate-y-0.5 hover:bg-field-900"
                 >
                   Continue chat <ArrowRight size={13} />
                 </button>
@@ -449,19 +540,95 @@ function HistoryTab() {
         )}
       </section>
 
-      {/* Illustrative graphs */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-          <h3 className="font-display text-sm font-semibold">Satisfaction</h3>
-          <p className="mb-3 text-[11px] text-text-muted">Illustrative — not yet tracked by the backend.</p>
-          <PieChart segments={satSegments} />
+      <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+        <section className="atlas-panel p-5 sm:p-7">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="atlas-kicker">Backend activity</p>
+              <h3 className="mt-2 font-display text-2xl">Six-month rhythm</h3>
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">
+              sessions updated
+            </span>
+          </div>
+          <div className="mt-7 flex h-48 items-end gap-3 border-b border-l border-jute-300/55 px-3 pt-4">
+            {months.map((month) => (
+              <div key={month.key} className="group flex h-full flex-1 flex-col justify-end">
+                <span className="mb-2 text-center font-mono text-[10px] text-ink-500">
+                  {month.value}
+                </span>
+                <div
+                  className="min-h-1 bg-field-500 transition duration-300 group-hover:-translate-y-1 group-hover:bg-clay-500 group-hover:shadow-card"
+                  style={{ height: `${Math.max((month.value / maxMonth) * 100, 4)}%` }}
+                  title={`${month.value} sessions updated in ${month.label}`}
+                />
+                <span className="py-2 text-center font-mono text-[10px] uppercase text-ink-500">
+                  {month.label}
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
-        <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-          <h3 className="font-display text-sm font-semibold">Where money went</h3>
-          <p className="mb-3 text-[11px] text-text-muted">Illustrative — not yet tracked by the backend.</p>
-          <PieChart segments={moneySegments} unit="৳" />
+
+        <section className="atlas-panel p-5 sm:p-7">
+          <p className="atlas-kicker">Conversation shape</p>
+          <h3 className="mt-2 font-display text-2xl">How deeply you plan</h3>
+          <div className="mt-7 space-y-5">
+            {depthGroups.map((group) => (
+              <div key={group.label}>
+                <div className="mb-2 flex items-end justify-between gap-3">
+                  <span>
+                    <span className="block text-sm font-semibold text-ink-900">{group.label}</span>
+                    <span className="text-xs text-ink-500">{group.description}</span>
+                  </span>
+                  <span className="font-mono text-sm text-ink-700">{group.value}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-paper-200/70">
+                  <div
+                    className={`h-full rounded-full ${group.color} transition-all duration-700`}
+                    style={{ width: `${(group.value / maxGroup) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       </div>
+
+      <section className="atlas-panel p-5 sm:p-7">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="atlas-kicker">Message volume</p>
+            <h3 className="mt-2 font-display text-2xl">Most detailed conversations</h3>
+          </div>
+          <span className="text-xs text-ink-500">
+            {usingFallback ? "Illustrative fallback" : "From /api/chat/sessions"}
+          </span>
+        </div>
+        {deepest.length === 0 ? (
+          <p className="mt-6 text-sm text-ink-500">Message volume will appear after your first chat.</p>
+        ) : (
+          <ol className="mt-6 space-y-3">
+            {deepest.map((session, index) => (
+              <li key={session.id} className="grid items-center gap-3 sm:grid-cols-[28px_1fr_3fr_72px]">
+                <span className="font-mono text-xs text-clay-500">0{index + 1}</span>
+                <span className="truncate text-sm font-semibold text-ink-900">
+                  {session.title || "New chat"}
+                </span>
+                <span className="h-2 overflow-hidden rounded-full bg-paper-200/70">
+                  <span
+                    className="block h-full rounded-full bg-gradient-to-r from-river-500 to-field-500 transition duration-500 hover:brightness-110"
+                    style={{ width: `${(session.message_count / maxDepth) * 100}%` }}
+                  />
+                </span>
+                <span className="text-right font-mono text-xs text-ink-500">
+                  {session.message_count} msg
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
     </div>
   );
 }
@@ -498,11 +665,12 @@ function PasswordChange() {
   };
 
   const input =
-    "w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm outline-none transition focus:border-signal/60";
+    "min-h-11 w-full rounded-none border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-river-500 focus:ring-2 focus:ring-river-300/35";
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-      <h2 className="mb-3 font-display text-sm font-semibold">Change password</h2>
+    <section className="atlas-panel p-5 sm:p-7">
+      <p className="atlas-kicker">Account security</p>
+      <h2 className="mb-4 mt-2 font-display text-2xl">Update password</h2>
       <form onSubmit={submit} className="flex flex-col gap-3">
         <input
           type="password"
@@ -542,7 +710,7 @@ function PasswordChange() {
         <button
           type="submit"
           disabled={busy || !cur || !next || !confirm}
-          className="self-start rounded-xl bg-primary-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-700 disabled:opacity-60"
+          className="atlas-button self-start disabled:opacity-60"
         >
           {busy ? "Updating…" : "Update password"}
         </button>

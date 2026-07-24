@@ -17,7 +17,7 @@ export function PasswordInput({ label, error, id, ...rest }: Props) {
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={inputId}
-        className="text-sm font-medium text-text-primary"
+        className="text-sm font-semibold text-ink-700"
       >
         {label}
       </label>
@@ -25,8 +25,9 @@ export function PasswordInput({ label, error, id, ...rest }: Props) {
         <input
           id={inputId}
           type={show ? "text" : "password"}
-          className={`w-full rounded-xl border bg-surface px-3.5 py-2.5 pr-11 text-text-primary outline-none transition focus:ring-2 focus:ring-primary-400 ${
-            error ? "border-status-error" : "border-border"
+          aria-invalid={Boolean(error)}
+          className={`min-h-11 w-full rounded-none border bg-paper-50 px-3.5 py-2.5 pr-11 text-ink-900 outline-none transition placeholder:text-ink-500/55 focus:border-river-500 focus:ring-2 focus:ring-river-300/35 ${
+            error ? "border-status-error" : "border-jute-300/70"
           }`}
           {...rest}
         />
@@ -34,7 +35,7 @@ export function PasswordInput({ label, error, id, ...rest }: Props) {
           type="button"
           onClick={() => setShow((s) => !s)}
           aria-label={show ? "Hide password" : "Show password"}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-text-muted transition hover:text-primary-600"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-ink-500 transition hover:bg-field-50 hover:text-field-700"
         >
           {show ? (
             <EyeOff size={18} strokeWidth={1.75} />
@@ -43,7 +44,7 @@ export function PasswordInput({ label, error, id, ...rest }: Props) {
           )}
         </button>
       </div>
-      {error && <p className="text-xs text-status-error">{error}</p>}
+      {error && <p className="text-xs font-medium text-status-error">{error}</p>}
     </div>
   );
 }

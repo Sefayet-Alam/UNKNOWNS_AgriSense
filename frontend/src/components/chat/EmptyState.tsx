@@ -13,11 +13,11 @@ const SUGGESTIONS = [
 export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center">
-      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-primary-100 text-primary-600">
+      <div className="mb-5 flex h-16 w-16 animate-float items-center justify-center rounded-full border border-jute-300 bg-field-100 text-field-700 shadow-card">
         <Sprout size={32} strokeWidth={1.75} />
       </div>
-      <h1 className="mb-2 font-display text-2xl font-semibold tracking-tight text-text-primary">
-        How can I help you grow today?
+      <h1 className="mb-2 font-display text-3xl tracking-[-0.04em] text-text-primary">
+        What does the field need today?
       </h1>
       <p className="mb-8 max-w-md leading-relaxed text-text-muted">
         Ask AgriSense about crops, soil, irrigation, pests, or planning — your
@@ -29,7 +29,7 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
             key={s}
             type="button"
             onClick={() => onPick(s)}
-            className="rounded-xl border border-border bg-surface px-4 py-3 text-left text-sm text-text-primary transition hover:border-primary-300 hover:bg-primary-50"
+            className="border border-jute-300/60 bg-surface px-4 py-3 text-left text-sm text-text-primary shadow-card transition duration-200 hover:-translate-y-1 hover:border-field-400 hover:bg-field-50 hover:shadow-lift"
           >
             {s}
           </button>

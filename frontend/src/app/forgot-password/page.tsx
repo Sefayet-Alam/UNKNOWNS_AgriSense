@@ -3,7 +3,7 @@
 import { ArrowLeft, BadgeCheck } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { LeafMark } from "@/components/ui/LeafMark";
+import { AuthShell } from "@/components/layout/AuthShell";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { TextInput } from "@/components/ui/TextInput";
 import {
@@ -64,18 +64,18 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <main className="leaf-vein-bg flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex justify-center">
-          <LeafMark size="lg" />
-        </div>
-        <div className="rounded-2xl border border-border bg-surface p-7 shadow-card">
+    <AuthShell
+      eyebrow="Account recovery"
+      title={step === "done" ? "Your key is renewed." : "Return to your field notes."}
+      description="Verify the mobile number attached to your AgriSense account, then choose a new password."
+      aside={<>A lost password should not mean a lost season.</>}
+    >
           {step === "request" && (
             <>
-              <h1 className="font-display text-2xl font-semibold tracking-tight">
-                Reset your password
-              </h1>
-              <p className="mb-6 mt-1 text-sm text-text-muted">
+              <h2 className="font-display text-2xl tracking-[-0.03em]">
+                Request a reset code
+              </h2>
+              <p className="mb-6 mt-2 text-sm text-text-muted">
                 Enter the mobile number registered with AgriSense.
               </p>
               <form onSubmit={requestCode} className="space-y-4">
@@ -93,7 +93,7 @@ export default function ForgotPasswordPage() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="w-full rounded-xl bg-primary-600 px-4 py-2.5 font-medium text-white transition hover:bg-primary-700 disabled:opacity-60"
+                  className="atlas-button w-full disabled:opacity-60"
                 >
                   {busy ? "Preparing code…" : "Send reset code"}
                 </button>
@@ -103,16 +103,16 @@ export default function ForgotPasswordPage() {
 
           {step === "verify" && (
             <>
-              <h1 className="font-display text-2xl font-semibold tracking-tight">
+              <h2 className="font-display text-2xl tracking-[-0.03em]">
                 Choose a new password
-              </h1>
+              </h2>
               <p className="mb-4 mt-1 text-sm text-text-muted">
                 Enter the code for {phone} and set your new password.
               </p>
               {demoOtp && (
-                <p className="mb-4 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 font-mono text-xs text-primary-800">
-                  Demo OTP:{" "}
-                  <span className="font-semibold tracking-widest">{demoOtp}</span>
+                <p className="mb-4 border border-jute-300 bg-jute-100 px-3 py-2 font-mono text-xs text-field-900">
+                  Development OTP:{" "}
+                  <span className="font-semibold tracking-widest">{demoOtp || "1234"}</span>
                 </p>
               )}
               <form onSubmit={resetPassword} className="space-y-4">
@@ -142,7 +142,7 @@ export default function ForgotPasswordPage() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="w-full rounded-xl bg-primary-600 px-4 py-2.5 font-medium text-white transition hover:bg-primary-700 disabled:opacity-60"
+                  className="atlas-button w-full disabled:opacity-60"
                 >
                   {busy ? "Resetting…" : "Reset password"}
                 </button>
@@ -152,18 +152,18 @@ export default function ForgotPasswordPage() {
 
           {step === "done" && (
             <div className="py-4 text-center">
-              <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 text-primary-700">
+              <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-field-100 text-field-700">
                 <BadgeCheck size={24} />
               </span>
-              <h1 className="mt-3 font-display text-xl font-semibold">
+              <h2 className="mt-3 font-display text-2xl">
                 Password updated
-              </h1>
+              </h2>
               <p className="mt-1 text-sm text-text-muted">
                 You can now sign in with your new password.
               </p>
               <Link
                 href="/login"
-                className="mt-5 inline-flex rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-700"
+                className="atlas-button mt-5"
               >
                 Go to sign in
               </Link>
@@ -173,13 +173,11 @@ export default function ForgotPasswordPage() {
           {step !== "done" && (
             <Link
               href="/login"
-              className="mt-6 flex items-center justify-center gap-1 text-xs font-medium text-text-muted hover:text-primary-700"
+              className="mt-6 flex items-center gap-1 text-xs font-semibold text-text-muted transition hover:-translate-x-0.5 hover:text-field-700"
             >
               <ArrowLeft size={13} /> Back to sign in
             </Link>
           )}
-        </div>
-      </div>
-    </main>
+    </AuthShell>
   );
 }

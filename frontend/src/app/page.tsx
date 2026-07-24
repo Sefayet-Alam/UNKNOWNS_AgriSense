@@ -182,7 +182,9 @@ export default function HomePage() {
             </Link>
             {authed ? (
               <Link href="/chat" className="atlas-button">
-                Open workspace <ArrowUpRight size={16} />
+                <span className="sm:hidden">Open</span>
+                <span className="hidden sm:inline">Open workspace</span>
+                <ArrowUpRight size={16} />
               </Link>
             ) : (
               <>
@@ -192,8 +194,10 @@ export default function HomePage() {
                 >
                   Log in
                 </Link>
-                <Link href="/register" className="atlas-button">
-                  Start planning <ArrowUpRight size={16} />
+                <Link href="/register" className="atlas-button px-4 sm:px-5">
+                  <span className="sm:hidden">Start</span>
+                  <span className="hidden sm:inline">Start planning</span>
+                  <ArrowUpRight size={16} />
                 </Link>
               </>
             )}
@@ -212,7 +216,7 @@ export default function HomePage() {
                 </p>
               </Reveal>
               <Reveal delay={70}>
-                <h1 className="mt-7 font-display text-[clamp(3.3rem,7vw,7.8rem)] leading-[0.88] tracking-[-0.06em]">
+                <h1 className="mt-7 font-display text-[clamp(3.2rem,6vw,6.8rem)] leading-[0.9] tracking-[-0.06em]">
                   Plan the season
                   <span className="mt-2 block italic text-field-600">before the soil</span>
                   pays for it.

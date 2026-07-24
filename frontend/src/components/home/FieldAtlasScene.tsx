@@ -90,13 +90,23 @@ function FieldLandscape() {
 }
 
 export default function FieldAtlasScene() {
-  const [reduced, setReduced] = useState(true);
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
-    setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    try {
+      const canvas = document.createElement("canvas");
+      const context =
+        canvas.getContext("webgl2") ??
+        canvas.getContext("webgl") ??
+        canvas.getContext("experimental-webgl");
+      setEnabled(Boolean(context));
+    } catch {
+      setEnabled(false);
+    }
   }, []);
 
-  if (reduced) return <FieldAtlasFallback />;
+  if (!enabled) return <FieldAtlasFallback />;
 
   return (
     <div className="relative h-full min-h-[420px]" aria-hidden="true">
@@ -118,4 +128,3 @@ export default function FieldAtlasScene() {
     </div>
   );
 }
-

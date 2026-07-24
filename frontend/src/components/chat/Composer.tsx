@@ -63,9 +63,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const canSend = value.trim().length > 0 && !disabled;
 
   return (
-    <div className="sticky bottom-0 border-t border-border bg-background/90 px-4 py-3 backdrop-blur">
+    <div className="sticky bottom-0 border-t border-jute-300/55 bg-paper-50/92 px-4 py-3 backdrop-blur">
       <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
-        <div className="flex-1 rounded-xl border border-border bg-surface transition focus-within:ring-2 focus-within:ring-primary-400">
+        <div className="flex-1 rounded-[1.35rem] border border-jute-300/70 bg-surface shadow-card transition duration-300 focus-within:-translate-y-0.5 focus-within:border-river-500 focus-within:shadow-[0_0_0_4px_rgba(127,182,191,0.16),0_18px_35px_-28px_rgba(23,53,27,0.55)]">
           <textarea
             ref={taRef}
             value={value}
@@ -73,7 +73,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             onKeyDown={onKeyDown}
             rows={1}
             placeholder="Ask about your crops, soil, or plan…"
-            className="max-h-52 w-full resize-none bg-transparent px-3.5 py-2.5 text-text-primary outline-none placeholder:text-text-muted"
+            className="max-h-52 min-h-11 w-full resize-none bg-transparent px-4 py-3 text-text-primary outline-none placeholder:text-text-muted"
           />
         </div>
         <button
@@ -81,9 +81,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           onClick={submit}
           disabled={!canSend}
           aria-label="Send message"
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition ${
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-card transition duration-200 ${
             canSend
-              ? "bg-primary-600 hover:bg-primary-700"
+              ? "bg-field-700 hover:-translate-y-1 hover:scale-105 hover:bg-field-900 hover:shadow-lift active:translate-y-0 active:scale-95"
               : "cursor-not-allowed bg-primary-200"
           }`}
         >

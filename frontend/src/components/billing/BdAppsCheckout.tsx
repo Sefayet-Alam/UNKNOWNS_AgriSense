@@ -78,8 +78,8 @@ export function BdAppsCheckout({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
-        <div className="flex items-center justify-between border-b border-border bg-surface-muted px-4 py-3">
+      <div className="w-full max-w-sm overflow-hidden border border-jute-300/70 bg-surface shadow-2xl">
+        <div className="flex items-center justify-between border-b border-jute-300/55 bg-paper-100 px-4 py-3">
           <span className="flex items-center gap-2 text-sm font-semibold text-text-primary">
             <ShieldCheck size={16} className="text-primary-600" />
             Subscribe with bdapps
@@ -88,7 +88,7 @@ export function BdAppsCheckout({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="text-text-muted transition hover:text-text-primary"
+            className="rounded-full p-1 text-text-muted transition hover:-translate-y-0.5 hover:bg-paper-50 hover:text-text-primary hover:shadow-card"
           >
             <X size={18} />
           </button>
@@ -97,7 +97,7 @@ export function BdAppsCheckout({
         <div className="p-5">
           {step === "confirm" && (
             <div className="space-y-4">
-              <div className="rounded-xl border border-border p-3 text-sm">
+              <div className="border border-jute-300/60 p-3 text-sm">
                 <div className={row}>
                   <span className="text-text-muted">Plan</span>
                   <span className="font-medium text-text-primary">
@@ -126,7 +126,7 @@ export function BdAppsCheckout({
                 type="button"
                 onClick={sendOtp}
                 disabled={busy}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700 disabled:opacity-60"
+                className="atlas-button w-full disabled:opacity-60"
               >
                 {busy ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -144,8 +144,8 @@ export function BdAppsCheckout({
                 Enter the code sent to {formatBdPhone(mobile)}.
               </p>
               {demoOtp && (
-                <p className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 font-mono text-xs text-primary-800">
-                  Demo OTP:{" "}
+                <p className="border border-jute-300 bg-jute-100 px-3 py-2 font-mono text-xs text-field-900">
+                  Development OTP:{" "}
                   <span className="nums font-semibold tracking-widest">
                     {demoOtp}
                   </span>
@@ -159,14 +159,14 @@ export function BdAppsCheckout({
                   setOtp(event.target.value.replace(/\D/g, ""))
                 }
                 placeholder="Enter OTP"
-                className="nums w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-center font-mono text-lg tracking-[0.4em] outline-none focus:border-primary-400"
+                className="nums min-h-12 w-full rounded-none border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-center font-mono text-lg tracking-[0.4em] outline-none transition focus:border-river-500 focus:ring-2 focus:ring-river-300/35"
               />
               {err && <p className="text-xs text-status-error">{err}</p>}
               <button
                 type="button"
                 onClick={confirmSubscription}
                 disabled={busy || otp.length < 4}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700 disabled:opacity-60"
+                className="atlas-button w-full disabled:opacity-60"
               >
                 {busy && <Loader2 size={15} className="animate-spin" />}
                 Verify & subscribe
@@ -199,7 +199,7 @@ export function BdAppsCheckout({
                   · {subscription.provider_status}
                 </p>
               </div>
-              <div className="rounded-xl border border-border p-3 text-xs">
+              <div className="border border-jute-300/60 p-3 text-xs">
                 <div className={row}>
                   <span className="text-text-muted">Plan</span>
                   <span className="font-medium text-text-primary">{tierName}</span>
@@ -218,7 +218,7 @@ export function BdAppsCheckout({
               <button
                 type="button"
                 onClick={() => onSuccess(subscription)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700"
+                className="atlas-button w-full"
               >
                 <BadgeCheck size={15} /> Continue with {tierName}
               </button>

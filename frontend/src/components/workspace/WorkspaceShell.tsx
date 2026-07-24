@@ -257,7 +257,7 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
           <button
             type="button"
             onClick={newChat}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-signal px-3 py-2.5 text-sm font-medium text-canvas transition hover:bg-signal-deep"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-signal px-3 py-2.5 text-sm font-semibold text-canvas shadow-card transition duration-200 hover:-translate-y-1 hover:bg-signal-deep hover:shadow-lift"
           >
             <Plus size={17} strokeWidth={2.2} /> New chat
           </button>
@@ -266,8 +266,8 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
           {["Boro plan · Tanore", "Aman '25 · Rangpur", "Onion costing"].map((s, i) => (
             <div
               key={s}
-              className={`truncate rounded-lg px-2.5 py-2 text-sm ${
-                i === 0 ? "bg-signal/10 text-ink" : "text-ink-dim hover:bg-panel-2"
+              className={`truncate rounded-xl border px-2.5 py-2 text-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-card ${
+                i === 0 ? "border-field-300 bg-signal/10 text-ink" : "border-transparent text-ink-dim hover:border-jute-300/55 hover:bg-paper-50"
               }`}
             >
               {s}
@@ -319,7 +319,7 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
                       key={s}
                       type="button"
                       onClick={() => setInput(s)}
-                      className="rounded-full border border-hairline bg-panel px-3.5 py-1.5 text-sm text-ink transition hover:border-signal/50 hover:text-signal"
+                      className="rounded-full border border-hairline bg-panel px-3.5 py-1.5 text-sm text-ink shadow-card transition duration-200 hover:-translate-y-1 hover:border-signal/50 hover:text-signal hover:shadow-lift"
                     >
                       {s}
                     </button>
@@ -366,7 +366,7 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
 
         {/* Composer */}
         <div className="border-t border-hairline bg-panel px-5 py-4">
-          <div className="mx-auto w-full max-w-3xl rounded-2xl border border-hairline bg-canvas px-3.5 py-3 shadow-card focus-within:border-signal/50">
+          <div className="mx-auto w-full max-w-3xl rounded-[1.35rem] border border-jute-300/70 bg-canvas px-3.5 py-3 shadow-card transition duration-300 focus-within:-translate-y-0.5 focus-within:border-river-500 focus-within:shadow-[0_0_0_4px_rgba(127,182,191,0.16),0_18px_35px_-28px_rgba(23,53,27,0.55)]">
             {attachments.length > 0 && (
               <div className="mb-2.5 flex flex-wrap gap-2">
                 {attachments.map((a) => (
@@ -418,7 +418,7 @@ export function WorkspaceShell({ mode = "demo" }: { mode?: "demo" | "guest" }) {
                   type="button"
                   onClick={send}
                   disabled={!canSend}
-                  className="mb-0.5 flex shrink-0 items-center gap-1.5 rounded-lg bg-signal px-3 py-1.5 text-sm font-medium text-canvas transition hover:bg-signal-deep disabled:cursor-not-allowed disabled:opacity-40"
+                  className="mb-0.5 flex shrink-0 items-center gap-1.5 rounded-full bg-signal px-3 py-1.5 text-sm font-semibold text-canvas shadow-card transition duration-200 hover:-translate-y-0.5 hover:bg-signal-deep hover:shadow-lift disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Send size={14} /> Send
                 </button>
