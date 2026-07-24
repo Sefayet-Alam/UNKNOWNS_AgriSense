@@ -100,6 +100,29 @@ export interface BillingOtpStart {
   demo_otp: string | null;
 }
 
+export interface CaasQuote {
+  product_id: string;
+  product_name: string;
+  amount_bdt: number;
+  subscriber_id: string;
+  balance_bdt: number;
+  simulator: true;
+}
+
+export interface CaasReceipt {
+  status_code: string;
+  status_detail: string;
+  external_trx_id: string;
+  internal_trx_id: string;
+  reference_id: string;
+  timestamp: string;
+  amount_bdt: number;
+  balance_before_bdt: number;
+  balance_after_bdt: number;
+  request_trace: Record<string, string>;
+  simulator: true;
+}
+
 // ---- SSE stream frames (discriminated union on `type`) ----
 
 export interface SessionFrame {

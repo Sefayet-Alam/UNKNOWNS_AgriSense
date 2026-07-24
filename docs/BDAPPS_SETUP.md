@@ -14,7 +14,8 @@ BILLING_PROVIDER=bdapps
 # Approved Plus application (APP_139278) — the API password is the app's
 # server key from the BDApps dashboard, NOT your BDApps account password.
 BDAPPS_PLUS_APPLICATION_ID=APP_139278
-BDAPPS_PLUS_PASSWORD=<paste the Plus app password/API key>
+BDAPPS_PLUS_API_KEY=<paste the Plus app API key>
+# BDAPPS_PLUS_PASSWORD=<legacy alias only; leave empty for new setups>
 BDAPPS_PLUS_APPLICATION_HASH=<paste the Plus app hash>   # optional; sent on OTP request if set
 
 # Pro stays a DUMMY plan — leave all three empty so it is shown but not subscribable.
@@ -53,6 +54,14 @@ set these in the app's dashboard once you have a public tunnel/host:
 |---|---|
 | Subscription Notification URL | `https://<public-host>/api/bdapps/subscription/notify` |
 | SMS Message Receiving URL | `https://<public-host>/api/bdapps/sms/receive` |
+
+## CaaS sandbox demo
+
+The **Upgrade to Plus** checkout is a **BDApps CaaS Sandbox Checkout**. It follows the official
+Direct Debit request/receipt shape, deducts BDT 199 from a persisted virtual BDT 500 operator
+balance, activates the Plus subscription, and shows the redacted request trace plus receipt. It
+never calls a carrier endpoint. This is labelled local simulation because complete read-only balance
+probes to the currently documented BDApps CaaS paths returned HTTP 404 for the provisioned app.
 
 Both are HMAC/credential-verified against the configured app. For a local demo the
 outbound OTP subscribe/verify flow works without these; the notify callback only

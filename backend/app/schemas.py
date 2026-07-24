@@ -180,6 +180,34 @@ class BillingCancelOut(BaseModel):
     status_detail: str
 
 
+class CaasQuoteOut(BaseModel):
+    product_id: str
+    product_name: str
+    amount_bdt: int
+    subscriber_id: str
+    balance_bdt: int
+    simulator: bool = True
+
+
+class CaasDebitRequest(BaseModel):
+    product_id: str = Field(min_length=1, max_length=64)
+    confirm: bool
+
+
+class CaasDebitOut(BaseModel):
+    status_code: str
+    status_detail: str
+    external_trx_id: str
+    internal_trx_id: str
+    reference_id: str
+    timestamp: datetime
+    amount_bdt: int
+    balance_before_bdt: int
+    balance_after_bdt: int
+    request_trace: dict[str, str]
+    simulator: bool = True
+
+
 # --------------------------------------------------------------------------- #
 # Chat
 # --------------------------------------------------------------------------- #
