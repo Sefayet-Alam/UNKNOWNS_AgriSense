@@ -34,6 +34,7 @@ from .tools import (
     build_kb_tools,
     build_memory_tools,
     build_patterns_tool,
+    build_crop_recommendation_tool,
     build_soil_tool,
     build_static_tools,
     build_weather_tool,
@@ -193,6 +194,7 @@ async def stream_agent_turn(
         farm_tools = build_farm_tools(user)
         soil_tool = build_soil_tool(user)
         patterns_tool = build_patterns_tool(user)
+        recommendation_tool = build_crop_recommendation_tool(user)
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
@@ -214,7 +216,7 @@ async def stream_agent_turn(
             "recommender": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool, patterns_tool]
+            + [soil_tool, patterns_tool, recommendation_tool]
             + czis_tools
             + kb_tools,
         }

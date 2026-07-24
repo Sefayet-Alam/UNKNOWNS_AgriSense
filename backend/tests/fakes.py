@@ -163,10 +163,59 @@ def _intake_turn2() -> List[BaseMessage]:
     ]
 
 
+def _recommendation_script() -> List[BaseMessage]:
+    return [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "rank_crop_candidates",
+                    "args": {"limit": 5},
+                    "id": "call_rank_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
+            content=(
+                "আপনার ৯৯ শতক তানোরের জমির জন্য রবি ফসলের ক্রম হলো: "
+                "১) আলু, ২) গম, ৩) সরিষা। এই ক্রমে CZIS জমির উপযোগিতা, "
+                "Open-Meteo পূর্বাভাস, সেচ, বাজেট এবং স্থানীয় রেকর্ডকৃত "
+                "ফসল-চক্রের অর্থনীতি ব্যবহার করা হয়েছে।"
+            )
+        ),
+    ]
+
+
+def _recommendation_degraded_script() -> List[BaseMessage]:
+    return [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "rank_crop_candidates",
+                    "args": {"limit": 3},
+                    "id": "call_rank_degraded",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
+            content=(
+                "একটি লাইভ উৎস এখন অনুপলব্ধ, তাই ফলাফলটি degraded হিসেবে "
+                "দেখানো হলো। কোনো অনুপস্থিত আবহাওয়া বা উপযোগিতা মান আমি "
+                "অনুমান করিনি; প্রদর্শিত Unknown মান যাচাই করে নিন।"
+            )
+        ),
+    ]
+
+
 _SCENARIOS: Dict[str, Callable[[], List[BaseMessage]]] = {
     "plain": _plain_script,
     "tool": _tool_script,
     "weather": _weather_script,
+    "recommendation": _recommendation_script,
+    "recommendation_degraded": _recommendation_degraded_script,
 }
 
 # Multi-turn scenarios: one script per agent TURN (per graph build). The

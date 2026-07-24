@@ -16,8 +16,10 @@ from .. import geo as geo_mod
 from .. import patterns as patterns_mod
 from .. import soil as soil_mod
 from ..adapters import czis as czis_mod
+from ..adapters import czis_suitability as czis_suitability_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
+from ..engines import crop_ranker as crop_ranker_mod
 from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
 from ..models import Farm
@@ -991,6 +993,235 @@ def build_patterns_tool(user):
         )
 
     return get_cropping_patterns
+
+
+# --------------------------------------------------------------------------- #
+# Complete crop-recommendation tool (profile -> live sources -> ranked result)
+# --------------------------------------------------------------------------- #
+def build_crop_recommendation_tool(user):
+    """Return the deterministic Tier-0 crop-ranking tool for this farmer."""
+
+    @tool
+    async def rank_crop_candidates(limit: int = 5) -> str:
+        """Rank 3-5 crops for the ACTIVE farm using a complete grounded flow.
+
+        This is the ONLY tool to use for a crop-choice recommendation. It first
+        enforces the six-field profile gate, then combines the official CZIS
+        crop catalog, LIVE CZIS point suitability, LIVE Open-Meteo weather,
+        water/budget constraints and recorded upazila rotation economics.
+
+        Args:
+            limit: Number of ranked candidates to return (3-5).
+
+        Every candidate contains the PDF-required suitability, water need, risk
+        level and rough profit. Relay the rotation-profit warning exactly: CZIS
+        economics describe the full annual rotation, not the crop in isolation.
+        If a live source is unavailable, disclose the degraded status and never
+        turn an Unknown value into an invented claim.
+        """
+        requested_limit = max(3, min(int(limit), 5))
+        _emit("recommendation", "validating farm and ranking grounded crops")
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+            if missing:
+                return json.dumps(
+                    {
+                        "status": "PROFILE_INCOMPLETE",
+                        "missing_required_fields": missing,
+                        "instruction": (
+                            "Ask only for the missing fields before recommending; "
+                            "do not guess or call external ranking sources yet."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            profile = {
+                "area_decimal": farm.area_decimal,
+                "budget_bdt": farm.budget_bdt,
+                "irrigation_available": farm.irrigation_available,
+                "water_source": farm.water_source,
+                "season": farm.season,
+                "soil_texture": farm.soil_texture,
+                "land_type": farm.land_type,
+                "preferred_crops": farm.preferred_crops or [],
+                "excluded_crops": farm.excluded_crops or [],
+            }
+            location = {
+                "label": farm.union_name or farm.upazila_name or farm.district_name,
+                "upazila": farm.upazila_name,
+                "upazila_code": farm.upazila_code,
+                "latitude": farm.latitude,
+                "longitude": farm.longitude,
+            }
+
+        lat, lon = location["latitude"], location["longitude"]
+        season_fields = {
+            "rabi": "rabi",
+            "kharif-1": "kharif1",
+            "kharif-2": "kharif2",
+        }
+        if profile["season"] not in season_fields:
+            return json.dumps(
+                {
+                    "status": "UNSUPPORTED_SEASON",
+                    "season": profile["season"],
+                    "supported_seasons": list(season_fields),
+                    "message": "Correct the farm season before ranking crops.",
+                },
+                ensure_ascii=False,
+            )
+        if lat is None or lon is None:
+            return json.dumps(
+                {
+                    "status": "LOCATION_UNRESOLVED",
+                    "message": (
+                        "The farm has a location name but no coordinates. Ask the "
+                        "farmer to correct the location before recommending."
+                    ),
+                    "farm_inputs": {**profile, "location": location},
+                },
+                ensure_ascii=False,
+            )
+
+        rows = patterns_mod.patterns_for(
+            location["upazila_code"], season=profile["season"]
+        )
+        if not rows:
+            return json.dumps(
+                {
+                    "status": "INSUFFICIENT_ECONOMICS",
+                    "message": (
+                        "No recorded CZIS rotation economics are available for "
+                        "this upazila and season, so rough profit cannot be "
+                        "defensibly estimated."
+                    ),
+                    "farm_inputs": {**profile, "location": location},
+                },
+                ensure_ascii=False,
+            )
+
+        # Keep one standard/favourable catalog entry per locally recorded crop;
+        # tolerant variants must not appear as duplicate candidate names.
+        season_field = season_fields[profile["season"]]
+        local_names = {
+            str(row.get(season_field) or "").strip().lower() for row in rows
+        }
+        supported = set(crop_ranker_mod.CROP_TRAITS)
+        catalog_rows = sorted(
+            czis_mod.list_crops(season=profile["season"]),
+            key=lambda item: (
+                str(item.get("variety_group") or "").lower()
+                != "favourable environment",
+                int(item["crop_id"]),
+            ),
+        )
+        catalog: list[dict] = []
+        seen_names: set[str] = set()
+        for item in catalog_rows:
+            key = str(item["name"]).strip().lower()
+            if key in local_names and key in supported and key not in seen_names:
+                catalog.append(item)
+                seen_names.add(key)
+
+        if len(catalog) < 3:
+            return json.dumps(
+                {
+                    "status": "INSUFFICIENT_GROUNDED_CANDIDATES",
+                    "message": (
+                        "Fewer than three crops have both local recorded economics "
+                        "and a supported agronomic profile for this season."
+                    ),
+                    "candidate_count": len(catalog),
+                    "farm_inputs": {**profile, "location": location},
+                },
+                ensure_ascii=False,
+            )
+
+        unavailable: list[str] = []
+        _emit("weather", "fetching 7-day Open-Meteo forecast for ranking")
+        try:
+            weather = await weather_mod.fetch_forecast(lat, lon, 7)
+        except weather_mod.WeatherError as exc:
+            unavailable.append("weather")
+            weather = {
+                "source": "Open-Meteo forecast API",
+                "status": "WEATHER_UNAVAILABLE",
+                "error": str(exc),
+                "summary": {},
+            }
+
+        _emit("czis", f"fetching point suitability for {len(catalog)} crops")
+        try:
+            land_suitability = await czis_suitability_mod.get_point_suitability(
+                lat, lon, [int(item["crop_id"]) for item in catalog]
+            )
+            if land_suitability.get("missing_crop_ids"):
+                unavailable.append("land_suitability_partial")
+        except czis_suitability_mod.CzisSuitabilityError as exc:
+            unavailable.append("land_suitability")
+            land_suitability = {
+                "latitude": lat,
+                "longitude": lon,
+                "crops": [],
+                "status": "CZIS_SUITABILITY_UNAVAILABLE",
+                "error": str(exc),
+                "evidence": {
+                    "source": "BARC CZIS GeoServer",
+                    "request_params": {
+                        "latitude": lat,
+                        "longitude": lon,
+                        "crop_ids": [int(item["crop_id"]) for item in catalog],
+                    },
+                },
+            }
+
+        candidates = crop_ranker_mod.rank_candidates(
+            profile=profile,
+            catalog=catalog,
+            suitability=land_suitability["crops"],
+            patterns=rows,
+            weather=weather,
+            limit=requested_limit,
+        )
+        status = "degraded" if unavailable else "ok"
+        if len(candidates) < 3:
+            status = "INSUFFICIENT_GROUNDED_CANDIDATES"
+        return json.dumps(
+            {
+                "status": status,
+                "unavailable_sources": unavailable,
+                "farm_inputs": {**profile, "location": location},
+                "weather": weather,
+                "land_suitability": land_suitability,
+                "ranking_method": {
+                    "deterministic": True,
+                    "weights": {
+                        "land_suitability": 0.50,
+                        "water_fit": 0.20,
+                        "budget_fit": 0.20,
+                        "forecast_risk": 0.10,
+                    },
+                    "candidate_rule": (
+                        "seasonal CZIS catalog ∩ locally recorded CZIS rotations "
+                        "∩ supported agronomic profiles"
+                    ),
+                },
+                "candidates": candidates,
+                "sources": {
+                    "catalog": czis_mod.crops_source(),
+                    "economics": (
+                        "https://czis.cropzoning.gov.bd/croppingpattern/"
+                        f"{location['upazila_code']} — bundled snapshot; "
+                        f"{patterns_mod.source()}"
+                    ),
+                    "agronomic_profiles": crop_ranker_mod.TRAITS_SOURCE,
+                },
+            },
+            ensure_ascii=False,
+        )
+
+    return rank_crop_candidates
 
 
 def build_czis_tools(user):
