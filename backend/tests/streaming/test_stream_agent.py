@@ -146,7 +146,7 @@ async def test_weather_tool_turn_traces_real_adapter_values(
             "geocode_source": "open-meteo-geocoding",
         }
 
-    async def fake_forecast(lat, lon, days, client=None):
+    async def fake_forecast(lat, lon, days, past_days=0, client=None):
         return {
             "source": "Open-Meteo forecast API",
             "fetched_at": "2026-07-24T06:00:00+00:00",

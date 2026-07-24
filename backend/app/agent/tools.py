@@ -144,27 +144,40 @@ def build_weather_tool(user):
     async def get_weather(
         location: str = "",
         days: int = 7,
+        past_days: int = 0,
         latitude: Optional[float] = None,
         longitude: Optional[float] = None,
     ) -> str:
-        """Fetch the REAL weather forecast (live Open-Meteo API) for a Bangladesh location.
+        """Fetch REAL weather (live Open-Meteo API) for a Bangladesh location —
+        forecast AND recent past.
 
         Args:
             location: Place name (union/upazila/district/town), e.g. "Tanore".
                 Leave empty to use the farmer's own farm location — preferred,
                 it always resolves to exact coordinates.
-            days: Forecast horizon in days, 1-16 (Open-Meteo maximum is 16).
+            days: Forecast horizon in days, 0-16 (Open-Meteo maximum is 16;
+                0 = no forecast, past only). A negative value is treated as
+                past_days (e.g. -7 = last 7 days, no forecast).
+            past_days: How many RECENT PAST days to include (0-92). Use for
+                questions like "how much rain fell last week?" — past rows are
+                recorded weather (kind=past) with their own past_summary;
+                never guess historical weather.
             latitude: Optional explicit latitude — overrides location lookup.
             longitude: Optional explicit longitude — overrides location lookup.
 
         Returns daily min/max temperature (C), rainfall (mm), rain probability
-        (%), FAO ET0 evapotranspiration (mm) and max wind (km/h), plus a
-        summary. These are actual API values — cite them as retrieved data. If
-        this tool reports WEATHER_UNAVAILABLE, tell the farmer live weather is
-        currently unavailable; NEVER invent forecast numbers. If a location
-        name is not understood, retry once passing latitude/longitude
-        explicitly.
+        (%), FAO ET0 evapotranspiration (mm) and max wind (km/h), plus
+        summaries (forecast summary + past_summary when past days requested).
+        These are actual API values — cite them as retrieved data. If this
+        tool reports WEATHER_UNAVAILABLE, tell the farmer live weather is
+        currently unavailable; NEVER invent weather numbers, past or future.
+        If a location name is not understood, retry once passing
+        latitude/longitude explicitly.
         """
+        # Tolerate the negative-days convention: -7 means "last 7 days".
+        if days < 0:
+            past_days = max(past_days, -days)
+            days = 0
         place = (location or "").strip()
         loc: Optional[dict] = None
         try:
@@ -204,13 +217,16 @@ def build_weather_tool(user):
                     # point of naming a place is that it may be elsewhere).
                     _emit("weather", f"geocoding location: {place}")
                     loc = await weather_mod.geocode_place(place, district=None)
+            span = f"{days}-day forecast" if days else ""
+            if past_days:
+                span = f"past {past_days} days" + (f" + {span}" if span else "")
             _emit(
                 "weather",
-                f"fetching {days}-day forecast for {loc['name']} "
+                f"fetching {span or 'forecast'} for {loc['name']} "
                 f"({loc['latitude']}, {loc['longitude']})",
             )
             forecast = await weather_mod.fetch_forecast(
-                loc["latitude"], loc["longitude"], days
+                loc["latitude"], loc["longitude"], days, past_days=past_days
             )
         except weather_mod.WeatherError as exc:
             return (
