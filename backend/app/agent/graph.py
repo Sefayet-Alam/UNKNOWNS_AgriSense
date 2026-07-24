@@ -2,18 +2,19 @@
 
 Shape (dedicated nodes, dedicated toolsets, per-node LLMs, shared memory):
 
-    START -> classify -> {intake | weather | advisor} -> tools -> (back to
-                                                         the active agent)
-                                          \\-> END when no tool calls remain
+    START -> classify -> {intake | advisor} -> tools -> (back to the
+                                                         active agent)
+                                   \\-> END when no tool calls remain
 
 - **classify** — routes the turn from the farmer's LAST message (+ farm
   context). Uses the cheap OPENROUTER_MODEL_LITE with a deterministic
   keyword fallback (the fallback is also the only path under TESTING so the
   suite stays offline/deterministic).
-- **intake**  — slot-filling specialist (farm-profile tools, lite model:
-  extraction needs speed, not deep reasoning).
-- **weather** — weather-grounding specialist (weather + farm tools).
+- **intake**  — slot-filling specialist (farm-profile tools).
 - **advisor** — general agronomic advisor (full toolset, default model).
+  Weather is NOT a node: ``get_weather`` is a plain tool bound to the
+  advisor — a specialist whose whole job is one tool call is just routing
+  overhead, so weather questions route to the advisor.
 - **tools**   — ONE shared ToolNode executing whichever tool the active
   agent called; control returns to that agent (``state.active_agent``).
 
@@ -41,7 +42,7 @@ MAX_TURNS = 8  # tool rounds per REQUEST turn (history rounds excluded)
 
 log = logging.getLogger("agrisense.agent.graph")
 
-AGENTS = ("intake", "weather", "advisor")
+AGENTS = ("intake", "advisor")
 
 # Which OpenRouter model powers each node (single place to retune).
 # NOTE: intake initially ran on MODEL_LITE — live test showed flash-lite
@@ -51,7 +52,6 @@ def _node_models() -> dict[str, str]:
     return {
         "classify": settings.OPENROUTER_MODEL_LITE,
         "intake": settings.OPENROUTER_MODEL,
-        "weather": settings.OPENROUTER_MODEL,
         "advisor": settings.OPENROUTER_MODEL,
     }
 
@@ -65,16 +65,13 @@ NODE_DIRECTIVES = {
         "Do not give full crop advice here — once the profile is complete, "
         "summarize and confirm it."
     ),
-    "weather": (
-        "CURRENT NODE: WEATHER SPECIALIST. Focus: fetch the real forecast "
-        "with get_weather and answer grounded in the returned values only. "
-        "Relate the forecast to the farmer's crops/plans when profile "
-        "context is available."
-    ),
     "advisor": (
         "CURRENT NODE: GENERAL ADVISOR. Give practical agronomic advice "
         "using any tool that helps; keep farm profile facts saved via "
-        "update_farm_profile when the farmer states new ones."
+        "update_farm_profile when the farmer states new ones. For anything "
+        "weather-related, fetch the real forecast with get_weather and "
+        "answer grounded in the returned values only, relating it to the "
+        "farmer's crops/plans when profile context is available."
     ),
 }
 
@@ -95,16 +92,19 @@ _INTAKE_WORDS = re.compile(
 _CLASSIFY_PROMPT = (
     "You route a Bangladeshi farmer's message to ONE specialist. Reply with "
     "exactly one word:\n"
-    "- weather : asking about weather/forecast/rain/temperature\n"
     "- intake  : stating or correcting farm facts (land size, budget, "
     "irrigation, soil, season, location)\n"
-    "- advisor : anything else (crop advice, pests, prices, greetings)\n"
+    "- advisor : anything else (crop advice, weather questions, pests, "
+    "prices, greetings)\n"
 )
 
 
 def classify_heuristic(text: str) -> str:
+    # Weather questions go to the advisor (it owns the get_weather tool) —
+    # checked first so "brishti + jomi" turns get grounded weather answers
+    # instead of slot-filling.
     if _WEATHER_WORDS.search(text or ""):
-        return "weather"
+        return "advisor"
     if _INTAKE_WORDS.search(text or ""):
         return "intake"
     return "advisor"

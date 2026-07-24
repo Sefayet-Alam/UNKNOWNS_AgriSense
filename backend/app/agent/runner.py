@@ -158,7 +158,6 @@ async def stream_agent_turn(
         memory_tools = build_memory_tools(user.id, db)
         tool_groups = {
             "intake": static_tools + farm_tools,
-            "weather": static_tools + [weather_tool] + farm_tools,
             "advisor": static_tools + [weather_tool] + farm_tools + memory_tools,
         }
         all_tool_names = sorted(
