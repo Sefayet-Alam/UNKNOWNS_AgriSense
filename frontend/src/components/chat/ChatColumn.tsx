@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { TracePanel } from "@/components/trace/TracePanel";
 import { qk, useMessages } from "@/lib/hooks";
 import { streamChat } from "@/lib/stream";
 import { setStoredSessionId } from "@/lib/tokens";
@@ -36,7 +37,17 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
   const [live, setLive] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [progress, setProgress] = useState<ProgressFrame | null>(null);
+  const [thinking, setThinking] = useState<ProgressFrame[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [traceCollapsed, setTraceCollapsed] = useState(false);
+  const [focusedTraceId, setFocusedTraceId] = useState<number | null>(null);
+
+  // Open the trace panel and scroll to a specific turn (from a bubble's summary).
+  const openTrace = useCallback((id: number) => {
+    setTraceCollapsed(false);
+    setFocusedTraceId(null);
+    requestAnimationFrame(() => setFocusedTraceId(id));
+  }, []);
 
   // Abort any in-flight stream on unmount / session switch.
   useEffect(() => {
@@ -52,6 +63,7 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
     setLive([]);
     setStreaming(false);
     setProgress(null);
+    setThinking([]);
     setStreamError(null);
   }, [sessionId]);
 
@@ -72,6 +84,7 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
       if (streaming) return;
       setStreamError(null);
       setProgress(null);
+      setThinking([]);
       setStreaming(true);
 
       const controller = new AbortController();
@@ -102,6 +115,7 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
             }
             case "progress": {
               setProgress(frame);
+              setThinking((t) => [...t, frame]);
               break;
             }
             case "error": {
@@ -135,33 +149,46 @@ export function ChatColumn({ sessionId, onSessionCreated }: Props) {
   const showEmpty = messages.length === 0 && !streaming;
 
   return (
-    <div className="flex h-full flex-1 flex-col bg-background">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
-          {showEmpty ? (
-            <EmptyState onPick={handlePick} />
-          ) : (
-            <div className="flex flex-col gap-5 px-4 py-6">
-              {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
-              ))}
-              {streaming && (
-                <WorkingIndicator
-                  stage={progress?.stage}
-                  detail={progress?.detail}
-                />
-              )}
-              {streamError && (
-                <div className="rounded-lg border border-status-error bg-status-error-chip px-4 py-3 text-sm text-status-error">
-                  {streamError}
-                </div>
-              )}
-            </div>
-          )}
+    <div className="flex h-full flex-1 overflow-hidden bg-background">
+      {/* Chat column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
+            {showEmpty ? (
+              <EmptyState onPick={handlePick} />
+            ) : (
+              <div className="flex flex-col gap-5 px-4 py-6">
+                {messages.map((m) => (
+                  <MessageBubble key={m.id} message={m} onOpenTrace={openTrace} />
+                ))}
+                {streaming && (
+                  <WorkingIndicator
+                    stage={progress?.stage}
+                    detail={progress?.detail}
+                  />
+                )}
+                {streamError && (
+                  <div className="rounded-lg border border-status-error bg-status-error-chip px-4 py-3 text-sm text-status-error">
+                    {streamError}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+
+        <Composer ref={composerRef} onSend={send} disabled={streaming} />
       </div>
 
-      <Composer ref={composerRef} onSend={send} disabled={streaming} />
+      {/* Agent trace panel */}
+      <TracePanel
+        messages={messages}
+        thinking={thinking}
+        streaming={streaming}
+        collapsed={traceCollapsed}
+        onToggle={() => setTraceCollapsed((c) => !c)}
+        focusedId={focusedTraceId}
+      />
     </div>
   );
 }

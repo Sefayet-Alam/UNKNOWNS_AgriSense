@@ -1,12 +1,20 @@
 "use client";
 
-// The judge-facing proof surface. Right panel, collapsible. Two kinds of evidence:
-//   1. THINKING — the agent's step narration (accumulated `progress` frames).
-//   2. TOOL CALLS — split into THIS MESSAGE (latest turn, accent + glow on newest)
-//      vs HISTORY (dimmed, collapsed). Each row shows tool · params SENT · RAW result.
+// The judge-facing proof surface. Right panel, collapsible. Tool calls are grouped
+// BY TURN — each group is labelled with the prompt that triggered it, so you can
+// tell which tools ran for which question. The newest turn is accented + auto-open;
+// older turns collapse. `focusedId` (set when a chat bubble's trace summary is
+// clicked) opens + scrolls to that turn. A live "thinking" timeline shows the
+// in-flight turn's step narration.
 
-import { Activity, ChevronRight, PanelRightClose, PanelRightOpen, Wrench } from "lucide-react";
-import { useState } from "react";
+import {
+  Activity,
+  ChevronRight,
+  PanelRightClose,
+  PanelRightOpen,
+  Wrench,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { Message, ProgressFrame, ToolCall } from "@/lib/types";
 
 function summarizeArgs(args: Record<string, unknown>): string {
@@ -17,6 +25,9 @@ function summarizeArgs(args: Record<string, unknown>): string {
     })
     .join(", ");
 }
+
+const truncate = (s: string, n = 46) =>
+  s.trim().length > n ? s.trim().slice(0, n) + "…" : s.trim() || "(no prompt)";
 
 function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
   const [open, setOpen] = useState(false);
@@ -61,13 +72,7 @@ function ToolCallRow({ call, newest }: { call: ToolCall; newest: boolean }) {
   );
 }
 
-function ThinkingTimeline({
-  thinking,
-  streaming,
-}: {
-  thinking: ProgressFrame[];
-  streaming: boolean;
-}) {
+function ThinkingTimeline({ thinking, streaming }: { thinking: ProgressFrame[]; streaming: boolean }) {
   if (thinking.length === 0) return null;
   return (
     <section>
@@ -95,19 +100,59 @@ function ThinkingTimeline({
   );
 }
 
+interface Turn {
+  id: number;
+  prompt: string;
+  calls: ToolCall[];
+}
+
+function buildTurns(messages: Message[]): Turn[] {
+  const turns: Turn[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role === "assistant" && m.tool_trace.length > 0) {
+      let prompt = "";
+      for (let j = i - 1; j >= 0; j--) {
+        if (messages[j].role === "user") {
+          prompt = messages[j].content;
+          break;
+        }
+      }
+      turns.push({ id: m.id, prompt, calls: m.tool_trace });
+    }
+  }
+  return turns;
+}
+
 interface Props {
   messages: Message[];
   thinking: ProgressFrame[];
   streaming: boolean;
   collapsed: boolean;
   onToggle: () => void;
+  focusedId?: number | null;
 }
 
-export function TracePanel({ messages, thinking, streaming, collapsed, onToggle }: Props) {
-  const withTools = messages.filter((m) => m.role === "assistant" && m.tool_trace.length > 0);
-  const latest = withTools[withTools.length - 1];
-  const history = withTools.slice(0, -1);
-  const [showHistory, setShowHistory] = useState(false);
+export function TracePanel({ messages, thinking, streaming, collapsed, onToggle, focusedId }: Props) {
+  const turns = useMemo(() => buildTurns(messages), [messages]);
+  const latestId = turns.length ? turns[turns.length - 1].id : null;
+  const totalCalls = turns.reduce((n, t) => n + t.calls.length, 0);
+  const [openMap, setOpenMap] = useState<Record<number, boolean>>({});
+
+  // Auto-open the latest turn.
+  useEffect(() => {
+    if (latestId != null) {
+      setOpenMap((o) => (o[latestId] !== undefined ? o : { ...o, [latestId]: true }));
+    }
+  }, [latestId]);
+
+  // A chat bubble's summary was clicked → open + scroll to that turn.
+  useEffect(() => {
+    if (focusedId == null) return;
+    setOpenMap((o) => ({ ...o, [focusedId]: true }));
+    const el = document.getElementById(`trace-turn-${focusedId}`);
+    el?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [focusedId]);
 
   if (collapsed) {
     return (
@@ -115,9 +160,14 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle 
         type="button"
         onClick={onToggle}
         aria-label="Show agent trace"
-        className="flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-hairline bg-panel py-4 text-ink-dim transition hover:text-signal"
+        className="relative flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-hairline bg-panel py-4 text-ink-dim transition hover:text-signal"
       >
         <PanelRightOpen size={18} />
+        {totalCalls > 0 && (
+          <span className="nums absolute right-1.5 top-1.5 rounded-full bg-signal px-1.5 text-[10px] font-semibold text-canvas">
+            {totalCalls}
+          </span>
+        )}
         <span className="[writing-mode:vertical-rl] font-mono text-[11px] tracking-widest">
           AGENT TRACE
         </span>
@@ -125,12 +175,14 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle 
     );
   }
 
-  const empty = withTools.length === 0 && thinking.length === 0 && !streaming;
+  const shown = [...turns].reverse(); // newest turn first
 
   return (
     <aside className="flex h-full w-[340px] shrink-0 flex-col border-l border-hairline bg-panel">
       <div className="flex items-center justify-between border-b border-hairline px-3 py-3">
-        <span className="font-mono text-xs uppercase tracking-widest text-ink-dim">Agent Trace</span>
+        <span className="font-mono text-xs uppercase tracking-widest text-ink-dim">
+          Agent Trace{totalCalls > 0 ? ` · ${totalCalls}` : ""}
+        </span>
         <button
           type="button"
           onClick={onToggle}
@@ -142,7 +194,7 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle 
       </div>
 
       <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-3">
-        {empty && (
+        {turns.length === 0 && thinking.length === 0 && !streaming && (
           <p className="px-1 py-4 font-mono text-xs text-ink-dim">
             No tool calls yet. Ask AgriSense about your farm — every call it makes shows here.
           </p>
@@ -150,42 +202,58 @@ export function TracePanel({ messages, thinking, streaming, collapsed, onToggle 
 
         <ThinkingTimeline thinking={thinking} streaming={streaming} />
 
-        {latest && (
-          <section>
-            <p className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-signal">
-              <Wrench size={12} /> Tool calls · this message
-            </p>
-            <div className="space-y-1.5 rounded-xl border border-signal/30 bg-signal/5 p-1.5">
-              {latest.tool_trace.map((c, i) => (
-                <ToolCallRow
-                  key={`${latest.id}-${i}`}
-                  call={c}
-                  newest={streaming && i === latest.tool_trace.length - 1}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {history.length > 0 && (
-          <section className="opacity-70">
-            <button
-              type="button"
-              onClick={() => setShowHistory((s) => !s)}
-              className="mb-1.5 flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-ink-dim hover:text-ink"
+        {shown.map((t, idx) => {
+          const isLatest = t.id === latestId;
+          const isOpen = openMap[t.id] ?? isLatest;
+          return (
+            <section
+              key={t.id}
+              id={`trace-turn-${t.id}`}
+              className={`scroll-mt-2 rounded-xl border ${
+                isLatest ? "border-signal/30 bg-signal/5" : "border-hairline"
+              }`}
             >
-              <ChevronRight size={11} className={`transition-transform ${showHistory ? "rotate-90" : ""}`} />
-              history · {history.reduce((n, m) => n + m.tool_trace.length, 0)} calls
-            </button>
-            {showHistory && (
-              <div className="space-y-1.5">
-                {history.flatMap((m) =>
-                  m.tool_trace.map((c, i) => <ToolCallRow key={`${m.id}-${i}`} call={c} newest={false} />),
-                )}
-              </div>
-            )}
-          </section>
-        )}
+              <button
+                type="button"
+                onClick={() => setOpenMap((o) => ({ ...o, [t.id]: !isOpen }))}
+                className="flex w-full items-start gap-2 px-2.5 py-2 text-left"
+              >
+                <ChevronRight
+                  size={13}
+                  className={`mt-0.5 shrink-0 text-ink-dim transition-transform ${isOpen ? "rotate-90" : ""}`}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={`font-mono text-[10px] uppercase tracking-widest ${
+                        isLatest ? "text-signal" : "text-ink-dim"
+                      }`}
+                    >
+                      {isLatest ? "current" : `turn ${shown.length - idx}`}
+                    </span>
+                    <span className="nums rounded bg-panel-2 px-1.5 font-mono text-[10px] text-ink-dim">
+                      {t.calls.length} {t.calls.length === 1 ? "call" : "calls"}
+                    </span>
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs italic text-ink">
+                    “{truncate(t.prompt)}”
+                  </span>
+                </span>
+              </button>
+              {isOpen && (
+                <div className="space-y-1.5 px-1.5 pb-1.5">
+                  {t.calls.map((c, i) => (
+                    <ToolCallRow
+                      key={`${t.id}-${i}`}
+                      call={c}
+                      newest={isLatest && streaming && i === t.calls.length - 1}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
       </div>
     </aside>
   );

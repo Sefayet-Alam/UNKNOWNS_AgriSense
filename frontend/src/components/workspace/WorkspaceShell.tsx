@@ -5,7 +5,7 @@
 // (thinking timeline + tool calls). In M5 the mock emitter is swapped for the live
 // SSE stream — frame handling here is already contract-shaped, so the swap is local.
 
-import { FileText, Leaf, Paperclip, Plus, Send, Square, User, X } from "lucide-react";
+import { FileText, Leaf, Paperclip, Plus, Send, Square, User, Wrench, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
 import { PlanCard } from "@/components/plan/PlanCard";
@@ -81,8 +81,15 @@ function UserBubble({ text, attachments }: { text: string; attachments?: Attachm
   );
 }
 
-function AssistantBubble({ message }: { message: Message }) {
+function AssistantBubble({
+  message,
+  onOpenTrace,
+}: {
+  message: Message;
+  onOpenTrace?: (id: number) => void;
+}) {
   const { plan, display } = planParse(message.content);
+  const n = message.tool_trace.length;
   return (
     <div className="flex gap-3">
       <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-signal/30 bg-signal/10 text-signal">
@@ -91,6 +98,16 @@ function AssistantBubble({ message }: { message: Message }) {
       <div className="min-w-0 flex-1">
         {display && <Markdown content={display} />}
         {plan && <PlanCard plan={plan} />}
+        {n > 0 && (
+          <button
+            type="button"
+            onClick={() => onOpenTrace?.(message.id)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-hairline bg-panel px-2.5 py-1 text-xs text-ink-dim transition hover:border-signal/50 hover:text-signal"
+          >
+            <Wrench size={12} className="text-signal" />
+            Used {n} {n === 1 ? "tool" : "tools"} · view trace
+          </button>
+        )}
         {message.model && (
           <p className="mt-1.5 font-mono text-[11px] text-ink-dim">{message.model}</p>
         )}
@@ -104,7 +121,14 @@ export function WorkspaceShell() {
   const [streaming, setStreaming] = useState(false);
   const [thinking, setThinking] = useState<ProgressFrame[]>([]);
   const [traceCollapsed, setTraceCollapsed] = useState(false);
+  const [focusedTraceId, setFocusedTraceId] = useState<number | null>(null);
   const [input, setInput] = useState(DEMO_OPENER);
+
+  const openTrace = (id: number) => {
+    setTraceCollapsed(false);
+    setFocusedTraceId(null);
+    requestAnimationFrame(() => setFocusedTraceId(id));
+  };
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attByMsg, setAttByMsg] = useState<Record<number, Attachment[]>>({});
   const abortRef = useRef<AbortController | null>(null);
@@ -275,7 +299,7 @@ export function WorkspaceShell() {
                   {m.role === "user" ? (
                     <UserBubble text={m.content} attachments={attByMsg[m.id]} />
                   ) : (
-                    <AssistantBubble message={m} />
+                    <AssistantBubble message={m} onOpenTrace={openTrace} />
                   )}
                 </div>
               ))
@@ -354,6 +378,7 @@ export function WorkspaceShell() {
         streaming={streaming}
         collapsed={traceCollapsed}
         onToggle={() => setTraceCollapsed((c) => !c)}
+        focusedId={focusedTraceId}
       />
     </div>
   );
