@@ -4,6 +4,14 @@
 
 :root {
   color-scheme: light;
+  --atlas-paper: #fffdf6;
+  --atlas-paper-deep: #f7f1df;
+  --atlas-field: #315c2b;
+  --atlas-field-deep: #17351b;
+  --atlas-jute: #d9c28f;
+  --atlas-clay: #ad5835;
+  --atlas-river: #43838d;
+  --atlas-ink: #17261c;
 }
 
 html,
@@ -12,11 +20,20 @@ body {
 }
 
 body {
-  background-color: #ffffff;
-  color: #16211b;
-  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+  background-color: var(--atlas-paper);
+  color: var(--atlas-ink);
+  font-family: Arial, "Helvetica Neue", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   line-height: 1.55;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: #d9c28f;
+  color: #17351b;
 }
 
 @layer utilities {
@@ -28,22 +45,22 @@ body {
 
   /* Very subtle topographic contour texture (~3%) — quiet, professional. */
   .topo-bg {
-    background-color: #ffffff;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='%2315803D' stroke-width='1' stroke-opacity='0.035'%3E%3Cpath d='M-20 60 C40 40 80 90 140 70 C200 50 240 90 300 70'/%3E%3Cpath d='M-20 130 C40 110 80 160 140 140 C200 120 240 160 300 140'/%3E%3Cpath d='M-20 200 C40 180 80 230 140 210 C200 190 240 230 300 210'/%3E%3C/g%3E%3C/svg%3E");
+    background-color: #fffdf6;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='%23315C2B' stroke-width='1' stroke-opacity='0.055'%3E%3Cpath d='M-20 60 C40 40 80 90 140 70 C200 50 240 90 300 70'/%3E%3Cpath d='M-20 130 C40 110 80 160 140 140 C200 120 240 160 300 140'/%3E%3Cpath d='M-20 200 C40 180 80 230 140 210 C200 190 240 230 300 210'/%3E%3C/g%3E%3C/svg%3E");
     background-repeat: repeat;
   }
 
   .leaf-vein-bg {
-    background-color: #ffffff;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='%2315803D' stroke-width='1' stroke-opacity='0.035'%3E%3Cpath d='M-20 60 C40 40 80 90 140 70 C200 50 240 90 300 70'/%3E%3Cpath d='M-20 130 C40 110 80 160 140 140 C200 120 240 160 300 140'/%3E%3Cpath d='M-20 200 C40 180 80 230 140 210 C200 190 240 230 300 210'/%3E%3C/g%3E%3C/svg%3E");
+    background-color: #fffdf6;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='%23315C2B' stroke-width='1' stroke-opacity='0.045'%3E%3Cpath d='M-20 60 C40 40 80 90 140 70 C200 50 240 90 300 70'/%3E%3Cpath d='M-20 130 C40 110 80 160 140 140 C200 120 240 160 300 140'/%3E%3Cpath d='M-20 200 C40 180 80 230 140 210 C200 190 240 230 300 210'/%3E%3C/g%3E%3C/svg%3E");
     background-repeat: repeat;
   }
 
   /* WhatsApp-style light chat backdrop — a soft warm tint with scattered
      low-opacity leaf/seed doodles. Professional, never dark. */
   .chat-bg {
-    background-color: #f6f9f3;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Cg fill='%2315803D' fill-opacity='0.045'%3E%3Cpath d='M22 34 q9 -13 19 -6 q-4 13 -19 6z'/%3E%3Ccircle cx='74' cy='22' r='2.2'/%3E%3Cpath d='M104 64 q11 -9 17 4 q-11 9 -17 -4z'/%3E%3Ccircle cx='42' cy='96' r='2.2'/%3E%3Cpath d='M116 116 q9 -13 19 -6 q-4 13 -19 6z'/%3E%3Ccircle cx='96' cy='128' r='2.2'/%3E%3Cpath d='M20 120 q11 -9 17 4 q-11 9 -17 -4z'/%3E%3Ccircle cx='128' cy='40' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
+    background-color: #fbf8ed;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Cg fill='%23315C2B' fill-opacity='0.045'%3E%3Cpath d='M22 34 q9 -13 19 -6 q-4 13 -19 6z'/%3E%3Ccircle cx='74' cy='22' r='2.2'/%3E%3Cpath d='M104 64 q11 -9 17 4 q-11 9 -17 -4z'/%3E%3Ccircle cx='42' cy='96' r='2.2'/%3E%3Cpath d='M116 116 q9 -13 19 -6 q-4 13 -19 6z'/%3E%3Ccircle cx='96' cy='128' r='2.2'/%3E%3Cpath d='M20 120 q11 -9 17 4 q-11 9 -17 -4z'/%3E%3Ccircle cx='128' cy='40' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -51,7 +68,7 @@ body {
     height: 9px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #d5ddd5;
+    background-color: #d4cbb5;
     border-radius: 9999px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -59,10 +76,37 @@ body {
   }
 }
 
-/* Visible focus ring (green). */
 :focus-visible {
-  outline: 2px solid #15803d;
-  outline-offset: 2px;
+  outline: 3px solid #43838d;
+  outline-offset: 3px;
+}
+
+@layer components {
+  .atlas-panel {
+    border: 1px solid rgba(171, 139, 80, 0.28);
+    background: rgba(255, 254, 249, 0.92);
+    box-shadow: 0 1px 0 rgba(23, 53, 27, 0.06), 0 24px 50px -38px rgba(23, 53, 27, 0.5);
+  }
+
+  .atlas-grid {
+    background-color: #fffdf6;
+    background-image:
+      linear-gradient(rgba(49, 92, 43, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(49, 92, 43, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .atlas-kicker {
+    @apply font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-clay-500;
+  }
+
+  .atlas-button {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-field-700 px-5 py-2.5 text-sm font-semibold text-paper-50 shadow-card transition duration-200 hover:-translate-y-0.5 hover:bg-field-900 hover:shadow-lift;
+  }
+
+  .atlas-button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-jute-300 bg-paper-50 px-5 py-2.5 text-sm font-semibold text-ink-900 transition duration-200 hover:-translate-y-0.5 hover:border-field-500 hover:text-field-700;
+  }
 }
 
 /* Respect reduced motion globally. */

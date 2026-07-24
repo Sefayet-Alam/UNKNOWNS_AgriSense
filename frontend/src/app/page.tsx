@@ -1,178 +1,199 @@
 "use client";
 
-// Landing / home — the page users first hit ("/"). Marketing: hero with a light
-// 2.5D scroll-parallax, how-it-works, BD farmer testimonials, and CTAs to sign up,
-// log in, or try as a guest (no signup).
-
-import { BarChart3, CloudSun, MessageSquareText, Sprout, Star } from "lucide-react";
+import { useGSAP } from "@gsap/react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  BarChart3,
+  CalendarRange,
+  CloudSun,
+  MapPinned,
+  MessageSquareText,
+  ShieldCheck,
+  Sprout,
+} from "lucide-react";
+import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { FieldAtlasFallback } from "@/components/home/FieldAtlasFallback";
 import { Reveal } from "@/components/home/Reveal";
 import { Logo, LogoMark } from "@/components/ui/Logo";
+import { SectionHeading } from "@/components/ui/SectionHeading";
+import { gsap, motionAllowed, registerGsap } from "@/lib/motion";
 import { getAccess } from "@/lib/tokens";
 
-const FEATURES = [
+const FieldAtlasScene = dynamic(
+  () => import("@/components/home/FieldAtlasScene"),
+  { ssr: false, loading: () => <FieldAtlasFallback /> },
+);
+
+const FIELD_NOTES = [
+  { value: "64", label: "districts mapped" },
+  { value: "84", label: "crops compared" },
+  { value: "2024", label: "FRG guidance" },
+  { value: "৳", label: "costs in local terms" },
+];
+
+const METHOD = [
   {
-    icon: MessageSquareText,
-    title: "Just talk, in your own words",
-    body: "Tell it your land, budget and season in plain language — it asks only for what's missing.",
+    number: "01",
+    title: "Tell us the field",
+    body: "Share the land, location, season, water access, and working budget in ordinary language.",
+    icon: MapPinned,
   },
   {
+    number: "02",
+    title: "Compare what fits",
+    body: "AgriSense weighs weather, timing, crop needs, and cost before it narrows the choice.",
     icon: CloudSun,
-    title: "Real weather, real crop advice",
-    body: "It calls live weather for your upazila and ranks the crops that actually fit your soil and season.",
+  },
+  {
+    number: "03",
+    title: "Carry the season",
+    body: "Leave with dates, inputs, expected costs, and a plan you can revisit as conditions change.",
+    icon: CalendarRange,
+  },
+];
+
+const CAPABILITIES = [
+  {
+    icon: MessageSquareText,
+    label: "Field conversation",
+    detail: "Ask, clarify, and revise without wrestling with a long form.",
   },
   {
     icon: BarChart3,
-    title: "A costed, dated season plan",
-    body: "Sowing to harvest, with fertilizer timing, irrigation, and a full cost → profit breakdown.",
+    label: "Cost ledger",
+    detail: "See the assumptions behind revenue, input cost, and margin.",
   },
   {
-    icon: Sprout,
-    title: "Every number, explained",
-    body: "See exactly which tool and which guide each recommendation came from — nothing invented.",
+    icon: CloudSun,
+    label: "Weather context",
+    detail: "Connect the plan to the conditions around your upazila.",
+  },
+  {
+    icon: ShieldCheck,
+    label: "Visible reasoning",
+    detail: "Inspect the sources and tools used for the recommendation.",
   },
 ];
 
-interface Testimonial {
-  name: string;
-  where: string;
-  story: string;
-  stars: number;
-  photo?: string; // drop a real BD farmer photo URL here; falls back to initials
-}
+function PlanningSequence() {
+  const root = useRef<HTMLDivElement>(null);
 
-const TESTIMONIALS: Testimonial[] = [
-  {
-    name: "Abdul Karim",
-    where: "Tanore, Rajshahi",
-    story:
-      "I had 2 bigha of sandy land and no idea what to plant. It suggested wheat over potato because my canal water was limited — I followed the plan and cleared ৳15,800 profit this Rabi.",
-    stars: 5,
-    photo:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Farmer_of_Rajshahi%2C_Bangladesh.JPG/250px-Farmer_of_Rajshahi%2C_Bangladesh.JPG",
-  },
-  {
-    name: "Rehana Begum",
-    where: "Mithapukur, Rangpur",
-    story:
-      "It warned me heavy rain was coming and told me to delay the urea by four days. That one message saved my fertilizer from washing away.",
-    stars: 5,
-    photo:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/Smiling_farmer_in_Bangladesh.jpg/250px-Smiling_farmer_in_Bangladesh.jpg",
-  },
-  {
-    name: "Jahangir Alam",
-    where: "Bhola Sadar, Barisal",
-    story:
-      "A photo of my tomato leaf and it told me it was early blight and exactly which spray to use. My uncle in the next village now uses it too.",
-    stars: 4,
-    photo:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/A_Village_Farmer_in_Bangladesh.jpg/250px-A_Village_Farmer_in_Bangladesh.jpg",
-  },
-  {
-    name: "Mizanur Rahman",
-    where: "Ullapara, Sirajganj",
-    story:
-      "At harvest it showed my cost, yield and profit in one screen — ৳27,000 revenue for ৳11,000 cost. I finally knew my numbers before I sold, not after.",
-    stars: 5,
-    photo:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Farmer_bundling_harvested_rice_at_sunset_in_Bangladesh.jpg/250px-Farmer_bundling_harvested_rice_at_sunset_in_Bangladesh.jpg",
-  },
-  {
-    name: "Shahida Khatun",
-    where: "Shibganj, Chapainawabganj",
-    story:
-      "I just typed in Bangla what land I have and it asked only what it needed. No forms, no jargon — it felt like talking to a real krishi officer.",
-    stars: 5,
-    photo:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Bangladeshi_farmer_and_the_magical_morning.jpg/250px-Bangladeshi_farmer_and_the_magical_morning.jpg",
-  },
-  {
-    name: "Nurul Islam",
-    where: "Fulbari, Dinajpur",
-    story:
-      "It gave me a dated calendar — sowing, urea timing, irrigation, harvest — and every recommendation said why. For the first time I planned the whole season on paper.",
-    stars: 4,
-    photo:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/The_Bangladeshi_Farmer.jpg/250px-The_Bangladeshi_Farmer.jpg",
-  },
-];
+  useGSAP(
+    () => {
+      registerGsap();
+      if (!motionAllowed() || !root.current) return;
+      const media = gsap.matchMedia();
+      media.add("(min-width: 1024px)", () => {
+        const steps = gsap.utils.toArray<HTMLElement>("[data-method-step]");
+        const line = root.current?.querySelector<SVGPathElement>("[data-route-line]");
+        const timeline = gsap.timeline({
+          scrollTrigger: {
+            trigger: root.current,
+            start: "top 18%",
+            end: "+=950",
+            scrub: 0.6,
+            pin: "[data-method-map]",
+          },
+        });
+        if (line) {
+          timeline.fromTo(line, { strokeDashoffset: 640 }, { strokeDashoffset: 0, duration: 1 });
+        }
+        timeline.fromTo(
+          steps,
+          { opacity: 0.38, x: 20 },
+          { opacity: 1, x: 0, stagger: 0.3, duration: 0.75 },
+          0,
+        );
+      });
+      return () => media.revert();
+    },
+    { scope: root },
+  );
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
-
-function Avatar({ t }: { t: Testimonial }) {
-  const [broken, setBroken] = useState(false);
-  if (t.photo && !broken) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={t.photo}
-        alt={t.name}
-        onError={() => setBroken(true)}
-        className="h-11 w-11 rounded-full object-cover"
-      />
-    );
-  }
   return (
-    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-100 font-display text-sm font-semibold text-primary-700">
-      {initials(t.name)}
-    </span>
+    <div ref={root} className="mt-14 grid gap-10 lg:grid-cols-[0.78fr_1.22fr] lg:gap-20">
+      <div data-method-map className="relative h-[390px] overflow-hidden border border-jute-300/60 bg-field-900 p-7 text-paper-50 lg:h-[520px]">
+        <div className="absolute inset-0 opacity-20 atlas-grid" />
+        <p className="relative font-mono text-[10px] uppercase tracking-[0.2em] text-jute-300">
+          Seasonal route · one field
+        </p>
+        <svg viewBox="0 0 420 460" className="relative mt-8 h-[290px] w-full lg:h-[390px]" aria-hidden="true">
+          <path
+            data-route-line
+            d="M44 58C118 5 176 124 239 86c87-52 135 45 96 112-38 65-160 14-168 98-7 81 128 50 145 117"
+            fill="none"
+            stroke="#D9C28F"
+            strokeWidth="5"
+            strokeLinecap="round"
+            strokeDasharray="640"
+          />
+          <g fill="#F7F1DF" stroke="#17351B" strokeWidth="8">
+            <circle cx="44" cy="58" r="13" />
+            <circle cx="335" cy="198" r="13" />
+            <circle cx="312" cy="413" r="13" />
+          </g>
+        </svg>
+        <span className="absolute bottom-6 right-7 font-display text-7xl text-paper-50/10">বর্ষা</span>
+      </div>
+
+      <ol className="divide-y divide-jute-300/50">
+        {METHOD.map((step) => (
+          <li
+            key={step.number}
+            data-method-step
+            className="grid gap-5 py-9 sm:grid-cols-[70px_1fr] sm:py-12"
+          >
+            <span className="font-mono text-sm text-clay-500">{step.number}</span>
+            <div>
+              <step.icon className="mb-5 text-field-600" size={25} strokeWidth={1.6} />
+              <h3 className="font-display text-3xl tracking-[-0.035em] text-ink-900">
+                {step.title}
+              </h3>
+              <p className="mt-3 max-w-lg leading-7 text-ink-500">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
-
 export default function HomePage() {
   const [authed, setAuthed] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
 
   useEffect(() => {
-    setAuthed(!!getAccess());
-    let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setScrollY(window.scrollY));
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      cancelAnimationFrame(raf);
-    };
+    setAuthed(Boolean(getAccess()));
   }, []);
 
   return (
-    <main className="min-h-screen bg-background text-text-primary">
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+    <main className="min-h-screen overflow-hidden bg-paper-50 text-ink-900">
+      <header className="sticky top-0 z-40 border-b border-jute-300/45 bg-paper-50/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1380px] items-center justify-between px-5 py-3.5 sm:px-8">
           <Logo />
-          <nav className="flex items-center gap-2">
+          <nav aria-label="Primary navigation" className="flex items-center gap-2">
+            <Link
+              href="/demo"
+              className="hidden min-h-11 items-center px-3 text-sm font-semibold text-ink-700 transition hover:text-field-700 sm:inline-flex"
+            >
+              Field demo
+            </Link>
             {authed ? (
-              <Link
-                href="/chat"
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-700"
-              >
-                Open app
+              <Link href="/chat" className="atlas-button">
+                Open workspace <ArrowUpRight size={16} />
               </Link>
             ) : (
               <>
                 <Link
                   href="/login"
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-text-primary transition hover:text-primary-700"
+                  className="min-h-11 px-3 py-3 text-sm font-semibold text-ink-700 transition hover:text-field-700"
                 >
                   Log in
                 </Link>
-                <Link
-                  href="/register"
-                  className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-700"
-                >
-                  Sign up
+                <Link href="/register" className="atlas-button">
+                  Start planning <ArrowUpRight size={16} />
                 </Link>
               </>
             )}
@@ -180,181 +201,168 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Hero with light 2.5D parallax */}
-      <section className="relative overflow-hidden">
-        {/* parallax decorative layers */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{ transform: `translateY(${scrollY * 0.15}px)` }}
-        >
-          <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary-100/60 blur-3xl" />
-          <div className="absolute left-1/4 top-40 h-56 w-56 rounded-full bg-accent-100/50 blur-3xl" />
-        </div>
-        <div
-          aria-hidden
-          className="topo-bg pointer-events-none absolute inset-0 opacity-70"
-          style={{ transform: `translateY(${scrollY * 0.05}px)` }}
-        />
-
-        {/* Floating sun */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute right-[12%] top-16 h-24 w-24 animate-float rounded-full bg-accent-300 opacity-40 blur-md"
-        />
-
-        {/* Rolling fields (parallax) */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0"
-          style={{ transform: `translateY(${scrollY * -0.06}px)` }}
-        >
-          <svg viewBox="0 0 1440 220" preserveAspectRatio="none" className="h-40 w-full sm:h-56">
-            <path d="M0 140 Q360 90 720 130 T1440 120 V220 H0Z" fill="#DCF3E3" />
-            <path d="M0 170 Q360 130 720 165 T1440 158 V220 H0Z" fill="#8AD5A4" opacity="0.75" />
-            <path d="M0 196 Q360 166 720 190 T1440 184 V220 H0Z" fill="#22A55B" opacity="0.5" />
-          </svg>
-        </div>
-
-        <div className="relative mx-auto max-w-4xl px-5 pb-16 pt-20 text-center sm:pt-28">
-          <Reveal>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
-              <Sprout size={13} /> Agentic AI for smallholder farmers
-            </span>
-          </Reveal>
-          <Reveal delay={80}>
-            <h1 className="mx-auto mt-5 max-w-3xl font-display text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
-              From an empty field to a{" "}
-              <span className="text-primary-600">costed, weather-aware plan.</span>
-            </h1>
-          </Reveal>
-          <Reveal delay={160}>
-            <p className="mx-auto mt-5 max-w-xl text-lg text-text-muted">
-              AgriSense talks to you like an agronomist — pulls real weather, ranks the right
-              crops, and hands you a dated, costed season plan you can trust.
-            </p>
-          </Reveal>
-          <Reveal delay={240}>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Link
-                href="/register"
-                className="rounded-xl bg-primary-600 px-6 py-3 font-medium text-white shadow-card transition hover:bg-primary-700"
-              >
-                Get started — it's free
-              </Link>
-              <Link
-                href="/login"
-                className="rounded-xl border border-border bg-surface px-6 py-3 font-medium text-text-primary transition hover:border-primary-300 hover:shadow-card"
-              >
-                Log in
-              </Link>
-            </div>
-          </Reveal>
-          <Reveal delay={320}>
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 font-mono text-xs text-text-muted">
-              {["Real weather", "84 crops ranked", "Grounded in FRG 2024", "No card needed"].map(
-                (s) => (
-                  <span key={s} className="flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
-                    {s}
+      <section className="atlas-grid border-b border-jute-300/45">
+        <div className="mx-auto grid min-h-[calc(100vh-70px)] max-w-[1380px] lg:grid-cols-[0.88fr_1.12fr]">
+          <div className="flex items-center px-5 py-16 sm:px-8 lg:border-r lg:border-jute-300/45 lg:px-12 lg:py-24">
+            <div className="max-w-2xl">
+              <Reveal>
+                <p className="atlas-kicker flex items-center gap-2">
+                  <span className="h-px w-8 bg-clay-500" />
+                  Crop planning for Bangladesh
+                </p>
+              </Reveal>
+              <Reveal delay={70}>
+                <h1 className="mt-7 font-display text-[clamp(3.3rem,7vw,7.8rem)] leading-[0.88] tracking-[-0.06em]">
+                  Plan the season
+                  <span className="mt-2 block italic text-field-600">before the soil</span>
+                  pays for it.
+                </h1>
+              </Reveal>
+              <Reveal delay={140}>
+                <p className="mt-8 max-w-xl text-lg leading-8 text-ink-500">
+                  Turn local conditions, a working budget, and one honest conversation into a
+                  crop choice you can explain—and a season plan you can carry.
+                </p>
+              </Reveal>
+              <Reveal delay={210}>
+                <div className="mt-9 flex flex-wrap gap-3">
+                  <Link href={authed ? "/chat" : "/register"} className="atlas-button">
+                    Build a crop plan <ArrowRight size={17} />
+                  </Link>
+                  <Link href="/demo" className="atlas-button-secondary">
+                    Explore the demo
+                  </Link>
+                </div>
+              </Reveal>
+              <Reveal delay={280}>
+                <p className="mt-8 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.17em] text-ink-500">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-jute-300">
+                    <Sprout size={13} className="text-field-600" />
                   </span>
-                ),
-              )}
+                  Built for field decisions, not dashboards
+                </p>
+              </Reveal>
             </div>
-          </Reveal>
+          </div>
+
+          <div className="relative min-h-[500px] border-t border-jute-300/45 lg:min-h-0 lg:border-t-0">
+            <FieldAtlasScene />
+            <div className="pointer-events-none absolute right-5 top-5 border border-paper-50/70 bg-paper-50/85 px-4 py-3 backdrop-blur">
+              <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-ink-500">Field condition</p>
+              <p className="mt-1 font-display text-xl text-field-800">Ready for a plan</p>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="mx-auto max-w-6xl px-5 py-16">
+      <section aria-label="Field notes" className="border-b border-jute-300/45 bg-field-900 text-paper-50">
+        <div className="mx-auto grid max-w-[1380px] grid-cols-2 divide-x divide-y divide-paper-50/15 sm:grid-cols-4 sm:divide-y-0">
+          {FIELD_NOTES.map((note) => (
+            <div key={note.label} className="px-5 py-7 sm:px-8">
+              <p className="font-display text-4xl tracking-[-0.04em] text-jute-300">{note.value}</p>
+              <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-50/65">
+                {note.label}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[1240px] px-5 py-24 sm:px-8 sm:py-32">
         <Reveal>
-          <h2 className="text-center font-display text-3xl font-semibold tracking-tight">
-            How it works
-          </h2>
+          <SectionHeading
+            eyebrow="How the field becomes a plan"
+            title="A decision trail you can follow from first question to harvest."
+            description="The work stays legible: what you told us, what the conditions suggest, and how the final calendar was formed."
+          />
         </Reveal>
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURES.map((f, i) => (
-            <Reveal key={f.title} delay={i * 90}>
-              <div className="h-full rounded-2xl border border-border bg-surface p-5 shadow-card transition duration-300 hover:-translate-y-1.5 hover:border-primary-200 hover:shadow-lift">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
-                  <f.icon size={20} />
-                </span>
-                <h3 className="mt-4 font-display text-base font-semibold">{f.title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-text-muted">{f.body}</p>
+        <PlanningSequence />
+      </section>
+
+      <section className="border-y border-jute-300/45 bg-paper-100">
+        <div className="mx-auto grid max-w-[1380px] lg:grid-cols-[1.18fr_0.82fr]">
+          <div className="relative min-h-[520px] overflow-hidden">
+            <Image
+              src="/images/paddy-reflection-bangladesh.jpg"
+              alt="Green paddy fields reflected in water in rural Bangladesh"
+              fill
+              sizes="(min-width: 1024px) 60vw, 100vw"
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-field-900/45 via-transparent to-transparent" />
+            <p className="absolute bottom-5 left-5 bg-paper-50/90 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.15em] text-ink-700 backdrop-blur">
+              Rural Bangladesh · Photo: A S M Jobaer
+            </p>
+          </div>
+          <div className="flex items-center px-6 py-16 sm:px-12 lg:px-16">
+            <Reveal>
+              <p className="atlas-kicker">The reason for the ledger</p>
+              <h2 className="mt-5 font-display text-4xl leading-[1.02] tracking-[-0.045em] sm:text-6xl">
+                A field is never only an acreage.
+              </h2>
+              <p className="mt-6 text-lg leading-8 text-ink-500">
+                Water, timing, cash, labour, and weather arrive together. AgriSense keeps those
+                constraints in the same conversation so a promising crop does not become an
+                impossible season.
+              </p>
+              <Link href="/demo" className="mt-8 inline-flex items-center gap-2 font-semibold text-field-700 underline decoration-jute-300 decoration-2 underline-offset-8">
+                Walk through a sample season <ArrowUpRight size={17} />
+              </Link>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[1240px] px-5 py-24 sm:px-8 sm:py-32">
+        <Reveal>
+          <SectionHeading
+            eyebrow="Inside the workspace"
+            title="Four instruments. One agricultural decision."
+            description="Each instrument earns its place by helping you understand, compare, or act."
+          />
+        </Reveal>
+        <div className="mt-14 border-y border-jute-300/55">
+          {CAPABILITIES.map((item, index) => (
+            <Reveal key={item.label} delay={index * 55}>
+              <div className="grid gap-5 border-b border-jute-300/55 py-7 last:border-b-0 sm:grid-cols-[64px_0.7fr_1.3fr] sm:items-center">
+                <span className="font-mono text-xs text-clay-500">0{index + 1}</span>
+                <h3 className="flex items-center gap-3 font-display text-2xl tracking-[-0.03em]">
+                  <item.icon size={21} className="text-field-600" strokeWidth={1.7} />
+                  {item.label}
+                </h3>
+                <p className="leading-7 text-ink-500">{item.detail}</p>
               </div>
             </Reveal>
           ))}
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="bg-surface-muted py-16">
-        <div className="mx-auto max-w-6xl px-5">
+      <section className="relative overflow-hidden bg-field-900 px-5 py-24 text-paper-50 sm:px-8 sm:py-32">
+        <div className="absolute inset-0 opacity-[0.08] atlas-grid" />
+        <div className="relative mx-auto grid max-w-[1240px] items-end gap-12 lg:grid-cols-[1fr_auto]">
           <Reveal>
-            <h2 className="text-center font-display text-3xl font-semibold tracking-tight">
-              Farmers who planned with AgriSense
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-jute-300">
+              Your next season starts with one field note
+            </p>
+            <h2 className="mt-5 max-w-4xl font-display text-5xl leading-[0.95] tracking-[-0.055em] sm:text-7xl">
+              Bring the land. Leave with the plan.
             </h2>
           </Reveal>
-          <div className="mt-10 grid gap-5 md:grid-cols-3">
-            {TESTIMONIALS.map((t, i) => (
-              <Reveal key={t.name} delay={i * 100}>
-                <figure className="flex h-full flex-col rounded-2xl border border-border bg-surface p-6 shadow-card">
-                  <div className="flex gap-0.5 text-accent-500">
-                    {Array.from({ length: 5 }).map((_, s) => (
-                      <Star
-                        key={s}
-                        size={15}
-                        className={s < t.stars ? "fill-accent-500" : "text-border"}
-                      />
-                    ))}
-                  </div>
-                  <blockquote className="mt-3 flex-1 text-sm leading-relaxed text-text-primary">
-                    “{t.story}”
-                  </blockquote>
-                  <figcaption className="mt-4 flex items-center gap-3 border-t border-border pt-4">
-                    <Avatar t={t} />
-                    <span>
-                      <span className="block text-sm font-semibold">{t.name}</span>
-                      <span className="block text-xs text-text-muted">{t.where}</span>
-                    </span>
-                  </figcaption>
-                </figure>
-              </Reveal>
-            ))}
-          </div>
+          <Reveal delay={90}>
+            <Link href={authed ? "/chat" : "/register"} className="inline-flex min-h-14 items-center gap-3 rounded-full bg-paper-50 px-7 font-semibold text-field-900 transition hover:-translate-y-1 hover:bg-jute-100">
+              Start planning <ArrowUpRight size={18} />
+            </Link>
+          </Reveal>
         </div>
       </section>
 
-      {/* Footer CTA */}
-      <section className="mx-auto max-w-4xl px-5 py-20 text-center">
-        <Reveal>
-          <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
-            Plan your next season with confidence.
-          </h2>
-          <p className="mx-auto mt-3 max-w-lg text-text-muted">
-            Free to start. No card. Real weather and real agronomy from the first message.
-          </p>
-          <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <Link
-              href="/register"
-              className="rounded-xl bg-primary-600 px-6 py-3 font-medium text-white shadow-card transition hover:bg-primary-700"
-            >
-              Create your account
-            </Link>
-            <Link
-              href="/login"
-              className="rounded-xl border border-border bg-surface px-6 py-3 font-medium text-text-primary transition hover:border-primary-300"
-            >
-              Log in
-            </Link>
-          </div>
-        </Reveal>
-      </section>
-
-      <footer className="border-t border-border py-8 text-center text-sm text-text-muted">
-        <span className="flex items-center justify-center gap-2">
-          <LogoMark size={18} /> AgriSense — IUT Bdapps Agentic AI Hackathon
-        </span>
+      <footer className="border-t border-jute-300/45 bg-paper-50">
+        <div className="mx-auto flex max-w-[1380px] flex-col gap-5 px-5 py-8 text-sm text-ink-500 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+          <span className="flex items-center gap-2.5">
+            <LogoMark size={24} /> AgriSense · Delta Field Atlas
+          </span>
+          <span>Built for the IUT Bdapps Agentic AI Hackathon</span>
+        </div>
       </footer>
     </main>
   );
