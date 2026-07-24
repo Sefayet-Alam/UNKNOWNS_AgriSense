@@ -140,6 +140,7 @@ def _is_plus_to_pro_upgrade(
     return bool(
         subscription is not None
         and subscription.status == "active"
+        and subscription.provider == "mock"
         and subscription.plan_id == "plus"
         and target_plan_id == "pro"
     )
@@ -153,28 +154,28 @@ async def plans(
     subscription = await _subscription_for(db, user.id)
     is_upgrade = _is_plus_to_pro_upgrade(subscription, "pro")
     provider = effective_billing_provider_name()
-    # Every paid plan is subscribable: plans with complete BDApps credentials
-    # use the real carrier (Plus), the rest fall back to the labelled dev mock
-    # (OTP 1234, e.g. Pro) instead of being blocked as "credentials pending".
+    # Plus resolves to the carrier when its key is configured. Pro is always
+    # the labelled development provider with OTP 1234.
     subscribable_plan_ids = [
         plan.id for plan in PLANS.values() if plan.id != "free"
     ]
-    # A real BDApps Pro app has a fixed ৳499 tariff and cannot represent the
-    # ৳249 Plus->Pro upgrade — hide Pro only when it would hit the real carrier.
-    if is_upgrade and provider_name_for_plan("pro") == "bdapps":
-        subscribable_plan_ids = [
-            plan_id for plan_id in subscribable_plan_ids if plan_id != "pro"
-        ]
-    results = list(PLANS.values())
-    if is_upgrade:
-        results = [
-            (
-                plan.model_copy(update={"amount_bdt": PRO_UPGRADE_PRICE_BDT})
-                if plan.id == "pro"
-                else plan
-            )
-            for plan in results
-        ]
+    results = [
+        plan.model_copy(
+            update={
+                "amount_bdt": (
+                    PRO_UPGRADE_PRICE_BDT
+                    if is_upgrade and plan.id == "pro"
+                    else plan.amount_bdt
+                ),
+                "provider": (
+                    "internal"
+                    if plan.id == "free"
+                    else provider_name_for_plan(plan.id)
+                ),
+            }
+        )
+        for plan in PLANS.values()
+    ]
     return BillingPlansOut(
         results=results,
         provider=provider,
@@ -244,15 +245,6 @@ async def request_billing_otp(
         raise HTTPException(status_code=409, detail=detail)
 
     provider = _provider_or_502(plan.id)
-    if is_upgrade and provider.name == "bdapps":
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "The discounted Pro upgrade requires a separate ৳249 BDApps "
-                "subscription application. Development upgrade remains available "
-                "until carrier upgrade credentials are configured."
-            ),
-        )
     if provider.name == "bdapps":
         cooldown_started_at = _now() - timedelta(
             seconds=settings.OTP_REQUEST_COOLDOWN_SECONDS
@@ -385,6 +377,9 @@ async def verify_billing_otp(
     subscription.status = "active"
     subscription.provider = challenge.provider
     subscription.provider_status = verified.subscription_status
+    # Successful BDApps OTP verification activates the provisioned recurring
+    # subscription. Charging is carrier-owned; do not call CaaS direct-debit
+    # here because that could bill the subscriber a second time.
     if challenge.provider == "bdapps":
         subscription.subscriber_id = (
             verified.subscriber_id.strip()

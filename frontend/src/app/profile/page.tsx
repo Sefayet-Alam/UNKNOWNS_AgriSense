@@ -105,6 +105,9 @@ function ProfileContent() {
   const [serverPrices, setServerPrices] = useState<Record<string, number>>({});
   const [billingProvider, setBillingProvider] =
     useState<BillingPlansResponse["provider"]>("mock");
+  const [planProviders, setPlanProviders] = useState<
+    Record<PaidTierId, "mock" | "bdapps">
+  >({ plus: "mock", pro: "mock" });
   const [subscribablePlanIds, setSubscribablePlanIds] = useState<
     Array<"plus" | "pro">
   >(["plus", "pro"]);
@@ -137,6 +140,14 @@ function ProfileContent() {
           ),
         );
         setBillingProvider(catalog.provider);
+        setPlanProviders({
+          plus:
+            catalog.results.find((plan) => plan.id === "plus")?.provider ===
+            "bdapps"
+              ? "bdapps"
+              : "mock",
+          pro: "mock",
+        });
         setSubscribablePlanIds(catalog.subscribable_plan_ids);
       })
       .catch((error) => {
@@ -203,10 +214,10 @@ function ProfileContent() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl px-5 py-8 sm:py-12">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-5 sm:py-12">
         {/* Identity strip */}
-        <div className="mb-8 flex items-center gap-4 border-b border-jute-300/55 pb-8">
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-field-900 font-display text-xl font-semibold text-jute-300 shadow-card">
+        <div className="mb-8 flex flex-wrap items-center gap-4 border-b border-jute-300/55 pb-8">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-field-900 font-display text-lg font-semibold text-jute-300 shadow-card sm:h-16 sm:w-16 sm:text-xl">
             {user.username
               .split(" ")
               .map((w) => w[0])
@@ -215,13 +226,13 @@ function ProfileContent() {
               .join("")
               .toUpperCase() || "·"}
           </span>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="atlas-kicker">Personal field ledger</p>
-            <h1 className="mt-1 font-display text-3xl tracking-[-0.04em]">{user.username}</h1>
+            <h1 className="mt-1 truncate font-display text-2xl tracking-[-0.04em] sm:text-3xl">{user.username}</h1>
             <p className="nums text-sm text-text-muted">{formatBdPhone(user.phone)}</p>
           </div>
           <span
-            className={`ml-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ${
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold sm:ml-auto ${
               tier === "free"
                 ? "bg-surface-muted text-text-muted"
                 : "bg-primary-100 text-primary-700"
@@ -270,9 +281,9 @@ function ProfileContent() {
                       : "",
                   ],
                 ].map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between py-2.5">
+                  <div key={k} className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <dt className="text-text-muted">{k}</dt>
-                    <dd className="font-medium text-text-primary">{v || "—"}</dd>
+                    <dd className="break-words font-medium text-text-primary sm:text-right">{v || "—"}</dd>
                   </div>
                 ))}
               </dl>
@@ -310,12 +321,13 @@ function ProfileContent() {
                 </p>
               </div>
             )}
-            {billingProvider === "bdapps" && subscribablePlanIds.length < 2 && (
+            {planProviders.plus === "bdapps" && (
               <div className="border border-clay-300/70 bg-clay-50 px-4 py-3 text-sm text-clay-900">
-                <p className="font-semibold">Some BDApps credentials are still pending</p>
+                <p className="font-semibold">Mixed billing is enabled</p>
                 <p className="mt-1 text-xs leading-relaxed text-clay-800">
-                  Development OTP is disabled because live BDApps access is configured.
-                  Only plans with complete application credentials can be selected.
+                  Plus sends a real BDApps OTP and activates the carrier
+                  subscription. Pro uses the clearly labelled development OTP
+                  1234 and never charges the mobile account.
                 </p>
               </div>
             )}
@@ -344,6 +356,13 @@ function ProfileContent() {
                     <p className="nums mt-3 font-display text-2xl font-semibold">
                       {t.id === "free" ? t.price : `৳${amount}/mo`}
                     </p>
+                    {t.id !== "free" && (
+                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                        {planProviders[t.id] === "bdapps"
+                          ? "Live BDApps carrier OTP"
+                          : "Development OTP · 1234"}
+                      </p>
+                    )}
                     {discountedUpgrade && (
                       <p className="mt-1 text-xs font-semibold text-clay-700">
                         Plus loyalty price · save ৳250/month
@@ -434,7 +453,7 @@ function ProfileContent() {
           tierName={checkout.name}
           amount={checkout.amount}
           mobile={user.phone}
-          provider={billingProvider}
+          provider={planProviders[checkout.id]}
           onClose={() => setCheckout(null)}
           onSuccess={(activeSubscription) => {
             setSubscription(activeSubscription);
