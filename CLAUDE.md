@@ -29,13 +29,13 @@ whose crop advice ignores the weather it just fetched will be noticed.
 
 | # | Capability | Done when | Status |
 |---|---|---|---|
-| 1 | Conversational intake | Collects ≥ location, farm size, soil type, water availability, budget, target season; asks targeted follow-ups only for missing fields | ⚠️ partial — **location (division/district/upazila_code) captured at registration**; agent still needs slot-filling for farm size/soil/water/budget/season |
-| 2 | Live weather grounding | Calls a **real** weather API by location; uses actual rainfall/temp, no invented forecasts | ❌ TODO (no weather tool) |
-| 3 | Crop recommendation | Ranks ≥3 candidate crops w/ suitability, water need, risk, rough profit | ❌ TODO |
-| 4 | Season plan | Dated calendar: sowing window, fertilizer timing, irrigation, weed/pest checkpoints, harvest | ❌ TODO |
-| 5 | Financial projection | Itemized cost + yield, revenue, net profit, ROI, break-even; internally consistent (change input → outputs change) | ❌ TODO |
-| 6 | Explained reasoning | Every recommendation names the specific farm inputs + retrieved data it rests on | ⚠️ partial (LLM explains, not yet grounded) |
-| 7 | Knowledge base + RAG | Agronomic data (extension manuals, fertilizer/crop/soil refs) ingested into a KB; agent retrieves; crop/fertilizer/plan advice grounded in retrieval, not model recall | ❌ TODO (pgvector exists for memory, no agronomic KB) |
+| 1 | Conversational intake | Collects ≥ location, farm size, soil type, water availability, budget, target season; asks targeted follow-ups only for missing fields | ✅ DONE (Task 2) — farm-scoped slot-filling via `get_farm_profile`/`update_farm_profile` (missing_required_fields tracking, deterministic unit conversion w/ ASSUMED bigha/kani flags, plausibility warnings, multi-farm). Soil comes from CZIS in Task 3 |
+| 2 | Live weather grounding | Calls a **real** weather API by location; uses actual rainfall/temp, no invented forecasts | ✅ DONE (Task 1) — `get_weather` tool → Open-Meteo (keyless), 16-day daily incl. ET0, geocode w/ bundled-centroid fallback, WEATHER_UNAVAILABLE on outage (never invents) |
+| 3 | Crop recommendation | Ranks ≥3 candidate crops w/ suitability, water need, risk, rough profit | ❌ TODO (Task 5) |
+| 4 | Season plan | Dated calendar: sowing window, fertilizer timing, irrigation, weed/pest checkpoints, harvest | ❌ TODO (Task 6) |
+| 5 | Financial projection | Itemized cost + yield, revenue, net profit, ROI, break-even; internally consistent (change input → outputs change) | ❌ TODO (Task 7) |
+| 6 | Explained reasoning | Every recommendation names the specific farm inputs + retrieved data it rests on | ⚠️ partial (prompt enforces naming inputs; weather cites real values; full grounding lands with Tasks 3-7) |
+| 7 | Knowledge base + RAG | Agronomic data (extension manuals, fertilizer/crop/soil refs) ingested into a KB; agent retrieves; crop/fertilizer/plan advice grounded in retrieval, not model recall | ❌ TODO (Task 4 — FRG 2024 corpus; extraction sanity-checked in [docs/FRG_PDF_EXTRACTION.md](docs/FRG_PDF_EXTRACTION.md)) |
 | 8 | Visible agent trace | UI exposes every tool call, params sent, raw values returned | ✅ DONE (tool-trace chips + `message_update` frames) |
 
 ### Tier 1 — Advanced (differentiators)
@@ -55,10 +55,7 @@ Knowledge base 12 · bdapps Payment 10 · Explainability 10 · Tech implementati
 Innovation 5. **"Don't spend too much time on UI/UX."** Priority = a stable Tier 0
 that runs end-to-end in a 4-minute demo.
 
-## What is built now (infrastructure + agent shell)
-
-Full-stack scaffold already runs end-to-end; the domain capabilities above are the
-remaining work.
+## What is built now
 
 - **Auth**: **phone number is the identity** (unique login credential; no email —
   rural farmers have phones). `username` is a non-unique display name. Registration
@@ -68,41 +65,72 @@ remaining work.
   ([backend/app/routers/auth.py](backend/app/routers/auth.py), [backend/app/security.py](backend/app/security.py), [backend/app/schemas.py](backend/app/schemas.py))
 - **Chat**: SSE streaming, user-scoped sessions/messages, tool-trace display.
   ([backend/app/routers/chat.py](backend/app/routers/chat.py), [backend/app/agent/runner.py](backend/app/agent/runner.py))
-- **Agent**: single-agent LangGraph ReAct loop, OpenRouter default (Ollama optional).
-  Current tools are placeholders (`get_current_time`, `calculator`) + `save_memory`/
-  `recall_memory`. ([backend/app/agent/graph.py](backend/app/agent/graph.py), [backend/app/agent/tools.py](backend/app/agent/tools.py))
+- **Agent**: single-agent LangGraph ReAct loop with composite deterministic tools
+  (the locked architecture — see PLAN.md D1: NO interrupt()/checkpointer/Send).
+  Model: **`google/gemini-2.5-flash`** via OpenRouter (strongest Bengali/Banglish +
+  reliable tool calling; single family, no language router — PLAN.md D2). Prompt:
+  Bengali-first persona, slot-filling policy, weather grounding rules.
+  ([backend/app/agent/graph.py](backend/app/agent/graph.py), [backend/app/agent/tools.py](backend/app/agent/tools.py), [backend/app/agent/runner.py](backend/app/agent/runner.py))
+- **Weather (Task 1)**: `get_weather` tool → [backend/app/adapters/weather.py](backend/app/adapters/weather.py)
+  (Open-Meteo, keyless, 16-day max, ET0, retry + WEATHER_UNAVAILABLE sentinel,
+  geocoding w/ bundled centroid fallback, evidence metadata). Defaults to the
+  farmer's registered upazila.
+- **Farm profiles + intake (Task 2)**: `farms` table (farm-level location — one
+  user, many farms; registration only prefills). Tools: `get_farm_profile`
+  (reports `missing_required_fields`: location, farm_size, water_availability,
+  budget, season), `update_farm_profile` (explicit facts only; deterministic area
+  conversion via [backend/app/engines/units.py](backend/app/engines/units.py) — bigha/kani need farmer-confirmed
+  local factor else marked ASSUMED; plausibility warnings), `list/select/create_farm`.
+  All queries scoped to the authenticated user id — never model-supplied.
+- **Deterministic engines** live in [backend/app/engines/](backend/app/engines/) (units done; crop
+  ranker/fertilizer/calendar/finance land in Tasks 5-7). Core rule: LLM never
+  computes farmer-facing numbers.
 - **Memory**: long-term semantic recall via pgvector + rolling per-session summary.
-  ([backend/app/agent/memory.py](backend/app/agent/memory.py))
+  ([backend/app/agent/memory.py](backend/app/agent/memory.py)) Farm facts belong in the farm profile, not memory.
 - **Frontend**: Next.js login/register/chat, agri-green theme, streaming + tool
-  chips. ([frontend/src/](frontend/src/))
+  chips. ([frontend/src/](frontend/src/)) Gotcha fixed in `0b31359`: never key ChatColumn by
+  session id and never abort the stream on the session-frame echo — that killed
+  the first reply of every new chat.
 
-## Where to build Tier 0 (extension points)
+## Where to build the remaining Tier 0 (extension points)
 
-- **New agent tools** (weather API, crop DB, KB retrieval, financial calc) →
-  add `@tool` functions in [backend/app/agent/tools.py](backend/app/agent/tools.py); register in the graph's tool
-  list. Streaming + trace UI handle new tools automatically — **no frontend change
-  needed** for a tool to appear as a chip.
-- **Structured intake / planning** → the graph is a single ReAct node today; for
-  slot-filling + multi-step planning, evolve [backend/app/agent/graph.py](backend/app/agent/graph.py) (state in
-  [backend/app/agent/state.py](backend/app/agent/state.py)). Keep the runner's SSE event contract intact.
-- **RAG knowledge base** → ingest agronomic docs into a new pgvector table
+- **THE ROADMAP is [docs/PLAN.md](docs/PLAN.md)** — locked architecture decisions
+  (D1-D5), verified data-source matrix, and the incremental Task 1→10 sequence
+  (Task N only starts when Task N-1 is solid; Tasks 1-2 shipped). Next: Task 3
+  CZIS adapter → Task 4 FRG RAG KB → Task 5 crop ranker → Task 6 season plan →
+  Task 7 finance (= Tier 0 complete checkpoint) → 8 polish → 9 Tier 1 → 10 Tier 2.
+- **New agent tools** (CZIS, KB retrieval, ranking, planning, finance) → add
+  `@tool`/factory functions in [backend/app/agent/tools.py](backend/app/agent/tools.py); register in the
+  runner's tool list. Streaming + trace UI handle new tools automatically — **no
+  frontend change needed** for a tool to appear as a chip.
+- **External HTTP sources** → adapter module in [backend/app/adapters/](backend/app/adapters/)
+  (injectable httpx client for offline MockTransport tests; evidence metadata;
+  cached-snapshot fallback for .gov.bd flakiness). CZIS endpoints are documented
+  in PLAN.md D4 (plain HTTP, no auth, no Playwright).
+- **Deterministic math** → pure functions in [backend/app/engines/](backend/app/engines/) with
+  gold-number unit tests; tools are thin wrappers.
+- **RAG knowledge base** → ingest FRG corpus into a new pgvector table
   (separate from `long_term_memory`), expose a `search_knowledge_base` tool.
+  Query in ENGLISH (cross-lingual Bengali→English retrieval is weak — PLAN.md D3);
+  structured fertilizer tables go to JSON, never RAG (numbers are computed).
 - **Emit progress** from long tools via `get_stream_writer()` (see `_emit` in
   tools.py) → surfaces as `progress` SSE frames in the working indicator.
 - The API + SSE contract is **frozen** in [docs/API_CONTRACT.md](docs/API_CONTRACT.md); honor it so the
   frontend keeps working.
 
-## Key design docs (read before building Tier 0)
+## Key design docs
 
-- [docs/INSIGHTS.md](docs/INSIGHTS.md) — **architecture steer**: build a *bounded
-  agricultural planning workflow*, NOT a general chatbot with scraping tools. The
-  LLM gathers info + explains; **deterministic services** do crop ranking,
-  fertilizer calc, scheduling, and financial math. Maps the real data sources and
-  their roles (BARC FRG 2024 → fertilizer rules/tables, hybrid RAG+relational; CZIS
-  crop zoning → structured/geospatial by upazila; BAMIS crop-weather calendar →
-  crop stages/calendars; live weather API → direct tool; market/cost → structured).
-  Core rule: never let the LLM invent a fertilizer/finance number — retrieve/compute
-  it, then have the LLM explain and cite.
+- [docs/PLAN.md](docs/PLAN.md) — **the implementation roadmap** (see above).
+- [docs/INSIGHTS.md](docs/INSIGHTS.md) — original architecture steer: LLM gathers
+  info + explains; **deterministic services** compute. Its orchestration machinery
+  (interrupt/checkpointer/Send/scheduler) was **dropped** after gap analysis —
+  PLAN.md D1 records why; keep its evidence-discipline, source-precedence and
+  fertilizer-mode ideas.
+- [docs/EXAMPLE_FLOW.md](docs/EXAMPLE_FLOW.md) — 30 Bangla multi-turn test
+  scenarios w/ expected traces + failure conditions; the behavioral spec.
+- [docs/FRG_PDF_EXTRACTION.md](docs/FRG_PDF_EXTRACTION.md) — FRG 2024 PDF anatomy:
+  pdftotext works for the 5 demo-crop tables + RAG corpus; AEZ 25/26 pages are
+  image-only (transcribe by hand); no OCR blocker.
 - [docs/RESEARCH_crop_disease_models.md](docs/RESEARCH_crop_disease_models.md) —
   parked Tier 2 leaf-photo disease detection (off-the-shelf models + integration).
 
@@ -124,10 +152,14 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 54 tests: unit (security/phone/tools), integration (auth
-  rotation/blacklist, chat ownership), streaming (SSE tool_trace→message_update→
-  done). LLM is faked — no network. Isolated against a separate `argi_test` db.
+  (or `make test`). 98 tests: unit (security/phone/tools/weather adapter/unit
+  conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
+  cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
+  chip, multi-turn intake via the turn-sequence fake in `tests/fakes.py`). LLM +
+  HTTP are faked — no network. Isolated against a separate `argi_test` db.
   Realtime transport is **SSE, not WebSocket**. Add tests with any new feature.
+  NOTE: the container has no source volume mount — `docker compose up -d --build
+  backend` (or `docker cp` for a quick single file) before re-running tests.
 - Frontend http://localhost:3000 · Backend http://localhost:8080 (docs `/docs`) ·
   Postgres localhost:5433. (Host ports 8080/5433 avoid local clashes; container
   ports are 8000/5432. `NEXT_PUBLIC_API_URL` in `.env` is baked into the frontend at
