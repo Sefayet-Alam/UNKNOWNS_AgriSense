@@ -224,11 +224,26 @@ def _season_plan_script() -> List[BaseMessage]:
             ],
         ),
         AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "calculate_crop_financials",
+                    "args": {
+                        "crop_name": "Wheat",
+                        "variety_name": "BARI Gom 33",
+                    },
+                    "id": "call_plan_finance_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
             content=(
                 "গমের তারিখভিত্তিক পরিকল্পনা প্রস্তুত। BAMIS রাজশাহী ক্যালেন্ডার, "
                 "FRG 2024 (পৃষ্ঠা ৯০), Open-Meteo এবং CZIS-এর ৫০ শতকের "
                 "সার-পরিমাণ ব্যবহার করা হয়েছে; বপন ১৫ নভেম্বর ২০২৬ এবং "
-                "ফসল তোলা ১৪ মার্চ ২০২৭।"
+                "ফসল তোলা ১৪ মার্চ ২০২৭। খরচ, ফলন, আয়, নিট লাভ, ROI ও "
+                "break-even হিসাবও সংযুক্ত; demo দাম ও খরচ live নয়।"
             )
         ),
     ]
@@ -248,10 +263,52 @@ def _season_plan_degraded_script() -> List[BaseMessage]:
             ],
         ),
         AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "calculate_crop_financials",
+                    "args": {
+                        "crop_name": "Wheat",
+                        "expected_yield_t_ha": 4.5,
+                    },
+                    "id": "call_plan_finance_degraded",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
             content=(
                 "পরিকল্পনাটি degraded: একটি প্রয়োজনীয় উৎস অনুপলব্ধ। আমি কোনো "
                 "অনুপস্থিত সার-পরিমাণ বা আবহাওয়ার মান অনুমান করিনি; raw trace-এ "
                 "অনুপলব্ধ উৎসটি দেখা যাবে।"
+            )
+        ),
+    ]
+
+
+def _finance_script() -> List[BaseMessage]:
+    return [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "calculate_crop_financials",
+                    "args": {
+                        "crop_name": "Wheat",
+                        "variety_name": "BARI Gom 33",
+                        "sale_price_bdt_per_kg": 42,
+                    },
+                    "id": "call_finance_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
+            content=(
+                "CZIS-এর BARI Gom 33 ফলন এবং আপনার ৫০ শতক জমির ভিত্তিতে "
+                "itemized cost, expected revenue, net profit, ROI ও break-even "
+                "হিসাব করা হয়েছে। ৪২ টাকা/কেজি farmer estimate; অন্য খরচগুলো "
+                "seeded demo value, live supplier quote নয়।"
             )
         ),
     ]
@@ -265,6 +322,7 @@ _SCENARIOS: Dict[str, Callable[[], List[BaseMessage]]] = {
     "recommendation_degraded": _recommendation_degraded_script,
     "season_plan": _season_plan_script,
     "season_plan_degraded": _season_plan_degraded_script,
+    "finance": _finance_script,
 }
 
 # Multi-turn scenarios: one script per agent TURN (per graph build). The

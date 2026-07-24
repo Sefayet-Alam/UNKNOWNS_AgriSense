@@ -1,0 +1,71 @@
+{
+  "version": "demo-v1",
+  "disclosure": "Seeded demo assumptions for an inspectable prototype; these are not live supplier quotes or market-board prices. Farmer-provided values override them.",
+  "crops": {
+    "wheat": {
+      "price_bdt_per_kg": 36,
+      "cost_bdt_per_decimal": {
+        "land_preparation": 100,
+        "seed": 80,
+        "fertilizer": 120,
+        "irrigation": 60,
+        "labor_and_weeding": 90,
+        "crop_protection": 25,
+        "harvest": 60,
+        "transport_and_other": 25
+      }
+    },
+    "mustard": {
+      "price_bdt_per_kg": 75,
+      "cost_bdt_per_decimal": {
+        "land_preparation": 70,
+        "seed": 30,
+        "fertilizer": 80,
+        "irrigation": 30,
+        "labor_and_weeding": 60,
+        "crop_protection": 20,
+        "harvest": 45,
+        "transport_and_other": 15
+      }
+    },
+    "potato": {
+      "price_bdt_per_kg": 25,
+      "cost_bdt_per_decimal": {
+        "land_preparation": 150,
+        "seed": 500,
+        "fertilizer": 300,
+        "irrigation": 150,
+        "labor_and_weeding": 200,
+        "crop_protection": 100,
+        "harvest": 100,
+        "transport_and_other": 50
+      }
+    },
+    "maize": {
+      "price_bdt_per_kg": 30,
+      "cost_bdt_per_decimal": {
+        "land_preparation": 100,
+        "seed": 110,
+        "fertilizer": 210,
+        "irrigation": 100,
+        "labor_and_weeding": 120,
+        "crop_protection": 60,
+        "harvest": 90,
+        "transport_and_other": 40
+      }
+    },
+    "boro dhan": {
+      "price_bdt_per_kg": 28,
+      "cost_bdt_per_decimal": {
+        "land_preparation": 130,
+        "seed": 70,
+        "fertilizer": 240,
+        "irrigation": 180,
+        "labor_and_weeding": 160,
+        "crop_protection": 70,
+        "harvest": 100,
+        "transport_and_other": 50
+      }
+    }
+  }
+}

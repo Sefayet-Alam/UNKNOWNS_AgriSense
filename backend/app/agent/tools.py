@@ -21,6 +21,7 @@ from ..adapters import czis_suitability as czis_suitability_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
 from ..engines import crop_ranker as crop_ranker_mod
+from ..engines import finance as finance_mod
 from ..engines import season_planner as season_planner_mod
 from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
@@ -1227,6 +1228,205 @@ def build_crop_recommendation_tool(user):
 
 
 # --------------------------------------------------------------------------- #
+# Selected-crop financial projection (live CZIS yield + explicit assumptions)
+# --------------------------------------------------------------------------- #
+def build_financial_tool(user):
+    """Return the deterministic, farm-bound financial projection tool."""
+
+    @tool
+    async def calculate_crop_financials(
+        crop_name: str,
+        variety_name: str = "",
+        sale_price_bdt_per_kg: Optional[float] = None,
+        expected_yield_t_ha: Optional[float] = None,
+        cost_overrides_bdt: Optional[dict[str, float]] = None,
+        cost_adjustment_percent: float = 0,
+    ) -> str:
+        """Calculate itemized cost, yield, revenue, profit, ROI and break-even.
+
+        Use for the selected crop and for financial what-if questions. Area and
+        budget come from the active farm. By default, yield is fetched from the
+        live CZIS variety table. A farmer-provided expected yield overrides CZIS.
+        Price and item costs use clearly labelled seeded demo assumptions unless
+        the farmer supplies overrides. Never present a seeded_demo_value as a
+        live market or supplier price.
+
+        ``cost_overrides_bdt`` values are ABSOLUTE total BDT for this farm; valid
+        keys are land_preparation, seed, fertilizer, irrigation,
+        labor_and_weeding, crop_protection, harvest, transport_and_other.
+        ``cost_adjustment_percent`` changes only non-overridden catalog costs.
+        """
+        _emit("finance", f"calculating financial projection for {crop_name}")
+        try:
+            canonical = season_planner_mod.canonical_crop_name(crop_name)
+        except ValueError:
+            return json.dumps(
+                {
+                    "status": "CROP_SEASON_MISMATCH",
+                    "message": (
+                        "Financial projection supports Wheat, Mustard, Potato, "
+                        "Maize and Boro dhan on the focused path."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+            if missing:
+                return json.dumps(
+                    {
+                        "status": "PROFILE_INCOMPLETE",
+                        "missing_required_fields": missing,
+                        "instruction": "Complete the six farm fields before finance.",
+                    },
+                    ensure_ascii=False,
+                )
+            farm_inputs = {
+                "area_decimal": farm.area_decimal,
+                "budget_bdt": farm.budget_bdt,
+                "season": farm.season,
+                "location": farm.union_name or farm.upazila_name,
+            }
+
+        catalog = sorted(
+            [
+                item
+                for item in czis_mod.list_crops(season=farm_inputs["season"])
+                if str(item["name"]).strip().lower() == canonical.lower()
+            ],
+            key=lambda item: (
+                str(item.get("variety_group") or "").lower()
+                != "favourable environment",
+                int(item["crop_id"]),
+            ),
+        )
+        if not catalog:
+            return json.dumps(
+                {
+                    "status": "CROP_SEASON_MISMATCH",
+                    "crop": canonical,
+                    "farm_season": farm_inputs["season"],
+                },
+                ensure_ascii=False,
+            )
+        crop_id = int(catalog[0]["crop_id"])
+
+        selected_variety = None
+        if expected_yield_t_ha is not None:
+            yield_low = yield_high = expected_yield_t_ha
+            yield_source = {
+                "source_type": "farmer_estimate",
+                "value_t_ha": expected_yield_t_ha,
+            }
+        else:
+            _emit("czis", f"fetching live yield references for crop {crop_id}")
+            try:
+                varieties_response = await czis_mod.get_varieties(crop_id)
+            except czis_mod.CzisError as exc:
+                return json.dumps(
+                    {
+                        "status": "YIELD_UNAVAILABLE",
+                        "error": str(exc),
+                        "instruction": (
+                            "Provide expected_yield_t_ha or retry CZIS; no yield "
+                            "or financial result was invented."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            varieties = varieties_response.get("varieties") or []
+            if variety_name.strip():
+                selected_variety = next(
+                    (
+                        row
+                        for row in varieties
+                        if str(row.get("name") or "").strip().casefold()
+                        == variety_name.strip().casefold()
+                    ),
+                    None,
+                )
+                if selected_variety is None:
+                    return json.dumps(
+                        {
+                            "status": "INVALID_VARIETY",
+                            "requested_variety": variety_name,
+                            "available_varieties": [
+                                row.get("name") for row in varieties
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
+            elif varieties:
+                selected_variety = {
+                    **varieties[0],
+                    "selection": "provisional_first_live_option",
+                }
+            if selected_variety is None:
+                return json.dumps(
+                    {
+                        "status": "YIELD_UNAVAILABLE",
+                        "error": "CZIS returned no usable variety yield",
+                    },
+                    ensure_ascii=False,
+                )
+            try:
+                yield_low, yield_high = finance_mod.parse_yield_range(
+                    selected_variety.get("yield_t_ha")
+                )
+            except ValueError as exc:
+                return json.dumps(
+                    {
+                        "status": "YIELD_UNAVAILABLE",
+                        "error": str(exc),
+                        "selected_variety": selected_variety,
+                    },
+                    ensure_ascii=False,
+                )
+            yield_source = {
+                **(varieties_response.get("evidence") or {}),
+                "source": "CZIS",
+                "variety": selected_variety.get("name"),
+                "raw_yield_t_ha": selected_variety.get("yield_t_ha"),
+            }
+
+        try:
+            projection = finance_mod.build_financial_projection(
+                crop_name=canonical,
+                area_decimal=float(farm_inputs["area_decimal"]),
+                budget_bdt=farm_inputs["budget_bdt"],
+                yield_low_t_ha=yield_low,
+                yield_high_t_ha=yield_high,
+                sale_price_bdt_per_kg=sale_price_bdt_per_kg,
+                cost_overrides_bdt=cost_overrides_bdt,
+                cost_adjustment_percent=cost_adjustment_percent,
+                yield_source=yield_source,
+            )
+        except (ValueError, TypeError) as exc:
+            return json.dumps(
+                {"status": "INVALID_FINANCIAL_INPUT", "message": str(exc)},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {
+                "status": "ok",
+                "selected_crop": {"crop_id": crop_id, "name": canonical},
+                "selected_variety": selected_variety,
+                "farm_inputs": farm_inputs,
+                "financial_projection": projection,
+                "grounding_rule": (
+                    "Yield is CZIS or farmer-provided; price/cost provenance is "
+                    "shown per value; all arithmetic is deterministic Decimal."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return calculate_crop_financials
+
+
+# --------------------------------------------------------------------------- #
 # Complete selected-crop season plan (live inputs + RAG + deterministic dates)
 # --------------------------------------------------------------------------- #
 def build_season_plan_tool(user):
@@ -1237,6 +1437,10 @@ def build_season_plan_tool(user):
         crop_name: str,
         planting_date: str = "",
         variety_id: Optional[int] = None,
+        sale_price_bdt_per_kg: Optional[float] = None,
+        expected_yield_t_ha: Optional[float] = None,
+        cost_overrides_bdt: Optional[dict[str, float]] = None,
+        cost_adjustment_percent: float = 0,
     ) -> str:
         """Generate a grounded, DATED land-preparation-to-harvest calendar.
 
@@ -1253,6 +1457,10 @@ def build_season_plan_tool(user):
                 Empty chooses the next BAMIS-calendar-derived sowing window.
             variety_id: Optional CZIS variety id. Empty selects the first live
                 variety only as an explicit provisional reference.
+            sale_price_bdt_per_kg: Optional farmer-estimated farmgate price.
+            expected_yield_t_ha: Optional farmer yield estimate overriding CZIS.
+            cost_overrides_bdt: Optional absolute item costs for this farm.
+            cost_adjustment_percent: What-if adjustment for non-overridden costs.
         """
         _emit("planning", f"building dated season plan for {crop_name}")
         try:
@@ -1414,6 +1622,72 @@ def build_season_plan_tool(user):
                 "products": [],
             }
 
+        financial_projection = None
+        financial_status: dict = {"status": "YIELD_UNAVAILABLE"}
+        yield_low = yield_high = None
+        if expected_yield_t_ha is not None:
+            yield_low = yield_high = expected_yield_t_ha
+            yield_source = {
+                "source_type": "farmer_estimate",
+                "value_t_ha": expected_yield_t_ha,
+            }
+        elif selected_variety is not None:
+            try:
+                variety_table = await czis_mod.get_varieties(selected_crop["crop_id"])
+                selected_name = str(selected_variety.get("name") or "").strip().casefold()
+                yield_row = next(
+                    (
+                        row
+                        for row in variety_table.get("varieties") or []
+                        if str(row.get("name") or "").strip().casefold()
+                        == selected_name
+                    ),
+                    None,
+                )
+                if yield_row is None:
+                    raise ValueError(
+                        "selected CZIS point variety has no matching published yield row"
+                    )
+                yield_low, yield_high = finance_mod.parse_yield_range(
+                    yield_row.get("yield_t_ha")
+                )
+                yield_source = {
+                    **(variety_table.get("evidence") or {}),
+                    "source": "CZIS",
+                    "variety": yield_row.get("name"),
+                    "raw_yield_t_ha": yield_row.get("yield_t_ha"),
+                }
+            except (czis_mod.CzisError, ValueError) as exc:
+                unavailable.append("financial_yield")
+                financial_status = {
+                    "status": "YIELD_UNAVAILABLE",
+                    "error": str(exc),
+                    "instruction": "No financial yield or projection was invented.",
+                }
+        else:
+            unavailable.append("financial_yield")
+
+        if yield_low is not None and yield_high is not None:
+            try:
+                financial_projection = finance_mod.build_financial_projection(
+                    crop_name=canonical,
+                    area_decimal=float(farm_inputs["area_decimal"]),
+                    budget_bdt=farm_inputs["budget_bdt"],
+                    yield_low_t_ha=yield_low,
+                    yield_high_t_ha=yield_high,
+                    sale_price_bdt_per_kg=sale_price_bdt_per_kg,
+                    cost_overrides_bdt=cost_overrides_bdt,
+                    cost_adjustment_percent=cost_adjustment_percent,
+                    yield_source=yield_source,
+                )
+                financial_status = {"status": "ok"}
+            except (ValueError, TypeError) as exc:
+                unavailable.append("financial_projection")
+                financial_status = {
+                    "status": "INVALID_FINANCIAL_INPUT",
+                    "error": str(exc),
+                }
+
         today = datetime.now(ZoneInfo("Asia/Dhaka")).date()
         calendar = season_planner_mod.build_season_calendar(
             crop_name=canonical,
@@ -1431,12 +1705,15 @@ def build_season_plan_tool(user):
                 "farm_inputs": farm_inputs,
                 "weather": weather,
                 "fertilizer_recommendation": fertilizer,
+                "financial_status": financial_status,
+                "financial_projection": financial_projection,
                 "knowledge_evidence": knowledge_hits,
                 "calendar": calendar,
                 "grounding_rule": (
                     "Calendar stages/weather risks come from BAMIS; fertilizer "
                     "timing from FRG 2024; displayed fertilizer amounts only from "
-                    "the live CZIS farm-scaled response."
+                    "the live CZIS farm-scaled response. Financial yield is CZIS "
+                    "or farmer-provided and every price/cost states its provenance."
                 ),
             },
             ensure_ascii=False,

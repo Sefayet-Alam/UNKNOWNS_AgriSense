@@ -62,6 +62,21 @@ def _fertilizer():
     }
 
 
+def _varieties(crop_id=3):
+    return {
+        "crop_id": crop_id,
+        "varieties": [
+            {
+                "name": "BARI Gom 33",
+                "yield_t_ha": "4.0-5.0",
+                "duration_days": "115-120",
+                "characteristics": "reference",
+            }
+        ],
+        "evidence": {"source": "CZIS", "endpoint": f"/varieties/{crop_id}"},
+    }
+
+
 @pytest.mark.asyncio
 async def test_season_plan_hard_gates_incomplete_farm(auth_client, db_session):
     user = (await db_session.execute(select(User))).scalar_one()
@@ -97,11 +112,15 @@ async def test_season_plan_combines_bamis_frg_czis_weather_and_rag(
         assert (crop_id, variety_id, area) == (3, 1001, 50.0)
         return _fertilizer()
 
+    async def fake_varieties(crop_id, **kwargs):
+        return _varieties(crop_id)
+
     monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", fake_weather)
     monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", fake_context)
     monkeypatch.setattr(
         tools_mod.czis_mod, "get_fertilizer_recommendation", fake_fertilizer
     )
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", fake_varieties)
 
     payload = json.loads(
         await build_season_plan_tool(user).ainvoke(
@@ -125,6 +144,12 @@ async def test_season_plan_combines_bamis_frg_czis_weather_and_rag(
         if dose["product"] == "Urea"
     ]
     assert sum(d["amount"]["value"] for d in doses) == 30
+    finance = payload["financial_projection"]
+    assert payload["financial_status"] == {"status": "ok"}
+    assert finance["expected"]["yield_t_ha"] == 4.5
+    assert finance["expected"]["revenue_bdt"] - finance["total_cost_bdt"] == pytest.approx(
+        finance["expected"]["net_profit_bdt"], abs=0.01
+    )
 
 
 @pytest.mark.asyncio
@@ -152,8 +177,12 @@ async def test_season_plan_weather_delay_changes_all_dependent_dates(
     async def fertilizer(*args, **kwargs):
         return _fertilizer()
 
+    async def varieties(*args, **kwargs):
+        return _varieties()
+
     monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
     monkeypatch.setattr(tools_mod.czis_mod, "get_fertilizer_recommendation", fertilizer)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
     payload = json.loads(
         await build_season_plan_tool(user).ainvoke(
             {"crop_name": "Wheat", "planting_date": "2026-11-15"}
@@ -181,11 +210,15 @@ async def test_season_plan_fertilizer_outage_is_degraded_without_invented_doses(
     async def weather(*args, **kwargs):
         return _weather()
 
+    async def varieties(*args, **kwargs):
+        return _varieties()
+
     monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", weather)
     monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
     monkeypatch.setattr(
         tools_mod.czis_mod, "get_fertilizer_recommendation", no_fertilizer
     )
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
     payload = json.loads(
         await build_season_plan_tool(user).ainvoke(
             {"crop_name": "Wheat", "planting_date": "2026-11-15"}
@@ -199,6 +232,43 @@ async def test_season_plan_fertilizer_outage_is_degraded_without_invented_doses(
         for event in payload["calendar"]["events"]
         if event["category"] == "fertilizer"
     )
+    assert payload["financial_status"] == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_season_plan_yield_outage_keeps_calendar_but_never_invents_finance(
+    auth_client, db_session, monkeypatch
+):
+    user, _farm = await _complete_farm(db_session)
+    await ingest_document(db_session, "Wheat season plan reference", source="FRG")
+
+    async def weather(*args, **kwargs):
+        return _weather()
+
+    async def context(*args, **kwargs):
+        return _context()
+
+    async def fertilizer(*args, **kwargs):
+        return _fertilizer()
+
+    async def no_yield(*args, **kwargs):
+        raise tools_mod.czis_mod.CzisError("yield table offline")
+
+    monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", weather)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_fertilizer_recommendation", fertilizer)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", no_yield)
+    payload = json.loads(
+        await build_season_plan_tool(user).ainvoke(
+            {"crop_name": "Wheat", "planting_date": "2026-11-15"}
+        )
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["calendar"]["harvest_date"] == "2027-03-14"
+    assert payload["financial_projection"] is None
+    assert payload["financial_status"]["status"] == "YIELD_UNAVAILABLE"
+    assert "financial_yield" in payload["unavailable_sources"]
 
 
 @pytest.mark.asyncio

@@ -580,6 +580,21 @@ def _plan_fertilizer():
     }
 
 
+def _plan_varieties(crop_id=3):
+    return {
+        "crop_id": crop_id,
+        "varieties": [
+            {
+                "name": "BARI Gom 33",
+                "yield_t_ha": "4.0-5.0",
+                "duration_days": "115-120",
+                "characteristics": "reference",
+            }
+        ],
+        "evidence": {"source": "CZIS", "endpoint": f"/varieties/{crop_id}"},
+    }
+
+
 @pytest.mark.parametrize("fake_llm", ["season_plan"], indirect=True)
 async def test_selected_crop_season_plan_is_complete_and_grounded_end_to_end(
     auth_client, fake_llm, db_session, monkeypatch
@@ -609,9 +624,13 @@ async def test_selected_crop_season_plan_is_complete_and_grounded_end_to_end(
     async def fertilizer(*args, **kwargs):
         return _plan_fertilizer()
 
+    async def varieties(*args, **kwargs):
+        return _plan_varieties()
+
     monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", weather)
     monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
     monkeypatch.setattr(tools_mod.czis_mod, "get_fertilizer_recommendation", fertilizer)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
 
     events = await stream_turn(auth_client, "গমের প্ল্যান বানাও")
     routing = [
@@ -633,6 +652,18 @@ async def test_selected_crop_season_plan_is_complete_and_grounded_end_to_end(
     assert raw["calendar"]["harvest_date"] == "2027-03-14"
     categories = {event["category"] for event in raw["calendar"]["events"]}
     assert {"land_preparation", "sowing", "fertilizer", "irrigation", "weed", "pest", "harvest"} <= categories
+    finance = next(
+        json.loads(trace["result"])
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "calculate_crop_financials" and trace.get("result")
+    )
+    projection = finance["financial_projection"]
+    assert projection["math_checks"]["cost_items_sum_to_total"] is True
+    assert projection["math_checks"]["profit_equals_revenue_minus_cost"] is True
+    assert projection["yield_assumption"]["source"]["source"] == "CZIS"
+    assert projection["price_assumption"]["source_type"] == "seeded_demo_value"
     finals = [
         event["message"]["content"]
         for event in events
@@ -743,9 +774,13 @@ async def test_season_plan_heavy_rain_shifts_calendar_end_to_end(
     async def fertilizer(*args, **kwargs):
         return _plan_fertilizer()
 
+    async def varieties(*args, **kwargs):
+        return _plan_varieties()
+
     monkeypatch.setattr(tools_mod.weather_mod, "fetch_forecast", rainy)
     monkeypatch.setattr(tools_mod.czis_mod, "get_crop_context", context)
     monkeypatch.setattr(tools_mod.czis_mod, "get_fertilizer_recommendation", fertilizer)
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
     events = await stream_turn(auth_client, "গমের প্ল্যান বানাও")
     raw = next(
         json.loads(trace["result"])
@@ -757,6 +792,46 @@ async def test_season_plan_heavy_rain_shifts_calendar_end_to_end(
     assert raw["calendar"]["planting_date"] == "2026-11-17"
     assert raw["calendar"]["harvest_date"] == "2027-03-16"
     assert raw["calendar"]["weather_adjustments"][0]["type"] == "planting_delay"
+
+
+@pytest.mark.parametrize("fake_llm", ["finance"], indirect=True)
+async def test_financial_what_if_routes_and_returns_inspectable_math_end_to_end(
+    auth_client, fake_llm, db_session, monkeypatch
+):
+    """PDF #5/#6/#8: live yield + changed price -> inspectable trace math."""
+    from app.agent import tools as tools_mod
+
+    await _prepare_plan_farm(db_session)
+
+    async def varieties(*args, **kwargs):
+        return _plan_varieties()
+
+    monkeypatch.setattr(tools_mod.czis_mod, "get_varieties", varieties)
+    events = await stream_turn(
+        auth_client, "If wheat sells at 42 taka, recalculate the profit and ROI"
+    )
+    routing = [
+        event["detail"]
+        for event in events
+        if event["type"] == "progress" and event.get("stage") == "routing"
+    ]
+    assert routing and "specialist: finance" in routing[0]
+    raw = next(
+        json.loads(trace["result"])
+        for event in events
+        if event["type"] == "message_update"
+        for trace in event["message"].get("tool_trace") or []
+        if trace.get("tool") == "calculate_crop_financials" and trace.get("result")
+    )
+    projection = raw["financial_projection"]
+    assert projection["expected"]["price_bdt_per_kg"] == 42
+    assert projection["price_assumption"]["source_type"] == "farmer_estimate"
+    assert len(projection["cost_items"]) == 8
+    assert projection["expected"]["revenue_bdt"] - projection["total_cost_bdt"] == pytest.approx(
+        projection["expected"]["net_profit_bdt"], abs=0.01
+    )
+    assert projection["break_even"]["yield_kg"] > 0
+    assert projection["break_even"]["price_bdt_per_kg"] > 0
 
 
 @pytest.mark.parametrize("fake_llm", ["plain"], indirect=True)

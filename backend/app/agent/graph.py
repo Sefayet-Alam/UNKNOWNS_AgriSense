@@ -43,7 +43,7 @@ MAX_TURNS = 12  # tool rounds per REQUEST turn (history rounds excluded)
 
 log = logging.getLogger("agrisense.agent.graph")
 
-AGENTS = ("intake", "advisor", "recommender", "planner")
+AGENTS = ("intake", "advisor", "recommender", "planner", "finance")
 
 # Which OpenRouter model powers each node (single place to retune).
 # NOTE: intake initially ran on MODEL_LITE — live test showed flash-lite
@@ -56,6 +56,7 @@ def _node_models() -> dict[str, str]:
         "advisor": settings.OPENROUTER_MODEL,
         "recommender": settings.OPENROUTER_MODEL,
         "planner": settings.OPENROUTER_MODEL,
+        "finance": settings.OPENROUTER_MODEL,
     }
 
 
@@ -131,7 +132,20 @@ NODE_DIRECTIVES = {
         "dates and quantities exactly; never invent missing fertilizer amounts. "
         "Explain any weather adjustment and degraded source. The result must "
         "cover land preparation, sowing, fertilizer, irrigation, weed/pest "
-        "checkpoints and harvest."
+        "checkpoints and harvest. Then call calculate_crop_financials for "
+        "the same crop/variety so the delivered season plan is costed. Relay "
+        "the itemized costs, expected yield/revenue/net profit/ROI/break-even, "
+        "math checks and every seeded-demo warning exactly."
+    ),
+    "finance": (
+        "CURRENT NODE: FINANCE SPECIALIST. Call calculate_crop_financials for "
+        "the already-selected crop, passing any farmer-provided sale price, "
+        "expected yield, absolute item-cost overrides, or cost percentage. "
+        "Relay its itemized cost, expected yield, revenue, net profit, ROI and "
+        "both break-even values exactly. Always distinguish live CZIS yield, "
+        "farmer estimates, and seeded_demo_value assumptions. Never describe "
+        "a demo price or cost as current/live. If the crop is not selected, "
+        "ask which crop before calculating."
     ),
 }
 
@@ -162,6 +176,14 @@ _PLAN_WORDS = re.compile(
     r"আলুর প্ল্যান|ভুট্টার প্ল্যান|বোরোর প্ল্যান)",
     re.IGNORECASE,
 )
+_FINANCE_WORDS = re.compile(
+    r"(financial|finance|cost breakdown|costed|roi|return on investment|"
+    r"break[ -]?even|recalculate.{0,40}(?:price|cost|yield|profit)|"
+    r"(?:profit|cost).{0,20}(?:wheat|mustard|potato|maize|boro)|"
+    r"(?:wheat|mustard|potato|maize|boro).{0,20}(?:profit|cost)|"
+    r"খরচের হিসাব|লাভের হিসাব|ব্রেক.?ইভেন|আরওআই)",
+    re.IGNORECASE,
+)
 
 _CLASSIFY_PROMPT = (
     "You route a Bangladeshi farmer's message to ONE specialist. Reply with "
@@ -170,6 +192,8 @@ _CLASSIFY_PROMPT = (
     "would be profitable to grow\n"
     "- planner : the crop is already selected and the farmer asks for a dated "
     "season plan/calendar/schedule\n"
+    "- finance : itemized cost, profit, ROI, break-even or a financial what-if "
+    "for an already-selected crop\n"
     "- intake  : stating or correcting farm facts (land size, budget, "
     "irrigation, soil, season, location)\n"
     "- advisor : anything else (weather questions, pests, fertilizer for a "
@@ -184,6 +208,8 @@ def classify_heuristic(text: str) -> str:
         return "recommender"
     if _PLAN_WORDS.search(text or ""):
         return "planner"
+    if _FINANCE_WORDS.search(text or ""):
+        return "finance"
     # Weather questions go to the advisor (it owns the get_weather tool) —
     # checked before intake so "brishti + jomi" turns get grounded weather
     # answers instead of slot-filling.

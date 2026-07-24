@@ -136,7 +136,11 @@ Production configuration and portal field values are documented in
 LangGraph specialist loop (`app/agent/`): tools include live weather, official
 CZIS crop/variety/fertilizer and point-suitability lookups, deterministic
 `rank_crop_candidates`, dated `generate_season_plan` calendars grounded in
-BAMIS/FRG/RAG, farm profiles, `calculator`, `save_memory`, and `recall_memory`.
+BAMIS/FRG/RAG, deterministic `calculate_crop_financials` (also embedded in the
+season-plan result), farm profiles, `calculator`, `save_memory`, and
+`recall_memory`. Financial yield defaults to the live CZIS variety range;
+bundled price/cost assumptions are explicitly marked `seeded_demo_value`, are
+not live quotes, and can be overridden by farmer inputs.
 Long-term memory is user-scoped pgvector
 semantic recall; each session also keeps a rolling `summary`. The stream
 runner emits `session` / `message` / `message_update` / `progress` / `done` /

@@ -38,6 +38,9 @@ pytestmark = pytest.mark.unit
         ("I chose wheat. Make a season plan", "planner"),
         ("Create a calendar for potato", "planner"),
         ("সরিষার প্ল্যান বানাও", "planner"),
+        ("Calculate ROI and break-even for wheat", "finance"),
+        ("Show me a cost breakdown for mustard", "finance"),
+        ("If wheat sells at 42 taka, recalculate the profit", "finance"),
     ],
 )
 def test_classify_heuristic(text, expected):
@@ -63,7 +66,7 @@ def test_recommend_beats_intake_and_weather():
 
 
 def test_agents_registry():
-    assert set(AGENTS) == {"intake", "advisor", "recommender", "planner"}
+    assert set(AGENTS) == {"intake", "advisor", "recommender", "planner", "finance"}
 
 
 def test_crop_choice_beats_plan_when_crop_is_not_selected_yet():
@@ -71,6 +74,14 @@ def test_crop_choice_beats_plan_when_crop_is_not_selected_yet():
         classify_heuristic("Recommend a crop and then make a season plan")
         == "recommender"
     )
+
+
+def test_crop_choice_beats_finance_when_farmer_has_not_selected_a_crop():
+    assert classify_heuristic("What should I grow to make profit?") == "recommender"
+
+
+def test_full_plan_beats_finance_for_a_selected_crop():
+    assert classify_heuristic("Make a costed season plan for wheat") == "planner"
 
 
 def test_tool_rounds_exclude_replayed_history():
