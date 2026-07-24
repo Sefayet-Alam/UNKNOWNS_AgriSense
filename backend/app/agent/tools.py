@@ -107,6 +107,32 @@ def calculator(expression: str) -> str:
         return f"Error: could not evaluate expression ({exc})."
 
 
+@tool
+def resolve_season(reference: str = "current") -> str:
+    """Ground a relative/ambiguous season reference in the current Bangladesh date.
+
+    Call this WHENEVER the farmer refers to the season indirectly ("this
+    season", "next season", "coming/upcoming season", "গত মৌসুম", "আগামী
+    সিজন") instead of naming rabi / kharif-1 / kharif-2 explicitly. It reads
+    the real Asia/Dhaka date, infers the current cropping season from the
+    BARC/DAE calendar, applies the relative offset, and returns the canonical
+    season to save — never assume the season from memory.
+
+    Args:
+        reference: the farmer's season phrase (e.g. "this season", "next",
+            "আগামী মৌসুম"). Empty/"current" resolves to the current season.
+
+    Returns the current date, current season, the resolved canonical season
+    (rabi/kharif-1/kharif-2), the reasoning, the source, and a boundary note
+    when today is close to a season transition. Confirm the result with the
+    farmer before saving it with update_farm_profile.
+    """
+    _emit("season", f"grounding season reference: {reference!r}")
+    today = datetime.now(ZoneInfo("Asia/Dhaka")).date()
+    payload = season_planner_mod.resolve_season(reference, today)
+    return json.dumps(payload, ensure_ascii=False)
+
+
 # --------------------------------------------------------------------------- #
 # Weather tool (factory — defaults to the farmer's registered location)
 # --------------------------------------------------------------------------- #
@@ -2794,7 +2820,7 @@ def build_memory_tools(user_id: int, db=None):
 
 
 def build_static_tools():
-    return [get_current_time, calculator]
+    return [get_current_time, calculator, resolve_season]
 
 
 # --------------------------------------------------------------------------- #

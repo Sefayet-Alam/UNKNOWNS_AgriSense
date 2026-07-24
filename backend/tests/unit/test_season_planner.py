@@ -8,9 +8,55 @@ import pytest
 
 from app.engines.season_planner import (
     build_season_calendar,
+    infer_season,
     next_sowing_date,
+    resolve_season,
     supports_dated_calendar,
 )
+
+
+@pytest.mark.parametrize(
+    "day, expected",
+    [
+        (date(2026, 1, 15), "rabi"),  # winter, before mid-March
+        (date(2026, 3, 15), "rabi"),  # last rabi day
+        (date(2026, 3, 16), "kharif-1"),  # first kharif-1 day
+        (date(2026, 5, 1), "kharif-1"),
+        (date(2026, 7, 16), "kharif-2"),  # first kharif-2 day
+        (date(2026, 9, 1), "kharif-2"),
+        (date(2026, 11, 16), "rabi"),  # rabi wraps the new year
+        (date(2026, 12, 25), "rabi"),
+    ],
+)
+def test_infer_season_maps_bd_date_to_cropping_season(day, expected):
+    assert infer_season(day) == expected
+
+
+def test_resolve_season_grounds_relative_reference_in_current_date():
+    # Mid-December -> current season is Rabi.
+    today = date(2026, 12, 1)
+    assert resolve_season("this season", today)["resolved_season"] == "rabi"
+    # next after rabi in the BD cycle is kharif-1; previous is kharif-2.
+    assert resolve_season("next season", today)["resolved_season"] == "kharif-1"
+    assert resolve_season("last season", today)["resolved_season"] == "kharif-2"
+
+
+def test_resolve_season_passes_through_a_specific_name():
+    result = resolve_season("kharif-2", date(2026, 12, 1))
+    assert result["interpretation"] == "named"
+    assert result["resolved_season"] == "kharif-2"
+
+
+def test_resolve_season_flags_a_date_near_a_season_boundary():
+    result = resolve_season("this season", date(2026, 3, 18))  # 2 days past edge
+    assert "boundary_note" in result
+    assert result["current_season"]["code"] == "kharif-1"
+
+
+def test_resolve_season_defaults_unrecognized_phrase_to_current_with_flag():
+    result = resolve_season("whenever", date(2026, 5, 1))
+    assert result["interpretation"] == "unrecognized_defaulted_to_current"
+    assert result["resolved_season"] == "kharif-1"
 
 
 def test_next_sowing_date_uses_next_official_window_not_stale_model_year():

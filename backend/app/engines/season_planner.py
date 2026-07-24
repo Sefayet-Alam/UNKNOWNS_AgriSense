@@ -293,6 +293,171 @@ def canonical_crop_name(crop_name: str) -> str:
     return str(_profile(crop_name)["display"])
 
 
+# --------------------------------------------------------------------------- #
+# Deterministic Bangladesh cropping-season inference from a real date.
+#
+# Month/day boundaries follow the BARC / DAE three-season cropping calendar
+# (Kharif-1 / Aus ~ mid-March-mid-July; Kharif-2 / Aman ~ mid-July-mid-November;
+# Rabi / winter ~ mid-November-mid-March). Boundaries are approximate agronomic
+# transitions, so a date within BOUNDARY_DAYS of an edge is flagged for farmer
+# confirmation rather than asserted. This grounds "this/next season" in the
+# injected current date instead of a model assumption.
+# --------------------------------------------------------------------------- #
+SEASON_DISPLAY = {
+    "kharif-1": "Kharif-1 (Aus / pre-monsoon)",
+    "kharif-2": "Kharif-2 (Aman / monsoon)",
+    "rabi": "Rabi (winter / dry)",
+}
+
+# Chronological cycle within the Bangladesh agricultural year. "next" advances
+# one step, "previous" steps back; the list is treated as circular.
+SEASON_CYCLE = ("kharif-1", "kharif-2", "rabi")
+
+# (start_month, start_day) inclusive -> season; the season runs until the next
+# entry's start. Rabi wraps across the new year.
+_SEASON_STARTS = (
+    ((3, 16), "kharif-1"),
+    ((7, 16), "kharif-2"),
+    ((11, 16), "rabi"),
+)
+BOUNDARY_DAYS = 15
+
+SEASON_SOURCE = {
+    "source": "BARC / DAE Bangladesh three-season cropping calendar",
+    "seasons": {
+        "kharif-1": "≈ mid-March to mid-July (Aus / pre-monsoon)",
+        "kharif-2": "≈ mid-July to mid-November (Aman / monsoon)",
+        "rabi": "≈ mid-November to mid-March (winter / dry)",
+    },
+    "note": (
+        "Season boundaries are approximate agronomic transitions; near an edge "
+        "confirm the intended season with the farmer."
+    ),
+}
+
+_RELATIVE_SEASON_WORDS = {
+    0: (
+        "current", "this", "now", "present", "ongoing", "running", "this season",
+        "cholti", "চলতি", "এই", "এখন", "বর্তমান", "এবার", "ebar", "ei",
+    ),
+    1: (
+        "next", "coming", "upcoming", "following", "next season", "coming season",
+        "agami", "আগামী", "সামনের", "samner", "পরবর্তী", "poroborti",
+    ),
+    -1: (
+        "previous", "last", "past", "prior", "last season", "previous season",
+        "goto", "গত", "আগের", "ager", "পূর্ববর্তী",
+    ),
+}
+
+
+def _season_of(today: date) -> str:
+    md = (today.month, today.day)
+    current = "rabi"  # default covers Jan 1 - Mar 15 (rabi wraps the new year)
+    for (month, day), season in _SEASON_STARTS:
+        if md >= (month, day):
+            current = season
+    return current
+
+
+def _days_to_nearest_boundary(today: date) -> int:
+    boundaries = []
+    for (month, day), _season in _SEASON_STARTS:
+        for year in (today.year - 1, today.year, today.year + 1):
+            boundaries.append(date(year, month, day))
+    return min(abs((today - edge).days) for edge in boundaries)
+
+
+def infer_season(today: date) -> str:
+    """Return the canonical Bangladesh cropping season for ``today``."""
+    return _season_of(today)
+
+
+def relative_offset(reference: str) -> Optional[int]:
+    """Map a relative phrase to a cycle offset (-1/0/+1), or None if unknown."""
+    key = str(reference or "").strip().casefold()
+    if not key:
+        return 0
+    for offset, words in _RELATIVE_SEASON_WORDS.items():
+        if any(word in key for word in words):
+            return offset
+    return None
+
+
+def resolve_season(reference: str, today: date) -> dict:
+    """Ground a season reference in the real date instead of assuming it.
+
+    A specific season name (rabi/kharif) is returned as-is. A relative phrase
+    (this/next/previous season) is resolved from the season that contains
+    ``today``. An unrecognized phrase defaults to the current season and is
+    flagged so the caller confirms with the farmer.
+    """
+    raw = str(reference or "").strip()
+    current = _season_of(today)
+    named = None
+    for alias, canonical in _SPECIFIC_SEASON_ALIASES.items():
+        if alias in raw.casefold():
+            named = canonical
+            break
+    if named is not None:
+        interpretation = "named"
+        resolved = named
+    else:
+        offset = relative_offset(raw)
+        if offset is None:
+            interpretation = "unrecognized_defaulted_to_current"
+            resolved = current
+        else:
+            interpretation = {0: "current", 1: "next", -1: "previous"}[offset]
+            index = SEASON_CYCLE.index(current)
+            resolved = SEASON_CYCLE[(index + offset) % len(SEASON_CYCLE)]
+    boundary_days = _days_to_nearest_boundary(today)
+    payload = {
+        "reference": raw,
+        "interpretation": interpretation,
+        "current_date": today.isoformat(),
+        "current_season": {"code": current, "display": SEASON_DISPLAY[current]},
+        "resolved_season": resolved,
+        "resolved_season_display": SEASON_DISPLAY[resolved],
+        "reasoning": (
+            f"Today {today.isoformat()} falls in {SEASON_DISPLAY[current]} per the "
+            f"{SEASON_SOURCE['source']}; '{raw or 'current'}' -> {interpretation} "
+            f"-> {resolved}."
+        ),
+        "source": SEASON_SOURCE,
+        "instruction": (
+            "Confirm this season with the farmer, then save it with "
+            "update_farm_profile. Do not assume a season without this grounding."
+        ),
+    }
+    if boundary_days <= BOUNDARY_DAYS:
+        payload["boundary_note"] = (
+            f"Today is within {boundary_days} day(s) of a season boundary; the "
+            "current season is uncertain — confirm with the farmer before saving."
+        )
+    return payload
+
+
+# Specific canonical season names / unambiguous synonyms recognized directly.
+_SPECIFIC_SEASON_ALIASES = {
+    "rabi": "rabi",
+    "robi": "rabi",
+    "রবি": "rabi",
+    "kharif-1": "kharif-1",
+    "kharif1": "kharif-1",
+    "kharif-2": "kharif-2",
+    "kharif2": "kharif-2",
+    "aman": "kharif-2",
+    "aus": "kharif-1",
+    "boro": "rabi",
+    "winter": "rabi",
+    "শীত": "rabi",
+    "monsoon": "kharif-2",
+    "বর্ষা": "kharif-2",
+    "summer": "kharif-1",
+}
+
+
 def supports_dated_calendar(crop_name: str, season: str) -> bool:
     """Whether this exact crop-season has a sourced deterministic calendar.
 
