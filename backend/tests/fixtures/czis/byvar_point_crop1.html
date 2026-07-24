@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Fertilizer Recommendation</title>
+    <link rel="stylesheet" href="https://czis.cropzoning.gov.bd/cz_assets/js/bootstrap/css/bootstrap.css">
+    <script src="https://czis.cropzoning.gov.bd/cz_assets/js/jquery/jquery-3.3.1/jquery-3.3.1.min.js"></script>
+    <script src="https://czis.cropzoning.gov.bd/cz_assets/js/jquery/jquery-ui/jquery-ui.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.2/css/all.min.css" integrity="sha512-1sCRPdkRXhBV2PBLUdRb4tMg1w2YPf37qatUFeS7zlBy7jJI8Lf4VHwWfZZfpXtYSLy85pkm9GaYVYMfw5BC1A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        .ui-dialog .ui-dialog-content {
+            padding: .5em 0em;
+        }
+
+        /* Style the tab */
+        .tab {
+        overflow: hidden;
+        border: 1px solid #ccc;
+        background-color: #f1f1f1;
+        width:auto;
+        }
+
+        /* Style the buttons inside the tab */
+        .tab button {
+        background-color: inherit;
+        float: left;
+        border: none;
+        outline: none;
+        cursor: pointer;
+        padding: 5px 10px;
+        transition: 0.3s;
+        /* font-size: 14px; */
+        font-weight:bold;
+        }
+
+        /* Change background color of buttons on hover */
+        .tab button:hover {
+        background-color: #ddd;
+        }
+
+        /* Create an active/current tablink class */
+        .tab button.active {
+        background-color: #ccc;
+        }
+
+        /* Style the tab content */
+        .tabcontent {
+        display: none;
+        padding: 6px 12px;
+        border: 1px solid #ccc;
+        border-top: none;
+        }
+
+
+        .fert-apply-area li{
+            list-style: none;
+        }
+
+        .appplyLandArea{
+            border:1px solid #CCCCCC;
+            padding-top:2px;
+            padding-bottom:2px;
+        }
+        #landAreaDec, #treeNumber{
+            width:60px;
+        }
+
+        .table th, .table td {
+            padding: 0.75rem;
+            vertical-align: top;
+            border-top: 1px solid #dee2e6;
+        }
+
+
+    </style>
+
+
+
+
+</head>
+
+<body style="font-size: 1.0rem;">
+
+<div class="row" style="margin:5px; color:blue; font-size:1em; font-weight:bold; width:100%;">
+    <div class="col-md-9">
+        <span><b> Crop Name: </b>Boro dhan</span> ; &nbsp;&nbsp; 
+        Longitude: &nbsp;  <span id="lonLabel"></span>, Latitude: &nbsp;  <span id="latLabel"></span>
+    </div>
+    <div class="col-md-3" style="margin:0px; text-align: right;">
+        <button onclick="downloadPDF()"  style="margin:0px;">Download PDF</button>
+        
+    </div>
+
+
+</div>
+
+<div class="row" style="margin:5px 15px; color:black; font-size:.9em; font-weight:normal;">
+    <b>Location:</b> &nbsp; <span id="locatinLabel"></span>
+</div>
+
+<div class="row" style="margin:5px 15px; color:black; font-size:.9em; font-weight:normal;">
+    <b>AEZ:</b> &nbsp; <span id="aezLabel"></span>
+</div>
+<div class="row" style="margin:5px 15px; color:black; font-size:.9em; font-weight:normal;">
+    <b>Flood:</b> &nbsp; <span id="floodLabel"></span>
+
+
+</div>
+
+<div class="tab">
+  <button class="tablinks" onclick="openCity(event, 'Recom')" id="defaultOpen">Fertilizer Recommendation</button>
+  <button class="tablinks" onclick="openCity(event, 'Apply')">Fertilizer Application Method</button>
+  <button class="tablinks" onclick="openCity(event, 'Status')">Soil Nutrient Status</button>
+</div>
+
+<div id="Recom" class="tabcontent">
+  <!-- <h5>সার সুপারিশ</h5> -->
+  <p>
+                <div>
+            Crop Variety:
+            <select name="var" id="var" onchange="onChangeVar(this.value)">
+                                    <option
+                         selected                     value="1067">BRRI hybrid dhan10
+                    </option>
+                                    <option
+                                            value="1066">BRRI hybrid dhan9
+                    </option>
+                                    <option
+                                            value="1065">BRRI dhan118
+                    </option>
+                                    <option
+                                            value="1068">BRRI dhan117
+                    </option>
+                                    <option
+                                            value="1063">BRRI dhan116
+                    </option>
+                                    <option
+                                            value="1062">BRRI dhan115
+                    </option>
+                                    <option
+                                            value="1044">BRRI dhan114
+                    </option>
+                                    <option
+                                            value="1043">BRRI dhan113
+                    </option>
+                                    <option
+                                            value="751">BRRI dhan108
+                    </option>
+                                    <option
+                                            value="750">BRRI dhan107
+                    </option>
+                                    <option
+                                            value="691">BRRI dhan105
+                    </option>
+                                    <option
+                                            value="654">BRRI hybrid dhan8
+                    </option>
+                                    <option
+                                            value="676">BINA dhan25
+                    </option>
+                                    <option
+                                            value="655">BRRI dhan104
+                    </option>
+                                    <option
+                                            value="591">BRRI dhan102
+                    </option>
+                                    <option
+                                            value="590">BRRI dhan101
+                    </option>
+                                    <option
+                                            value="552">BRRI dhan100
+                    </option>
+                                    <option
+                                            value="515">BINA dhan24
+                    </option>
+                                    <option
+                                            value="748">BRRI dhan96
+                    </option>
+                                    <option
+                                            value="549">BRRI dhan99
+                    </option>
+                                    <option
+                                            value="548">BRRI dhan97
+                    </option>
+                                    <option
+                                            value="331">BRRI dhan92
+                    </option>
+                                    <option
+                                            value="330">BRRI dhan89
+                    </option>
+                                    <option
+                                            value="334">BRRI dhan88
+                    </option>
+                                    <option
+                                            value="338">BRRI dhan86
+                    </option>
+                                    <option
+                                            value="337">BRRI dhan84
+                    </option>
+                                    <option
+                                            value="336">BRRI dhan81
+                    </option>
+                                    <option
+                                            value="333">BRRI hybrid dhan5
+                    </option>
+                                    <option
+                                            value="329">BINA dhan18
+                    </option>
+                                    <option
+                                            value="362">BRRI dhan74
+                    </option>
+                                    <option
+                                            value="340">BINA dhan14
+                    </option>
+                                    <option
+                                            value="361">BRRI dhan69
+                    </option>
+                                    <option
+                                            value="360">BRRI dhan68
+                    </option>
+                                    <option
+                                            value="359">BRRI dhan64
+                    </option>
+                                    <option
+                                            value="358">BRRI dhan63
+                    </option>
+                                    <option
+                                            value="343">BRRI dhan67
+                    </option>
+                                    <option
+                                            value="357">BRRI dhan60
+                    </option>
+                                    <option
+                                            value="356">BRRI dhan59
+                    </option>
+                                    <option
+                                            value="342">BRRI dhan61
+                    </option>
+                                    <option
+                                            value="355">BRRI dhan58
+                    </option>
+                                    <option
+                                            value="345">BINA dhan10
+                    </option>
+                                    <option
+                                            value="659">BRRI dhan55
+                    </option>
+                                    <option
+                                            value="332">BRRI hybrid dhan3
+                    </option>
+                                    <option
+                                            value="335">BRRI hybrid dhan2
+                    </option>
+                                    <option
+                                            value="354">BRRI dhan50 (Banglamoti)
+                    </option>
+                                    <option
+                                            value="346">BINA dhan8
+                    </option>
+                                    <option
+                                            value="344">BRRI dhan47
+                    </option>
+                                    <option
+                                            value="353">BRRI dhan45
+                    </option>
+                                    <option
+                                            value="339">BINA dhan6
+                    </option>
+                                    <option
+                                            value="341">BINA dhan5
+                    </option>
+                                    <option
+                                            value="352">BRRI dhan29
+                    </option>
+                                    <option
+                                            value="351">BRRI dhan28
+                    </option>
+                                    <option
+                                            value="350">BR19
+                    </option>
+                                    <option
+                                            value="349">BR18 (Shahjalal)
+                    </option>
+                                    <option
+                                            value="348">BR17 (Hasi)
+                    </option>
+                                    <option
+                                            value="347">BR16 (Shahibalam)
+                    </option>
+                            </select>
+        </div>
+        
+                <div style="margin:5px 0px;"> Land Area (decimal):
+            <input type="number" id="landAreaDec" value="1" min="1" style="max-width:80px; text-align:right">
+            <button type="button" class="appplyLandArea" style="color: blue;  margin-left:10px; " onclick="appplyLandArea()">
+                &nbsp;<i class="fa-solid fa-calculator  fa-xl"></i>
+            </button>
+
+        </div>
+        
+
+        <div id="fert-container-en"> Loading data...
+
+        </div>
+
+  
+  </p>
+</div>
+
+<div id="Apply" class="tabcontent fert-apply-area">
+  <!-- <h5>সার প্রয়োগ পদ্ধতি</h5> -->
+
+        <ul><li>(a) In general, all of P, K, S and Zn fertilizers should be applied as basal during final land preparation. S and Zn can be top-dressed if needed.</li><li>(b) For light textured soils, half of K should be applied as basal and the rest half should be applied with last N top-dressing.</li><li>(c) N should be applied in three equal splits, the first one as basal/immediately after seedling establishment, the second one at early tillering stage and the third one at 5-7 days before panicle initiation (PI) stage.&nbsp;</li><li>(d) If using granular urea as a source of nitrogen fertilizer, 10-15 days after transplanting of Boro rice seedlings, 2.7 gm pellets of urea fertilizer are placed&nbsp;7-10 cm (3-4 inches) below the soil in the middle of four hills and covered. Granular urea should be placed first between the 1st and 2nd rows of the rice field and then between the 3rd and 4th rows respectively.</li><li>(e) Seedlings in rice crops must be planted in rows at a distance of 20 cm (8 inches) from hill to hill and 20 cm (8 inches) from plant to plant.</li><li>(f) Using granular urea in paddy field requires about 25-30 percent less urea and 15-20 percent increase in yield.</li></ul>
+  
+
+</div>
+
+<div id="Status" class="tabcontent">
+  <!-- <h5>Soil Status</h5> -->
+
+
+    <table class="table table-hover table-striped table-fit">
+        <thead class="bg-warning">
+        <tr>
+            <th>Nutrient Element</th>
+            <th>Limit Range</th>
+            <th class="text-right">Nutrient Value</th>
+        </tr>
+        </thead>
+        <tbody>
+
+                                <tr>
+                <td>Nitrogen</td>
+                <td>Very Low</td>
+                <td class="text-right">0.048</td>
+            </tr>
+                        <tr>
+                <td>Phosphorus (O)</td>
+                <td>Very Low</td>
+                <td class="text-right">0</td>
+            </tr>
+                        <tr>
+                <td>Phosphorus (B)</td>
+                <td>Medium</td>
+                <td class="text-right">11.3</td>
+            </tr>
+                        <tr>
+                <td>Sulfur</td>
+                <td>Very Low</td>
+                <td class="text-right">8.87</td>
+            </tr>
+                        <tr>
+                <td>Potassium</td>
+                <td>Low</td>
+                <td class="text-right">0.11</td>
+            </tr>
+                        <tr>
+                <td>Calcium</td>
+                <td>Very High</td>
+                <td class="text-right">11.13</td>
+            </tr>
+                        <tr>
+                <td>Magnesium</td>
+                <td>Very High</td>
+                <td class="text-right">3.85</td>
+            </tr>
+                        <tr>
+                <td>Zinc</td>
+                <td>Medium</td>
+                <td class="text-right">1.44</td>
+            </tr>
+                        <tr>
+                <td>Boron</td>
+                <td>Low</td>
+                <td class="text-right">0.36</td>
+            </tr>
+                            </tbody>
+    </table>
+
+</div>
+
+
+<!-- <button id="btn-fert-back" class="float-right btn btn-sm btn-secondary" onclick="history.back()">ফিরে যান</button> -->
+
+
+<script>
+function openCity(evt, cityName) {
+  var i, tabcontent, tablinks;
+  tabcontent = document.getElementsByClassName("tabcontent");
+  for (i = 0; i < tabcontent.length; i++) {
+    tabcontent[i].style.display = "none";
+  }
+  tablinks = document.getElementsByClassName("tablinks");
+  for (i = 0; i < tablinks.length; i++) {
+    tablinks[i].className = tablinks[i].className.replace(" active", "");
+  }
+  document.getElementById(cityName).style.display = "block";
+  evt.currentTarget.className += " active";
+}
+
+// Get the element with id="defaultOpen" and click on it
+document.getElementById("defaultOpen").click();
+</script>
+
+
+
+<script>
+
+    var cropId = '1';
+    var lng = '88.44103';
+    var lat = '24.62968';
+    var cropType = 'crop';
+    var isTeaCrop = cropId === '108';
+    var v = '1067';
+    var landArea = 1;
+
+    function getTreeNumber() {
+        var n = parseInt($('#treeNumber').val(), 10);
+        if (isNaN(n) || n < 1) {
+            n = 1;
+        }
+        $('#treeNumber').val(n);
+        return n;
+    }
+
+    function updateFertDoseLabel(treeCount) {
+        var $label = $('#fertDoseLabel');
+        if (!$label.length) {
+            return;
+        }
+        var n = parseInt(treeCount, 10);
+        if (isNaN(n) || n < 1) {
+            n = 1;
+        }
+        if (n > 1) {
+            $label.text('[ Fertilizer Dose for ' + n + ' trees/year ]');
+        } else if (isTeaCrop) {
+            $label.text('[ Fertilizer Dose kg/tree/year ]');
+        } else {
+            $label.text('[ Fertilizer Dose /tree/year ]');
+        }
+    }
+
+    function applyTreeNumber() {
+        var treeCount = getTreeNumber();
+        updateFertDoseLabel(treeCount);
+        calculateFert(v, cropId, lng, lat, treeCount);
+    }
+
+    if (cropType === 'tree' && $('#treeNumber').length) {
+        $('#treeNumber').on('input change', function () {
+            this.value = this.value.replace(/[^0-9]/g, '');
+            if (this.value === '' || parseInt(this.value, 10) < 1) {
+                this.value = '1';
+            }
+            updateFertDoseLabel(getTreeNumber());
+        });
+    }
+
+    var downloadUrl = "/czis/fertilizer/byvar/crop/" + cropId + "/point/lon/"+lng+"/lat/"+lat+"/1/"+v+"/" + landArea; // 1 for print=1
+    console.log(downloadUrl);
+    const urlParts = window.location.pathname.split('/').filter(part => part);
+    console.log(urlParts);
+    if(urlParts.length >= 11){
+        v = urlParts[11];
+        landArea = urlParts[12];
+        const selectElement = document.getElementById('var');
+        const landAreaDecText = document.getElementById('landAreaDec');
+        if (selectElement) {
+            selectElement.value = v;
+        }
+        if (landAreaDecText) {
+            landAreaDecText.value = landArea;
+        }
+        if (cropType === 'tree' && $('#treeNumber').length) {
+            $('#treeNumber').val(landArea);
+            updateFertDoseLabel(landArea);
+        }
+    }
+    if (cropType === 'tree') {
+        updateFertDoseLabel(getTreeNumber());
+    }
+    console.log('v, cropId, lng, lat, landArea: ' + v + ', ' + cropId + ', ' +  lng + ', ' +  lat + ', ' +  landArea);
+
+    function calculateFert(v, cropId, lng, lat, landAreaOrTreeNumber) {
+        var requestParam = landAreaOrTreeNumber;
+        if (cropType === 'tree') {
+            requestParam = getTreeNumber();
+        }
+        let url = "/czis/fertilizer/recommendationbypoint/crop/" + cropId + "/lon/"+lng+"/lat/"+lat+"/var/"+v+ "/" + requestParam;
+        console.log('final link: ' + url);
+        $.ajax({
+            url: url,
+            method: "GET", 
+            headers: {
+                "content-type": "application/json",
+                // "X-CSRF-TOKEN": Laravel.csrfToken,
+            },
+            data: {},
+            success: (data) => {
+
+                $("#fert-container-en").html(data);
+
+            },
+            complete() {
+                // $("#wait-button").hide();
+            }
+        });
+
+        //sending saved data info to Mobile Device 
+        //setSavingDataLinkInfo(WEB_BASE_URL + url, "title 22");
+        downloadUrl = "/czis/fertilizer/byvar/crop/" + cropId + "/point/lon/"+lng+"/lat/"+lat+"/1/"+v+"/" + requestParam;
+
+
+    }
+
+    // function onChangeLand(val) {
+    //     landType = val;
+    //     calculateFert(v, cropId, lng, lat);
+    // }
+
+
+    function appplyLandArea() {
+        landArea = $("#landAreaDec").val();
+        if(landArea <1){
+            landArea =1;
+            $("#landAreaDec").val(1);
+        }
+        calculateFert(v, cropId, lng, lat, landArea);
+    }
+
+    function onChangeVar(val) {
+        v = val;
+        if (cropType === 'tree') {
+            updateFertDoseLabel(getTreeNumber());
+            calculateFert(v, cropId, lng, lat, getTreeNumber());
+        } else {
+            calculateFert(v, cropId, lng, lat, landArea);
+        }
+    }
+
+
+    function getLocationInfo(lng, lat) {
+        let url = "/services/getlocationnew/" + lng + "/" + lat;
+        $.ajax({ 
+            url: url,
+            method: "GET",
+            headers: {
+                "content-type": "application/json",
+                // "X-CSRF-TOKEN": Laravel.csrfToken,
+            },
+            data: {},
+            success: (data) => {
+                console.log('point info: ');
+                console.log(data);
+                $('#locatinLabel').html(data.address.district_en + " >> " + data.address.upazila_en +" >> " + data.address.union_en +" >> " + data.address.mauza_en  );
+                $('#aezLabel').html(data.aez.aez_english + " (" + data.aez.region +")");
+                $('#floodLabel').html(data.flood.floodcat_en);
+            },
+            complete() {
+                // $("#wait-button").hide();
+            }
+        });
+    }
+
+    getLocationInfo(lng, lat);
+
+
+    function setLatLon(){
+        $('#lonLabel').html(lng);
+        $('#latLabel').html(lat);
+    }
+
+    setLatLon();
+
+
+    $(() => {
+        if (cropType === 'tree') {
+            calculateFert(v, cropId, lng, lat, getTreeNumber());
+        } else {
+            calculateFert(v, cropId, lng, lat, landArea);
+        }
+    });
+
+</script>
+
+<script>
+    function downloadPDF() {
+        $('body').html('<br />&nbsp;&nbsp;&nbsp;generating download preview...');
+        window.location.href = downloadUrl;
+    }
+
+</script>
+
+
+</body>
+</html>

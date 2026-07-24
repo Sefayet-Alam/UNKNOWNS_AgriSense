@@ -1,19 +1,27 @@
 """Authentication routes: register, login, refresh (rotation), logout, me."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import geo
 from ..database import get_db
 from ..deps import bearer_scheme, get_current_user
-from ..models import TokenBlacklist, User
+from ..config import settings
+from ..models import OtpChallenge, TokenBlacklist, User
 from ..schemas import (
+    ActionOut,
     LoginRequest,
     LogoutRequest,
+    PasswordChangeRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetStartOut,
+    PasswordResetStartRequest,
     RefreshRequest,
     RegisterRequest,
     TokenPair,
@@ -57,6 +65,16 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
             status_code=400, detail="Password must be at least 8 characters."
         )
 
+    # Union is optional (some upazilas have none listed) — but when provided
+    # it must be a real union under the chosen upazila (bundled gazetteer).
+    if payload.union_code and not geo.union_valid(
+        payload.union_code, payload.upazila_code
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Select a valid union for the chosen upazila.",
+        )
+
     # payload.phone is already normalized to 01XXXXXXXXX by the schema validator.
     dup = await db.execute(select(User).where(User.phone == payload.phone))
     if dup.scalar_one_or_none() is not None:
@@ -74,6 +92,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         district_code=payload.district_code,
         upazila_name=payload.upazila_name,
         upazila_code=payload.upazila_code,
+        union_name=payload.union_name,
+        union_code=payload.union_code,
     )
     db.add(user)
     await db.commit()
@@ -165,3 +185,101 @@ async def logout(
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
     return user_out(user)
+
+
+@router.post("/password/change", response_model=ActionOut)
+async def change_password(
+    payload: PasswordChangeRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    if verify_password(payload.new_password, user.hashed_password):
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be different from the current password.",
+        )
+    user.hashed_password = hash_password(payload.new_password)
+    await db.commit()
+    return ActionOut(message="Password updated successfully.")
+
+
+@router.post("/password/reset/request", response_model=PasswordResetStartOut)
+async def request_password_reset(
+    payload: PasswordResetStartRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a short-lived reset challenge without revealing account existence."""
+    user = (
+        await db.execute(select(User).where(User.phone == payload.phone))
+    ).scalar_one_or_none()
+    challenge_id = str(uuid4())
+    if user is not None:
+        db.add(
+            OtpChallenge(
+                id=challenge_id,
+                user_id=user.id,
+                purpose="password_reset",
+                provider="mock",
+                provider_reference=f"mock-reset-{uuid4()}",
+                otp_hash=hash_password(settings.MOCK_OTP_CODE),
+                details={"phone": user.phone},
+                attempts=0,
+                expires_at=datetime.now(timezone.utc)
+                + timedelta(seconds=settings.OTP_TTL_SECONDS),
+            )
+        )
+        await db.commit()
+
+    return PasswordResetStartOut(
+        challenge_id=challenge_id,
+        expires_in_seconds=settings.OTP_TTL_SECONDS,
+        message="If the number is registered, a reset code has been prepared.",
+        demo_otp=settings.MOCK_OTP_CODE,
+    )
+
+
+@router.post("/password/reset/confirm", response_model=ActionOut)
+async def confirm_password_reset(
+    payload: PasswordResetConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(OtpChallenge).where(
+            OtpChallenge.id == payload.challenge_id,
+            OtpChallenge.purpose == "password_reset",
+        )
+    )
+    challenge = result.scalar_one_or_none()
+    invalid = HTTPException(
+        status_code=400, detail="Invalid or expired reset code."
+    )
+    now = datetime.now(timezone.utc)
+    if (
+        challenge is None
+        or challenge.user_id is None
+        or challenge.verified_at is not None
+        or challenge.expires_at <= now
+    ):
+        raise invalid
+    if challenge.attempts >= settings.OTP_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429, detail="Too many attempts. Request a new code."
+        )
+
+    challenge.attempts += 1
+    if not verify_password(payload.otp, challenge.otp_hash):
+        await db.commit()
+        raise invalid
+
+    user = (
+        await db.execute(select(User).where(User.id == challenge.user_id))
+    ).scalar_one_or_none()
+    if user is None:
+        await db.commit()
+        raise invalid
+    user.hashed_password = hash_password(payload.new_password)
+    challenge.verified_at = now
+    await db.commit()
+    return ActionOut(message="Password reset successfully. You can now sign in.")

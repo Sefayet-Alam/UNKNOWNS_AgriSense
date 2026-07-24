@@ -127,7 +127,9 @@ def _intake_turn1() -> List[BaseMessage]:
 
 
 def _intake_turn2() -> List[BaseMessage]:
-    """Farmer gave budget+season; agent saves and confirms the summary."""
+    """Farmer gave budget+season; agent saves, fills soil from the survey
+    (mandatory slot — get_soil_context first, ask only on SOIL_UNKNOWN),
+    then confirms the summary."""
     return [
         AIMessage(
             content="",
@@ -141,9 +143,21 @@ def _intake_turn2() -> List[BaseMessage]:
             ],
         ),
         AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "get_soil_context",
+                    "args": {},
+                    "id": "call_soil_1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        AIMessage(
             content=(
                 "আমি যা বুঝেছি: তানোরে ৩ বিঘা (৯৯ শতক), সেচ আছে, বাজেট "
-                "৮০,০০০ টাকা, রবি মৌসুম। ঠিক আছে?"
+                "৮০,০০০ টাকা, রবি মৌসুম; জরিপ অনুযায়ী মাটি এঁটেল দোআঁশ "
+                "(Clay Loam) — ঠিক আছে?"
             )
         ),
     ]
@@ -253,6 +267,8 @@ def register_payload(phone: str, password: str = DEFAULT_PASSWORD, **overrides) 
         "district_code": "5081",
         "upazila_name": "Tanore",
         "upazila_code": "508194",
+        "union_name": "Badhair",
+        "union_code": "50819427",
     }
     body.update(overrides)
     return body

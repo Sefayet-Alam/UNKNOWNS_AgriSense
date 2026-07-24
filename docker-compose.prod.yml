@@ -1,0 +1,63 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-argi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-argi_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-argi}
+    volumes:
+      - agrisense_prod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-argi} -d ${POSTGRES_DB:-argi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-argi}:${POSTGRES_PASSWORD:-argi_dev_password}@db:5432/${POSTGRES_DB:-argi}
+    ports:
+      - "127.0.0.1:18743:8000"
+    volumes:
+      - ./backend/logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://agrisense.cortextech.dev}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://agrisense.cortextech.dev}
+    ports:
+      - "127.0.0.1:19327:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  agrisense_prod_pgdata:
+    name: agrisense_prod_pgdata

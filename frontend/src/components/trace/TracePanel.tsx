@@ -151,7 +151,7 @@ export function TracePanel({ turn, thinking, isLive, model, collapsed, onToggle 
         type="button"
         onClick={onToggle}
         aria-label="Show agent trace"
-        className="relative flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-hairline bg-panel py-4 text-ink-dim transition hover:text-signal"
+        className="relative flex h-full w-11 shrink-0 flex-col items-center gap-2 border-l border-jute-300/55 bg-paper-100 py-4 text-ink-dim transition hover:bg-paper-50 hover:text-signal hover:shadow-lift"
       >
         <PanelRightOpen size={18} />
         {count > 0 && (
@@ -167,7 +167,7 @@ export function TracePanel({ turn, thinking, isLive, model, collapsed, onToggle 
   }
 
   return (
-    <aside className="flex h-full w-[340px] shrink-0 flex-col border-l border-hairline bg-panel">
+    <aside className="absolute inset-y-0 right-0 z-30 flex h-full w-[min(340px,calc(100vw-3.5rem))] shrink-0 flex-col border-l border-jute-300/55 bg-paper-100 shadow-[-18px_0_45px_-30px_rgba(23,53,27,.5)] sm:relative sm:z-auto sm:w-[340px]">
       <div className="flex items-center justify-between border-b border-hairline px-3 py-3">
         <span className="min-w-0">
           <span className="block font-mono text-xs uppercase tracking-widest text-ink-dim">

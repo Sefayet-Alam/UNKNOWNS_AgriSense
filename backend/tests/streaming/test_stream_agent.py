@@ -30,6 +30,14 @@ async def test_plain_turn_frame_order_and_persistence(auth_client, fake_llm):
     assert types[-1] == "done"
     assert "error" not in types
 
+    # Language STATE: English message -> routing frame shows "reply: english".
+    routing = [
+        e["detail"]
+        for e in events
+        if e["type"] == "progress" and e.get("stage") == "routing"
+    ]
+    assert routing and "reply: english" in routing[0]
+
     # The user echo comes before the assistant message.
     message_events = [e for e in events if e["type"] == "message"]
     user_msg = next(e["message"] for e in message_events if e["message"]["role"] == "user")
@@ -146,7 +154,7 @@ async def test_weather_tool_turn_traces_real_adapter_values(
             "geocode_source": "open-meteo-geocoding",
         }
 
-    async def fake_forecast(lat, lon, days, client=None):
+    async def fake_forecast(lat, lon, days, past_days=0, client=None):
         return {
             "source": "Open-Meteo forecast API",
             "fetched_at": "2026-07-24T06:00:00+00:00",
@@ -175,6 +183,15 @@ async def test_weather_tool_turn_traces_real_adapter_values(
     assert types[-1] == "done"
     assert "error" not in types
 
+    # Language STATE: classify detected Bengali from this message and the
+    # routing progress frame surfaces it (state -> per-node directive).
+    routing = [
+        e["detail"]
+        for e in events
+        if e["type"] == "progress" and e.get("stage") == "routing"
+    ]
+    assert routing and "reply: bengali" in routing[0]
+
     # Chip appears with the scripted args.
     chip = None
     for e in events:
@@ -196,7 +213,10 @@ async def test_weather_tool_turn_traces_real_adapter_values(
     assert filled, "get_weather result never filled"
     assert "total_rain_mm" in filled
     assert "Open-Meteo" in filled
-    assert "Tanore" in filled
+    # Default location = the farm itself: registration union (Badhair)
+    # pinned the farm to coordinates, so no geocoding happened.
+    assert "Badhair" in filled
+    assert "farm_profile" in filled
 
     # Final Bengali assistant answer survives SSE intact.
     finals = [
@@ -261,6 +281,9 @@ async def test_multi_turn_intake_fills_profile_across_turns(
     assert farm.irrigation_available is True
     assert farm.budget_bdt == 80000
     assert farm.season == "rabi"
+    # Soil (mandatory slot) was filled by get_soil_context from the bundled
+    # survey — Tanore's dominant texture — so the phase could advance.
+    assert farm.soil_texture == "Clay Loam"
     assert farm.phase == "ready_for_planning"
 
     # Final assistant summary (Bengali) reached the client intact.

@@ -24,7 +24,7 @@ export function PlanCard({ plan }: { plan: AgriPlan }) {
   const best = plan.crops[0];
 
   return (
-    <div className="mt-2 overflow-hidden rounded-xl border border-hairline bg-panel">
+    <div className="mt-2 overflow-hidden border border-jute-300/55 bg-panel shadow-card transition duration-300 hover:-translate-y-0.5 hover:shadow-lift">
       <div className="flex items-center justify-between border-b border-hairline bg-panel-2 px-3 py-2">
         <span className="font-display text-sm font-semibold text-ink">
           🌾 Season Plan · {plan.crop}
@@ -58,7 +58,7 @@ export function PlanCard({ plan }: { plan: AgriPlan }) {
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1 rounded-md border border-hairline px-2 py-1 text-xs text-ink transition hover:border-signal/50 hover:text-signal"
+          className="flex items-center gap-1 rounded-full border border-hairline px-2.5 py-1 text-xs text-ink transition hover:-translate-y-0.5 hover:border-signal/50 hover:text-signal hover:shadow-card"
         >
           {open ? "Hide details" : "See full plan"}
           <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />

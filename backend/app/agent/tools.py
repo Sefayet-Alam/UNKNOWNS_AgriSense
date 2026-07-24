@@ -12,6 +12,9 @@ from typing import Optional
 from langchain_core.tools import tool
 from sqlalchemy import select
 
+from .. import geo as geo_mod
+from .. import soil as soil_mod
+from ..adapters import czis as czis_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
 from ..database import AsyncSessionLocal
@@ -100,44 +103,132 @@ def calculator(expression: str) -> str:
 def build_weather_tool(user):
     """Return a ``get_weather`` tool bound to the user's registered address.
 
-    The tool calls the real Open-Meteo API (keyless). On any failure it
-    returns a structured WEATHER_UNAVAILABLE message — the agent must relay
+    Coordinate resolution is OFFLINE-FIRST: the farmer's active farm (or
+    registration address) already carries lat/lon from the bundled gazetteer
+    (union centroid), and admin-unit names resolve through the same bundle —
+    the flaky live geocoder is only the last resort for non-admin place names.
+    The forecast itself calls the real Open-Meteo API (keyless). On failure a
+    structured WEATHER_UNAVAILABLE message is returned — the agent must relay
     the outage honestly and never invent forecast values.
     """
-    default_place = (
-        getattr(user, "upazila_name", "") or getattr(user, "district_name", "") or ""
-    )
-    default_district = getattr(user, "district_name", "") or None
+
+    async def _default_location() -> Optional[dict]:
+        """The farmer's own field: farm lat/lon, else gazetteer centroid."""
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+        label = farm.union_name or farm.upazila_name or farm.district_name
+        if farm.latitude is not None and farm.longitude is not None:
+            return {
+                "name": label or "farm",
+                "latitude": farm.latitude,
+                "longitude": farm.longitude,
+                "admin1": farm.division_name,
+                "admin2": farm.district_name,
+                "geocode_source": "farm_profile",
+            }
+        resolved = geo_mod.resolve_coords(
+            union_code=farm.union_geocode or getattr(user, "union_code", ""),
+            upazila_code=farm.upazila_code or getattr(user, "upazila_code", ""),
+            district_code=farm.district_code or getattr(user, "district_code", ""),
+        )
+        if resolved:
+            return {
+                "name": label or resolved["name"],
+                "latitude": resolved["lat"],
+                "longitude": resolved["lon"],
+                "admin1": farm.division_name,
+                "admin2": farm.district_name,
+                "geocode_source": f"gazetteer_{resolved['level']}_centroid",
+            }
+        return None
 
     @tool
-    async def get_weather(location: str = "", days: int = 7) -> str:
-        """Fetch the REAL weather forecast (live Open-Meteo API) for a Bangladesh location.
+    async def get_weather(
+        location: str = "",
+        days: int = 7,
+        past_days: int = 0,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+    ) -> str:
+        """Fetch REAL weather (live Open-Meteo API) for a Bangladesh location —
+        forecast AND recent past.
 
         Args:
-            location: Place name (upazila/district/town), e.g. "Tanore". Leave
-                empty to use the farmer's registered upazila.
-            days: Forecast horizon in days, 1-16 (Open-Meteo maximum is 16).
+            location: Place name (union/upazila/district/town), e.g. "Tanore".
+                Leave empty to use the farmer's own farm location — preferred,
+                it always resolves to exact coordinates.
+            days: Forecast horizon in days, 0-16 (Open-Meteo maximum is 16;
+                0 = no forecast, past only). A negative value is treated as
+                past_days (e.g. -7 = last 7 days, no forecast).
+            past_days: How many RECENT PAST days to include (0-92). Use for
+                questions like "how much rain fell last week?" — past rows are
+                recorded weather (kind=past) with their own past_summary;
+                never guess historical weather.
+            latitude: Optional explicit latitude — overrides location lookup.
+            longitude: Optional explicit longitude — overrides location lookup.
 
         Returns daily min/max temperature (C), rainfall (mm), rain probability
-        (%), FAO ET0 evapotranspiration (mm) and max wind (km/h), plus a
-        summary. These are actual API values — cite them as retrieved data. If
-        this tool reports WEATHER_UNAVAILABLE, tell the farmer live weather is
-        currently unavailable; NEVER invent forecast numbers.
+        (%), FAO ET0 evapotranspiration (mm) and max wind (km/h), plus
+        summaries (forecast summary + past_summary when past days requested).
+        These are actual API values — cite them as retrieved data. If this
+        tool reports WEATHER_UNAVAILABLE, tell the farmer live weather is
+        currently unavailable; NEVER invent weather numbers, past or future.
+        If a location name is not understood, retry once passing
+        latitude/longitude explicitly.
         """
-        place = (location or "").strip() or default_place
-        _emit("weather", f"geocoding location: {place}")
+        # Tolerate the negative-days convention: -7 means "last 7 days".
+        if days < 0:
+            past_days = max(past_days, -days)
+            days = 0
+        place = (location or "").strip()
+        loc: Optional[dict] = None
         try:
-            geo = await weather_mod.geocode_place(
-                place,
-                district=None if (location or "").strip() else default_district,
-            )
+            if latitude is not None and longitude is not None:
+                loc = {
+                    "name": place or f"({latitude}, {longitude})",
+                    "latitude": float(latitude),
+                    "longitude": float(longitude),
+                    "admin1": "",
+                    "admin2": "",
+                    "geocode_source": "explicit_coordinates",
+                }
+            elif not place:
+                _emit("weather", "resolving farmer's farm coordinates")
+                loc = await _default_location()
+                if loc is None:
+                    return (
+                        "WEATHER_UNAVAILABLE: the farm has no saved location "
+                        "yet. Ask the farmer for their upazila/union first "
+                        "(or pass a location name)."
+                    )
+            else:
+                # Named place: bundled gazetteer first (all unions/upazilas/
+                # districts, offline + exact), live geocoder only after that.
+                row = geo_mod.find_place(place)
+                if row is not None:
+                    loc = {
+                        "name": row.get("name_en") or place,
+                        "latitude": row["lat"],
+                        "longitude": row["lon"],
+                        "admin1": "",
+                        "admin2": "",
+                        "geocode_source": f"gazetteer_{row['level']}_centroid",
+                    }
+                else:
+                    # Explicit place -> no registered-district bias (the whole
+                    # point of naming a place is that it may be elsewhere).
+                    _emit("weather", f"geocoding location: {place}")
+                    loc = await weather_mod.geocode_place(place, district=None)
+            span = f"{days}-day forecast" if days else ""
+            if past_days:
+                span = f"past {past_days} days" + (f" + {span}" if span else "")
             _emit(
                 "weather",
-                f"fetching {days}-day forecast for {geo['name']} "
-                f"({geo['latitude']}, {geo['longitude']})",
+                f"fetching {span or 'forecast'} for {loc['name']} "
+                f"({loc['latitude']}, {loc['longitude']})",
             )
             forecast = await weather_mod.fetch_forecast(
-                geo["latitude"], geo["longitude"], days
+                loc["latitude"], loc["longitude"], days, past_days=past_days
             )
         except weather_mod.WeatherError as exc:
             return (
@@ -145,7 +236,7 @@ def build_weather_tool(user):
                 "fetched. Tell the farmer honestly that live weather is "
                 "unavailable right now and do NOT invent forecast values."
             )
-        payload = {"location": geo, **forecast}
+        payload = {"location": loc, **forecast}
         return json.dumps(payload, ensure_ascii=False)
 
     return get_weather
@@ -154,7 +245,14 @@ def build_weather_tool(user):
 # --------------------------------------------------------------------------- #
 # Farm profile tools (factory — all queries scoped to the authenticated user)
 # --------------------------------------------------------------------------- #
-REQUIRED_SLOTS = ("location", "farm_size", "water_availability", "budget", "season")
+REQUIRED_SLOTS = (
+    "location",
+    "farm_size",
+    "soil_type",
+    "water_availability",
+    "budget",
+    "season",
+)
 
 _SEASON_ALIASES = {
     "rabi": "rabi",
@@ -185,6 +283,10 @@ def _missing_slots(farm: Farm) -> list[str]:
         missing.append("location")
     if farm.area_decimal is None:
         missing.append("farm_size")
+    # Soil is MANDATORY before any crop recommendation: filled either by the
+    # get_soil_context tool (upazila survey default) or by asking the farmer.
+    if not farm.soil_texture:
+        missing.append("soil_type")
     if farm.irrigation_available is None:
         missing.append("water_availability")
     if farm.budget_bdt is None:
@@ -206,6 +308,7 @@ def _farm_payload(farm: Farm, warnings: Optional[list[str]] = None) -> dict:
             "upazila": farm.upazila_name,
             "upazila_code": farm.upazila_code,
             "union": farm.union_name,
+            "union_geocode": farm.union_geocode,
             "latitude": farm.latitude,
             "longitude": farm.longitude,
         },
@@ -217,6 +320,11 @@ def _farm_payload(farm: Farm, warnings: Optional[list[str]] = None) -> dict:
         },
         "land_type": farm.land_type,
         "soil_texture": farm.soil_texture,
+        "soil_source": (
+            "survey_default_confirm_with_farmer"
+            if (farm.soil_test or {}).get("source") == _SOIL_SURVEY_MARKER
+            else ("farmer_stated" if farm.soil_texture else "")
+        ),
         "soil_test": farm.soil_test,
         "irrigation_available": farm.irrigation_available,
         "water_source": farm.water_source,
@@ -232,6 +340,105 @@ def _farm_payload(farm: Farm, warnings: Optional[list[str]] = None) -> dict:
     }
 
 
+_SOIL_SURVEY_MARKER = "czis_edaphic_survey_default"
+
+
+def _apply_soil_survey_defaults(farm: Farm, warnings: Optional[list[str]] = None) -> None:
+    """Fill soil_texture/land_type from the upazila survey (marked defaults).
+
+    Mechanical, not model-driven: soil is a MANDATORY slot and the LLM cannot
+    be trusted to always call the lookup tool, so defaults are attached the
+    same way coordinates are. Farmer-stated soil (no marker) is NEVER
+    overwritten; survey defaults from a previous location are refreshed or
+    cleared when the farm moves.
+    """
+    survey_default = bool(farm.soil_test) and (
+        farm.soil_test.get("source") == _SOIL_SURVEY_MARKER
+    )
+    if farm.soil_texture and not survey_default:
+        return  # farmer-stated soil wins, always
+    ctx = soil_mod.soil_context(farm.upazila_code or "")
+    if ctx is None:
+        # Moved somewhere unsurveyed: a stale survey default would describe
+        # the OLD upazila — clear it so the slot goes back to missing and the
+        # agent must ask the farmer.
+        if survey_default:
+            farm.soil_texture = ""
+            farm.land_type = ""
+            farm.soil_test = None
+            if warnings is not None:
+                warnings.append(
+                    "no soil survey for the new location — ask the farmer "
+                    "for their soil type"
+                )
+        return
+    types = ctx["types"]
+    if "texture" in types:
+        farm.soil_texture = types["texture"]["dominant"][:40]
+    if "landtype" in types and (survey_default or not farm.land_type):
+        farm.land_type = types["landtype"]["dominant"][:40]
+    farm.soil_test = {
+        "source": _SOIL_SURVEY_MARKER,
+        "upazila_code": farm.upazila_code,
+        "dominant": {
+            t: types[t]["dominant"] for t in soil_mod.CORE_TYPES if t in types
+        },
+        "note": (
+            "Upazila-level survey default (CZIS edaphic) — confirm with the "
+            "farmer; their own statement overrides it."
+        ),
+    }
+
+
+def _re_resolve_farm_geo(farm: Farm, warnings: list[str]) -> None:
+    """Re-attach geocodes + centroid coordinates after a name-based location edit.
+
+    Matches farmer-stated names against the bundled CZIS/BBS gazetteer:
+    upazila name -> codes for upazila/district/division; union name (within
+    the upazila) -> union geocode. Then pins lat/lon to the most specific
+    centroid available. Unmatched names keep empty codes — get_weather then
+    falls back to the live geocoder for that place name.
+    """
+    if not farm.upazila_code and farm.upazila_name:
+        row = geo_mod.find_upazila_by_name(
+            farm.upazila_name, farm.district_code or None
+        )
+        if row is None:
+            row = geo_mod.find_upazila_by_name(farm.upazila_name)
+        if row is not None:
+            farm.upazila_code = row["code"]
+            farm.upazila_name = row["name_en"]
+            district = geo_mod.get("district", row["district_code"])
+            if district is not None:
+                farm.district_code = district["code"]
+                farm.district_name = district["name_en"]
+            division = geo_mod.get("division", row["division_code"])
+            if division is not None:
+                farm.division_code = division["code"]
+                farm.division_name = division["name_en"]
+    if not farm.union_geocode and farm.union_name and farm.upazila_code:
+        row = geo_mod.find_union_by_name(farm.union_name, farm.upazila_code)
+        if row is not None:
+            farm.union_geocode = row["code"]
+            farm.union_name = row["name_en"]
+    resolved = geo_mod.resolve_coords(
+        union_code=farm.union_geocode or "",
+        upazila_code=farm.upazila_code or "",
+        district_code=farm.district_code or "",
+    )
+    if resolved:
+        farm.latitude = resolved["lat"]
+        farm.longitude = resolved["lon"]
+    elif farm.latitude is None:
+        warnings.append(
+            "location not found in the gazetteer — weather will fall back to "
+            "live geocoding of the place name; double-check the spelling"
+        )
+    # Location determines the soil survey — refresh survey-default soil for
+    # the new upazila (farmer-stated soil is never touched).
+    _apply_soil_survey_defaults(farm, warnings)
+
+
 async def _get_or_create_active_farm(session, user) -> Farm:
     result = await session.execute(
         select(Farm)
@@ -241,9 +448,22 @@ async def _get_or_create_active_farm(session, user) -> Farm:
     )
     farm = result.scalar_one_or_none()
     if farm is not None:
+        # Lazy heal: rows created before the soil-mandatory change get their
+        # survey default attached on first touch.
+        if not farm.soil_texture:
+            _apply_soil_survey_defaults(farm)
+            if farm.soil_texture:
+                await session.commit()
         return farm
     # First contact: prefill from the registration address (a DEFAULT the
-    # agent must confirm — the actual field may be elsewhere).
+    # agent must confirm — the actual field may be elsewhere). The union
+    # centroid from the bundled gazetteer pins the farm to coordinates so
+    # weather never depends on live geocoding.
+    resolved = geo_mod.resolve_coords(
+        union_code=getattr(user, "union_code", "") or "",
+        upazila_code=user.upazila_code or "",
+        district_code=user.district_code or "",
+    )
     farm = Farm(
         user_id=user.id,
         name=f"{user.upazila_name or 'My'} Farm".strip(),
@@ -254,9 +474,15 @@ async def _get_or_create_active_farm(session, user) -> Farm:
         district_code=user.district_code or "",
         upazila_name=user.upazila_name or "",
         upazila_code=user.upazila_code or "",
+        union_name=getattr(user, "union_name", "") or "",
+        union_geocode=getattr(user, "union_code", "") or "",
+        latitude=resolved["lat"] if resolved else None,
+        longitude=resolved["lon"] if resolved else None,
         preferred_crops=[],
         excluded_crops=[],
     )
+    # Soil survey default for the registered upazila (marked, confirmable).
+    _apply_soil_survey_defaults(farm)
     session.add(farm)
     await session.commit()
     await session.refresh(farm)
@@ -347,15 +573,26 @@ def build_farm_tools(user):
                 farm.upazila_name = upazila_name.strip()
                 farm.upazila_code = ""
                 location_changed = True
-            if union_name is not None:
+            union_changed = False
+            if union_name is not None and union_name.strip() != farm.union_name:
                 farm.union_name = union_name.strip()
                 farm.union_geocode = ""
+                union_changed = True
             if location_changed:
-                farm.union_name = farm.union_name  # unions stay if re-stated above
+                # Stale coordinates would silently ground weather/land advice
+                # in the OLD place — clear, then re-resolve from the bundle.
+                farm.latitude = None
+                farm.longitude = None
+                if not union_changed:
+                    # The old union cannot belong to the new upazila.
+                    farm.union_name = ""
+                    farm.union_geocode = ""
                 warnings.append(
                     "farm location changed — stale geocodes cleared; land "
                     "context must be re-fetched"
                 )
+            if location_changed or union_changed:
+                _re_resolve_farm_geo(farm, warnings)
             if latitude is not None:
                 farm.latitude = float(latitude)
             if longitude is not None:
@@ -402,6 +639,9 @@ def build_farm_tools(user):
                 farm.land_type = land_type.strip()[:40]
             if soil_texture is not None:
                 farm.soil_texture = soil_texture.strip()[:40]
+                # Farmer-stated soil replaces any survey default marker.
+                if (farm.soil_test or {}).get("source") == _SOIL_SURVEY_MARKER:
+                    farm.soil_test = None
             if irrigation_available is not None:
                 farm.irrigation_available = bool(irrigation_available)
             if water_source is not None:
@@ -501,9 +741,13 @@ def build_farm_tools(user):
         upazila_name: Optional[str] = None,
         district_name: Optional[str] = None,
         division_name: Optional[str] = None,
+        union_name: Optional[str] = None,
     ) -> str:
         """Create an additional farm for the farmer (e.g. a second field in a
-        different place) and make it the active one."""
+        different place) and make it the active one. A NEW farm starts with an
+        empty profile: before giving any advice for it, collect ALL required
+        fields (location, farm_size, soil_type via get_soil_context, water,
+        budget, season) — see missing_required_fields in the result."""
         _emit("farm", f"creating farm: {name}")
         async with AsyncSessionLocal() as session:
             all_farms = (
@@ -518,13 +762,19 @@ def build_farm_tools(user):
                 division_name=(division_name or "").strip(),
                 district_name=(district_name or "").strip(),
                 upazila_name=(upazila_name or "").strip(),
+                union_name=(union_name or "").strip(),
                 preferred_crops=[],
                 excluded_crops=[],
             )
+            # Attach gazetteer codes + centroid coordinates from the stated
+            # names so weather/CZIS grounding works immediately.
+            warnings: list[str] = []
+            if upazila_name or district_name or union_name:
+                _re_resolve_farm_geo(farm, warnings)
             session.add(farm)
             await session.commit()
             await session.refresh(farm)
-            return json.dumps(_farm_payload(farm), ensure_ascii=False)
+            return json.dumps(_farm_payload(farm, warnings), ensure_ascii=False)
 
     return [get_farm_profile, update_farm_profile, list_farms, select_farm, create_farm]
 
@@ -581,6 +831,210 @@ async def search_knowledge_base(query: str, crop: str = "") -> str:
 
 def build_kb_tools():
     return [search_knowledge_base]
+
+
+# --------------------------------------------------------------------------- #
+# CZIS crop / variety / fertilizer tools (factory — coordinates-first)
+# --------------------------------------------------------------------------- #
+async def _farm_point(user) -> Optional[dict]:
+    """Active farm's coordinates + area (for point-based CZIS calls)."""
+    async with AsyncSessionLocal() as session:
+        farm = await _get_or_create_active_farm(session, user)
+    lat, lon = farm.latitude, farm.longitude
+    if lat is None or lon is None:
+        resolved = geo_mod.resolve_coords(
+            union_code=farm.union_geocode or "",
+            upazila_code=farm.upazila_code or "",
+            district_code=farm.district_code or "",
+        )
+        if resolved:
+            lat, lon = resolved["lat"], resolved["lon"]
+    if lat is None or lon is None:
+        return None
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "area_decimal": farm.area_decimal,
+        "label": farm.union_name or farm.upazila_name or farm.district_name,
+    }
+
+
+def build_soil_tool(user):
+    """``get_soil_context`` — offline CZIS edaphic survey for the active farm.
+
+    Soil type is a MANDATORY intake slot. This tool fills it automatically
+    from the upazila-level survey (dominant texture; a DEFAULT the farmer must
+    confirm). When the upazila is not covered, it returns SOIL_UNKNOWN and the
+    agent MUST ask the farmer directly — crop recommendations are blocked
+    until soil_type is known either way.
+    """
+
+    @tool
+    async def get_soil_context() -> str:
+        """Look up the soil survey for the active farm's upazila (offline CZIS
+        edaphic data, 480 upazilas): dominant soil texture, land type,
+        drainage, pH class and salinity, with per-category area breakdowns.
+
+        If the farm's soil type is still unset, the dominant texture is saved
+        to the profile automatically as an upazila-level DEFAULT — tell the
+        farmer what was assumed and ask them to confirm (their own statement
+        overrides it via update_farm_profile). If this returns SOIL_UNKNOWN,
+        you MUST ask the farmer for their soil type (e.g. sandy/loam/clay) —
+        never guess it."""
+        _emit("soil", "looking up soil survey for the farm's upazila")
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            # Farm's own upazila only. Fall back to the registration address
+            # ONLY when the farm has no location at all — a farm moved to an
+            # unrecognized place must NOT inherit the registered upazila's soil.
+            code = farm.upazila_code or ""
+            if not code and not farm.upazila_name:
+                code = getattr(user, "upazila_code", "") or ""
+            ctx = soil_mod.soil_context(code)
+            if ctx is None:
+                return (
+                    "SOIL_UNKNOWN: no soil survey data for this upazila "
+                    f"({farm.upazila_name or code or 'location unset'}). Ask "
+                    "the farmer directly what their soil is like (sandy / "
+                    "loam / clay, drainage) and save it with "
+                    "update_farm_profile — do NOT guess."
+                )
+            types = ctx["types"]
+            saved = []
+            if not farm.soil_texture and "texture" in types:
+                farm.soil_texture = types["texture"]["dominant"][:40]
+                saved.append(f"soil_texture={farm.soil_texture}")
+            if not farm.land_type and "landtype" in types:
+                farm.land_type = types["landtype"]["dominant"][:40]
+                saved.append(f"land_type={farm.land_type}")
+            if saved:
+                # Filling a mandatory slot may complete the profile.
+                farm.phase = (
+                    "ready_for_planning" if not _missing_slots(farm) else "intake"
+                )
+                await session.commit()
+            payload = {
+                "upazila": farm.upazila_name or code,
+                "upazila_code": code,
+                "survey": {
+                    t: types[t] for t in soil_mod.CORE_TYPES if t in types
+                },
+                "texture_definition": soil_mod.definition(
+                    "texture", types.get("texture", {}).get("dominant", "")
+                ),
+                "auto_saved_defaults": saved,
+                "note": (
+                    "UPAZILA-LEVEL survey averages, not a plot measurement — "
+                    "present the dominant values as an assumption and ask the "
+                    "farmer to confirm; their own answer overrides this."
+                ),
+                "source": ctx["source"],
+            }
+            return json.dumps(payload, ensure_ascii=False)
+
+    return get_soil_context
+
+
+def build_czis_tools(user):
+    """CZIS grounding tools. Fertilizer/context are POINT-based and default to
+    the active farm's coordinates (union/upazila centroid) — the same
+    coordinates-first contract as weather. On any CZIS outage the tools return
+    a CZIS_UNAVAILABLE sentinel; callers must fall back to the FRG knowledge
+    base, never invent numbers.
+    """
+
+    @tool
+    async def czis_list_crops(season: str = "") -> str:
+        """List candidate crops from the national CZIS catalog (129 crops).
+
+        Args:
+            season: optional filter — "rabi" (winter), "kharif-1" (pre-monsoon),
+                or "kharif-2" (monsoon). Empty returns all.
+
+        Returns crop_id, name, season and variety_group. Use crop_id with the
+        other czis tools. This is a bundled reference catalog (always available).
+        """
+        _emit("czis", f"listing crops (season={season or 'all'})")
+        crops = czis_mod.list_crops(season=season or None)
+        return json.dumps(
+            {"count": len(crops), "crops": crops, "source": czis_mod.crops_source()},
+            ensure_ascii=False,
+        )
+
+    @tool
+    async def czis_crop_varieties(crop_id: int) -> str:
+        """Live CZIS variety table for a crop: name, yield (t/ha), duration
+        (days), and characteristics. Use to compare varieties when ranking or
+        picking a crop. crop_id comes from czis_list_crops."""
+        _emit("czis", f"fetching varieties for crop {crop_id}")
+        try:
+            data = await czis_mod.get_varieties(crop_id)
+        except czis_mod.CzisError as exc:
+            return f"CZIS_UNAVAILABLE: {exc}. Fall back to the knowledge base; do not invent variety data."
+        return json.dumps(data, ensure_ascii=False)
+
+    @tool
+    async def czis_crop_context(crop_id: int) -> str:
+        """Live CZIS crop context at the farm's location: the official crop name
+        plus the selectable varieties WITH their CZIS variety_id. You need a
+        variety_id from here before calling czis_fertilizer_recommendation.
+        Uses the active farm's coordinates automatically."""
+        _emit("czis", f"fetching crop {crop_id} context at farm location")
+        point = await _farm_point(user)
+        if point is None:
+            return json.dumps(
+                {"error": "farm has no location yet — ask the farmer for upazila/union first"},
+                ensure_ascii=False,
+            )
+        try:
+            data = await czis_mod.get_crop_context(
+                crop_id, point["latitude"], point["longitude"]
+            )
+        except czis_mod.CzisError as exc:
+            return f"CZIS_UNAVAILABLE: {exc}. Fall back to the knowledge base; do not invent data."
+        return json.dumps(data, ensure_ascii=False)
+
+    @tool
+    async def czis_fertilizer_recommendation(
+        crop_id: int, variety_id: int, area_decimal: float = 0.0
+    ) -> str:
+        """Live CZIS server-computed fertilizer doses (Urea/TSP/DAP/MoP/Gypsum/
+        Zinc) for a crop + variety at the farm, scaled to area.
+
+        Args:
+            crop_id: from czis_list_crops.
+            variety_id: from czis_crop_context (NOT the variety name).
+            area_decimal: land area in decimals; 0 uses the farm's saved area.
+
+        These doses are computed by CZIS (AEZ + soil aware) — relay them with
+        the source; never recompute. Coordinates come from the active farm."""
+        _emit("czis", f"computing fertilizer for crop {crop_id} var {variety_id}")
+        point = await _farm_point(user)
+        if point is None:
+            return json.dumps(
+                {"error": "farm has no location yet — ask the farmer for upazila/union first"},
+                ensure_ascii=False,
+            )
+        area = float(area_decimal) or point.get("area_decimal")
+        if not area:
+            return json.dumps(
+                {"error": "no area known — ask the farmer for the plot size (decimals) or pass area_decimal"},
+                ensure_ascii=False,
+            )
+        try:
+            data = await czis_mod.get_fertilizer_recommendation(
+                crop_id, point["latitude"], point["longitude"], variety_id, area
+            )
+        except czis_mod.CzisError as exc:
+            return f"CZIS_UNAVAILABLE: {exc}. Fall back to the FRG knowledge base; do not invent fertilizer numbers."
+        return json.dumps(data, ensure_ascii=False)
+
+    return [
+        czis_list_crops,
+        czis_crop_varieties,
+        czis_crop_context,
+        czis_fertilizer_recommendation,
+    ]
 
 
 # --------------------------------------------------------------------------- #

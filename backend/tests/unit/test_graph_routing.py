@@ -27,6 +27,14 @@ pytestmark = pytest.mark.unit
         ("How do I grow rice?", "advisor"),
         ("hello", "advisor"),
         ("dhonnobad", "advisor"),
+        # Crop-choice questions route to the dedicated recommender node.
+        ("Which crop should I plant this rabi season?", "recommender"),
+        ("What should I grow to make profit?", "recommender"),
+        ("Recommend a crop for my farm", "recommender"),
+        ("kon fosol lagabo ebar?", "recommender"),
+        ("ki chash korle labjonok hobe?", "recommender"),
+        ("এই মৌসুমে কোন ফসল চাষ করব?", "recommender"),
+        ("কোন ফসল লাভজনক হবে?", "recommender"),
     ],
 )
 def test_classify_heuristic(text, expected):
@@ -39,8 +47,20 @@ def test_weather_beats_intake_when_both_present():
     assert classify_heuristic("amar jomi te bristi hobe ki?") == "advisor"
 
 
+def test_recommend_beats_intake_and_weather():
+    # A crop-choice ask wins even when farm facts / weather words appear.
+    assert (
+        classify_heuristic("amar 3 bigha jomi te kon fosol lagabo?")
+        == "recommender"
+    )
+    assert (
+        classify_heuristic("bristi hobe naki? ki chash korbo ebar?")
+        == "recommender"
+    )
+
+
 def test_agents_registry():
-    assert set(AGENTS) == {"intake", "advisor"}
+    assert set(AGENTS) == {"intake", "advisor", "recommender"}
 
 
 def test_tool_rounds_exclude_replayed_history():
@@ -77,3 +97,34 @@ def test_tool_rounds_zero_for_plain_conversation():
         )
         == 0
     )
+
+
+# --------------------------------------------------------------------------- #
+# Reply-language STATE (state.reply_language -> per-node directive)
+# --------------------------------------------------------------------------- #
+def test_language_directive_from_state_value():
+    from app.agent.messages import language_directive
+
+    bn = language_directive("bengali")
+    en = language_directive("english")
+    assert "BENGALI" in bn.content and "বাংলা" in bn.content
+    assert "ENGLISH" in en.content
+    # Unknown/empty state falls back to english, never crashes.
+    assert "ENGLISH" in language_directive("").content
+    assert "ENGLISH" in language_directive("klingon").content
+
+
+@pytest.mark.parametrize(
+    "text,lang",
+    [
+        ("আবহাওয়া কেমন?", "bengali"),
+        ("bhai amar jomi ase", "bengali"),
+        ("What should I plant?", "english"),
+    ],
+)
+def test_state_language_detection_matches_last_message(text, lang):
+    # classify_node stores detect_reply_language(last message) into
+    # state.reply_language — this pins the detector the state relies on.
+    from app.agent.messages import detect_reply_language
+
+    assert detect_reply_language(text) == lang

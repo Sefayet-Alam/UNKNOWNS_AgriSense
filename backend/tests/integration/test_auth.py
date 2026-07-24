@@ -22,7 +22,41 @@ async def test_register_returns_profile_with_phone_and_address(client):
     assert body["username"] == "Test Farmer"
     assert body["address"]["division_name"] == "Rajshahi"
     assert body["address"]["upazila_code"] == "508194"
+    assert body["address"]["union_name"] == "Badhair"
+    assert body["address"]["union_code"] == "50819427"
     assert "id" in body
+
+
+async def test_register_without_union_ok(client):
+    # Union is optional — some upazilas have no unions listed.
+    payload = register_payload("01712345671")
+    del payload["union_name"]
+    del payload["union_code"]
+    resp = await client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["address"]["union_name"] == ""
+    assert body["address"]["union_code"] == ""
+
+
+async def test_register_rejects_union_not_in_upazila(client):
+    # A real union code, but under a different upazila -> 400.
+    payload = register_payload("01712345672", union_name="Kalma", union_code="99999999")
+    resp = await client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 400
+    assert "union" in resp.json()["detail"].lower()
+
+
+async def test_geo_unions_endpoint_lists_upazila_unions(client):
+    resp = await client.get("/api/geo/unions/508194")
+    assert resp.status_code == 200
+    rows = resp.json()["results"]
+    names = {r["name"] for r in rows}
+    assert "Badhair" in names
+    codes = {r["code"] for r in rows}
+    assert "50819427" in codes
+    # Unknown upazila -> 404, not an empty 200 (guards typo'd codes).
+    assert (await client.get("/api/geo/unions/000000")).status_code == 404
 
 
 async def test_register_duplicate_phone_400(client):
@@ -143,3 +177,84 @@ async def test_me_requires_auth(client):
 
     # No token -> 401.
     assert (await client.get("/api/auth/me")).status_code == 401
+
+
+async def test_authenticated_password_change_persists(client):
+    headers = await auth_headers_for(client, "01712345678")
+
+    wrong = await client.post(
+        "/api/auth/password/change",
+        json={
+            "current_password": "not-the-password",
+            "new_password": "new-farm-pass-456",
+        },
+        headers=headers,
+    )
+    assert wrong.status_code == 400
+
+    changed = await client.post(
+        "/api/auth/password/change",
+        json={
+            "current_password": DEFAULT_PASSWORD,
+            "new_password": "new-farm-pass-456",
+        },
+        headers=headers,
+    )
+    assert changed.status_code == 200, changed.text
+
+    assert (await login_user(client, "01712345678")).status_code == 401
+    assert (
+        await login_user(client, "01712345678", "new-farm-pass-456")
+    ).status_code == 200
+
+
+async def test_password_reset_uses_mock_otp_and_changes_login(client):
+    await register_user(client, "01712345678")
+    started = await client.post(
+        "/api/auth/password/reset/request",
+        json={"phone": "+8801712345678"},
+    )
+    assert started.status_code == 200, started.text
+    challenge = started.json()
+    assert challenge["demo_otp"] == "1234"
+
+    wrong = await client.post(
+        "/api/auth/password/reset/confirm",
+        json={
+            "challenge_id": challenge["challenge_id"],
+            "otp": "9999",
+            "new_password": "reset-farm-pass-789",
+        },
+    )
+    assert wrong.status_code == 400
+
+    reset = await client.post(
+        "/api/auth/password/reset/confirm",
+        json={
+            "challenge_id": challenge["challenge_id"],
+            "otp": "1234",
+            "new_password": "reset-farm-pass-789",
+        },
+    )
+    assert reset.status_code == 200, reset.text
+    assert (await login_user(client, "01712345678")).status_code == 401
+    assert (
+        await login_user(client, "01712345678", "reset-farm-pass-789")
+    ).status_code == 200
+
+
+async def test_password_reset_does_not_reveal_unknown_phone(client):
+    started = await client.post(
+        "/api/auth/password/reset/request",
+        json={"phone": "01712345678"},
+    )
+    assert started.status_code == 200
+    confirm = await client.post(
+        "/api/auth/password/reset/confirm",
+        json={
+            "challenge_id": started.json()["challenge_id"],
+            "otp": "1234",
+            "new_password": "reset-farm-pass-789",
+        },
+    )
+    assert confirm.status_code == 400

@@ -41,6 +41,12 @@ class RegisterRequest(BaseModel):
     district_code: str = Field(min_length=1, max_length=8)
     upazila_name: str = Field(min_length=1, max_length=80)
     upazila_code: str = Field(min_length=1, max_length=12)
+    # Union is OPTIONAL — some upazilas have no union rows in the gazetteer
+    # (city corporations etc.). When provided it pins the farm to the union
+    # centroid; when absent, coordinates fall back to the upazila centroid.
+    # If a code IS sent it must be a real union of the chosen upazila.
+    union_name: str = Field(default="", max_length=80)
+    union_code: str = Field(default="", max_length=12)
 
     @field_validator("phone")
     @classmethod
@@ -55,6 +61,8 @@ class Address(BaseModel):
     district_code: str = ""
     upazila_name: str = ""
     upazila_code: str = ""
+    union_name: str = ""
+    union_code: str = ""
 
 
 class UserOut(BaseModel):
@@ -86,6 +94,88 @@ class RefreshRequest(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=256)
+
+
+class PasswordResetStartRequest(BaseModel):
+    phone: str
+
+    @field_validator("phone")
+    @classmethod
+    def _validate_phone(cls, v: str) -> str:
+        return normalize_bd_phone(v)
+
+
+class PasswordResetStartOut(BaseModel):
+    challenge_id: str
+    expires_in_seconds: int
+    message: str
+    demo_otp: str | None = None
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    challenge_id: str = Field(min_length=1, max_length=64)
+    otp: str = Field(min_length=4, max_length=8)
+    new_password: str = Field(min_length=8, max_length=256)
+
+
+class ActionOut(BaseModel):
+    message: str
+
+
+# --------------------------------------------------------------------------- #
+# Billing
+# --------------------------------------------------------------------------- #
+class BillingPlanOut(BaseModel):
+    id: str
+    name: str
+    amount_bdt: int
+    billing_cycle: str
+    features: list[str]
+
+
+class BillingPlansOut(BaseModel):
+    results: list[BillingPlanOut]
+    provider: str
+
+
+class SubscriptionOut(BaseModel):
+    plan_id: str
+    status: str
+    provider: str
+    provider_status: str = ""
+    subscriber_id: str
+    amount_bdt: int
+    billing_cycle: str
+    started_at: datetime | None = None
+    cancelled_at: datetime | None = None
+
+
+class BillingOtpStartRequest(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=24)
+
+
+class BillingOtpStartOut(BaseModel):
+    challenge_id: str
+    expires_in_seconds: int
+    status_code: str
+    status_detail: str
+    demo_otp: str | None = None
+
+
+class BillingOtpVerifyRequest(BaseModel):
+    challenge_id: str = Field(min_length=1, max_length=64)
+    otp: str = Field(min_length=4, max_length=8)
+
+
+class BillingCancelOut(BaseModel):
+    subscription: SubscriptionOut
+    status_code: str
+    status_detail: str
 
 
 # --------------------------------------------------------------------------- #
@@ -143,6 +233,8 @@ def user_out(user) -> "UserOut":
             district_code=user.district_code,
             upazila_name=user.upazila_name,
             upazila_code=user.upazila_code,
+            union_name=getattr(user, "union_name", "") or "",
+            union_code=getattr(user, "union_code", "") or "",
         ),
     )
 

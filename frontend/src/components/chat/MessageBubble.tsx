@@ -20,7 +20,7 @@ function MessageBubbleImpl({ message, live, thinking, activeTrace, onToggleTrace
   if (message.role === "user") {
     return (
       <div className="flex animate-fade-in justify-end">
-        <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary-600 px-4 py-2.5 text-white">
+        <div className="max-w-[75%] whitespace-pre-wrap rounded-[1.35rem] rounded-br-sm bg-field-700 px-4 py-2.5 text-paper-50 shadow-card">
           {message.content}
         </div>
       </div>
@@ -35,7 +35,7 @@ function MessageBubbleImpl({ message, live, thinking, activeTrace, onToggleTrace
 
   return (
     <div className="flex animate-fade-in gap-3">
-      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-600">
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-jute-300/70 bg-paper-100 text-field-700 shadow-card">
         <Sprout size={18} strokeWidth={1.75} />
       </div>
       <div className="min-w-0 flex-1">

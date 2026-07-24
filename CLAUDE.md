@@ -29,7 +29,7 @@ whose crop advice ignores the weather it just fetched will be noticed.
 
 | # | Capability | Done when | Status |
 |---|---|---|---|
-| 1 | Conversational intake | Collects ≥ location, farm size, soil type, water availability, budget, target season; asks targeted follow-ups only for missing fields | ✅ DONE (Task 2) — farm-scoped slot-filling via `get_farm_profile`/`update_farm_profile` (missing_required_fields tracking, deterministic unit conversion w/ ASSUMED bigha/kani flags, plausibility warnings, multi-farm). Soil comes from CZIS in Task 3 |
+| 1 | Conversational intake | Collects ≥ location, farm size, soil type, water availability, budget, target season; asks targeted follow-ups only for missing fields | ✅ DONE (Task 2 + soil) — SIX MANDATORY slots (location, farm_size, **soil_type**, water, budget, season); crop advice is HARD-GATED until all present. Soil auto-fills mechanically from the bundled CZIS edaphic survey (480 upazilas, [backend/app/data/bd_soil.json](backend/app/data/bd_soil.json), accessors [backend/app/soil.py](backend/app/soil.py)) as a marked `survey_default_confirm_with_farmer`; farmer statements override and survive moves; unsurveyed upazila → default cleared, `get_soil_context` returns SOIL_UNKNOWN → agent must ask. Multi-farm: facts apply to the ACTIVE farm; different/new field → list/select/create_farm (create_farm now geo-resolves + soil-prefills); new farm = full six-field intake before advice |
 | 2 | Live weather grounding | Calls a **real** weather API by location; uses actual rainfall/temp, no invented forecasts | ✅ DONE (Task 1) — `get_weather` tool → Open-Meteo (keyless), 16-day daily incl. ET0, geocode w/ bundled-centroid fallback, WEATHER_UNAVAILABLE on outage (never invents) |
 | 3 | Crop recommendation | Ranks ≥3 candidate crops w/ suitability, water need, risk, rough profit | ❌ TODO (Task 5) |
 | 4 | Season plan | Dated calendar: sowing window, fertilizer timing, irrigation, weed/pest checkpoints, harvest | ❌ TODO (Task 6) |
@@ -59,27 +59,58 @@ that runs end-to-end in a 4-minute demo.
 
 - **Auth**: **phone number is the identity** (unique login credential; no email —
   rural farmers have phones). `username` is a non-unique display name. Registration
-  also captures the farm **address with CZIS/BBS geocodes** (division/district/
-  **upazila_code**) → feeds the weather/CZIS tools directly. JWT register/login/me +
+  captures the farm **address with CZIS/BBS geocodes** down to the **union**
+  (OPTIONAL — some upazilas list none; a non-empty union_code is validated
+  server-side against the bundled gazetteer) → union centroid pins the farm to
+  exact lat/lon, else the upazila centroid does. JWT register/login/me +
   refresh with rotation, jti blacklisting, reuse detection, logout blacklist.
   ([backend/app/routers/auth.py](backend/app/routers/auth.py), [backend/app/security.py](backend/app/security.py), [backend/app/schemas.py](backend/app/schemas.py))
 - **Chat**: SSE streaming, user-scoped sessions/messages, tool-trace display.
   ([backend/app/routers/chat.py](backend/app/routers/chat.py), [backend/app/agent/runner.py](backend/app/agent/runner.py))
 - **Agent**: **multi-node specialist workflow** (PLAN.md D1 rev 2):
   `classify` (flash-lite + keyword fallback; heuristic-only under TESTING) routes
-  each turn to a specialist — `intake` (slot-filling, farm tools), `weather`
-  (forecast grounding), `advisor` (general, full toolset) — all sharing ONE
-  ToolNode that returns control to `state.active_agent`. **Per-node LLMs** via
+  each turn to a specialist — `intake` (slot-filling, farm+soil tools),
+  `advisor` (general/weather/fertilizer, full toolset), `recommender`
+  (dedicated crop-choice node: profile gate -> soil survey -> CZIS
+  catalog/varieties -> ranked, input-named shortlist; Task 5's deterministic
+  ranker plugs in here) — all sharing ONE ToolNode that returns control to
+  `state.active_agent`. `state.reply_language` is refreshed by classify from
+  EVERY user message (Bengali script/Banglish->bengali, else english); each
+  node appends the language directive LAST (recency-authoritative), and the
+  routing progress frame surfaces it (`specialist: X · reply: bengali`). **Per-node LLMs** via
   `build_chat_model(model)` (`OPENROUTER_MODEL` = gemini-2.5-flash for
   specialists, `OPENROUTER_MODEL_LITE` = flash-lite for routing only — lite was
   tested and rejected for extraction). Still NO interrupt()/checkpointer/Send;
   trace chips + frozen SSE contract unchanged; routing surfaces as a `progress`
   frame. Tier 0 planning lands as a future `planner` node.
   ([backend/app/agent/graph.py](backend/app/agent/graph.py), [backend/app/agent/state.py](backend/app/agent/state.py), [backend/app/agent/tools.py](backend/app/agent/tools.py), [backend/app/agent/runner.py](backend/app/agent/runner.py), [backend/app/agent/messages.py](backend/app/agent/messages.py))
+- **BD admin gazetteer**: [backend/app/data/bd_admin.json](backend/app/data/bd_admin.json)
+  (1.7MB, committed) — full division>district>upazila>**union** hierarchy (8/64/
+  497/7,761) harvested from CZIS `getAdminByCode.php` + centroids joined from
+  OCHA COD-AB (pcode == BBS geocode; 5,160 union points). Provenance + rebuild
+  scripts: [scripts/data_harvest/](scripts/data_harvest/). Accessors in
+  [backend/app/geo.py](backend/app/geo.py) (`resolve_coords` w/ union→upazila→district fallback,
+  `find_place`/`find_upazila_by_name`/`find_union_by_name`, `union_valid`).
+  Public dropdown endpoint `GET /api/geo/unions/{upazila_code}`
+  ([backend/app/routers/geo.py](backend/app/routers/geo.py)).
+- **CZIS crop grounding (Task 3)**: [backend/app/adapters/czis.py](backend/app/adapters/czis.py) — live
+  BARC Crop Zoning endpoints (un-authed, **point-based lon/lat**, regex parsers,
+  no bs4 dep). `list_crops` (bundled 129-crop catalog
+  [backend/app/data/czis_crops.json](backend/app/data/czis_crops.json)), `get_varieties` (yield/duration),
+  `get_crop_context` (variety **ids** at a point), `get_fertilizer_recommendation`
+  (CZIS server-computed Urea/TSP/DAP/MoP/Gypsum/Zinc doses — relayed verbatim,
+  never recomputed). `CzisError`/`CZIS_UNAVAILABLE` → fall back to FRG KB.
+  Advisor tools `czis_list_crops/czis_crop_varieties/czis_crop_context/
+  czis_fertilizer_recommendation` default to the active farm's coordinates.
 - **Weather (Task 1)**: `get_weather` tool → [backend/app/adapters/weather.py](backend/app/adapters/weather.py)
   (Open-Meteo, keyless, 16-day max, ET0, retry + WEATHER_UNAVAILABLE sentinel,
-  geocoding w/ bundled centroid fallback, evidence metadata). Defaults to the
-  farmer's registered upazila.
+  evidence metadata). **Coordinates-first**: default = the active farm's stored
+  lat/lon (union centroid from registration — no geocoding at all,
+  `geocode_source: farm_profile`); named admin places resolve offline via the
+  gazetteer; the flaky live geocoder only runs for non-admin place names; the
+  model can also pass explicit latitude/longitude. Farm location edits re-resolve
+  codes + coords from the gazetteer in `update_farm_profile`
+  (`_re_resolve_farm_geo`).
 - **Farm profiles + intake (Task 2)**: `farms` table (farm-level location — one
   user, many farms; registration only prefills). Tools: `get_farm_profile`
   (reports `missing_required_fields`: location, farm_size, water_availability,
@@ -111,8 +142,8 @@ that runs end-to-end in a 4-minute demo.
 
 - **THE ROADMAP is [docs/PLAN.md](docs/PLAN.md)** — locked architecture decisions
   (D1-D5), verified data-source matrix, and the incremental Task 1→10 sequence
-  (Task N only starts when Task N-1 is solid; Tasks 1-2 + 4 shipped). Next: Task 3
-  CZIS adapter → Task 5 crop ranker → Task 6 season plan →
+  (Task N only starts when Task N-1 is solid; Tasks 1-4 shipped). Next: Task 5
+  crop ranker → Task 6 season plan →
   Task 7 finance (= Tier 0 complete checkpoint) → 8 polish → 9 Tier 1 → 10 Tier 2.
 - **New agent tools** (CZIS, KB retrieval, ranking, planning, finance) → add
   `@tool`/factory functions in [backend/app/agent/tools.py](backend/app/agent/tools.py); register in the
@@ -167,8 +198,14 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
+<<<<<<< HEAD
   (or `make test`). 111 tests: unit (security/phone/tools/weather adapter/KB
   chunker/unit
+=======
+  (or `make test`). 180 tests: unit (security/phone/tools/weather adapter/czis
+  adapter/geo
+  gazetteer/unit
+>>>>>>> origin/main
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
   chip, multi-turn intake via the turn-sequence fake in `tests/fakes.py`). LLM +

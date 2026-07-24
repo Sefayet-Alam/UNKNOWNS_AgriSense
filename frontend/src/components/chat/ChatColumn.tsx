@@ -1,9 +1,11 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Sprout, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TracePanel, type FocusedTurn } from "@/components/trace/TracePanel";
 import { useChat } from "@/lib/chat/ChatProvider";
+import { qk } from "@/lib/hooks";
 import type { Message } from "@/lib/types";
 import { Composer, type ComposerHandle } from "./Composer";
 import { EmptyState } from "./EmptyState";
@@ -20,10 +22,18 @@ function promptFor(messages: Message[], turnId: number): string {
 
 export function ChatColumn() {
   const { sessionId, messages, streaming, thinking, streamingTurnId, error, send, stop } = useChat();
+  const qc = useQueryClient();
   const composerRef = useRef<ComposerHandle>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [traceOpen, setTraceOpen] = useState(false);
   const [focusedTurnId, setFocusedTurnId] = useState<number | null>(null);
+
+  // On return to /chat (this component re-mounts), force a fresh fetch — the stream
+  // keeps running in ChatProvider while you're away, so the reply may have landed.
+  useEffect(() => {
+    if (sessionId != null) qc.invalidateQueries({ queryKey: qk.messages(sessionId) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Reset the panel when the session changes.
   useEffect(() => {
@@ -68,7 +78,7 @@ export function ChatColumn() {
   const hasLiveBubble = streamingTurnId != null;
 
   return (
-    <div className="flex h-full flex-1 overflow-hidden bg-background">
+    <div className="relative flex h-full flex-1 overflow-hidden bg-background">
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scrollRef} className="chat-bg flex-1 overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">

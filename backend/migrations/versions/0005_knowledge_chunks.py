@@ -1,7 +1,7 @@
 """knowledge_chunks table (RAG knowledge base — Task 4)
 
-Revision ID: 0003_knowledge_chunks
-Revises: 0002_farms
+Revision ID: 0005_knowledge_chunks
+Revises: 0004_merge_billing_user_union
 Create Date: 2026-07-24
 
 """
@@ -14,8 +14,8 @@ from alembic import op
 from pgvector.sqlalchemy import Vector
 
 # revision identifiers, used by Alembic.
-revision: str = "0003_knowledge_chunks"
-down_revision: Union[str, None] = "0002_farms"
+revision: str = "0005_knowledge_chunks"
+down_revision: Union[str, None] = "0004_merge_billing_user_union"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

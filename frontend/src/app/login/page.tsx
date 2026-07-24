@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { isValidBdPhone } from "@/lib/phone";
 import { getAccess } from "@/lib/tokens";
-import { LeafMark } from "@/components/ui/LeafMark";
+import { AuthShell } from "@/components/layout/AuthShell";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { TextInput } from "@/components/ui/TextInput";
 
@@ -54,21 +54,13 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="leaf-vein-bg flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex justify-center">
-          <LeafMark size="lg" />
-        </div>
-
-        <div className="rounded-2xl border border-border bg-surface p-7 shadow-sm">
-          <h1 className="mb-1 font-display text-2xl font-semibold tracking-tight text-text-primary">
-            Welcome back
-          </h1>
-          <p className="mb-6 text-sm text-text-muted">
-            Sign in to your AgriSense agronomy copilot.
-          </p>
-
-          <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+    <AuthShell
+      eyebrow="Return to the field ledger"
+      title="Welcome back."
+      description="Open the seasons, conversations, and crop decisions already waiting in your workspace."
+      aside={<>A useful plan remembers what the last rain changed.</>}
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
             <TextInput
               label="Mobile number"
               type="tel"
@@ -89,9 +81,17 @@ export default function LoginPage() {
               error={passError}
               autoComplete="current-password"
             />
+            <div className="-mt-1 text-right">
+              <Link
+                href="/forgot-password"
+                className="text-xs font-semibold text-field-700 underline decoration-jute-300 underline-offset-4 transition hover:text-clay-500"
+              >
+                Forgot password?
+              </Link>
+            </div>
 
             {formError && (
-              <div className="rounded-lg border border-status-error bg-status-error-chip px-3 py-2 text-sm text-status-error">
+              <div className="border border-status-error bg-status-error-chip px-3 py-2 text-sm text-status-error">
                 {formError}
               </div>
             )}
@@ -99,23 +99,21 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-1 w-full rounded-xl bg-primary-600 px-4 py-2.5 font-medium text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-70"
+              className="atlas-button mt-1 w-full disabled:cursor-not-allowed disabled:opacity-70"
             >
               {submitting ? "Signing in…" : "Sign in"}
             </button>
-          </form>
+      </form>
 
-          <p className="mt-6 text-center text-sm text-text-muted">
+          <p className="mt-6 text-sm text-text-muted">
             New to AgriSense?{" "}
             <Link
               href="/register"
-              className="font-medium text-primary-700 hover:text-primary-800"
+              className="font-semibold text-field-700 transition hover:text-clay-500"
             >
               Create an account
             </Link>
           </p>
-        </div>
-      </div>
-    </main>
+    </AuthShell>
   );
 }

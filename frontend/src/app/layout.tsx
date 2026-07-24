@@ -1,29 +1,15 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import { Providers } from "./providers";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-space-grotesk",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
-
 export const metadata: Metadata = {
-  title: "AgriSense — Agronomic Instrument",
-  description: "An autonomous agricultural advisor: from empty field to a costed, weather-aware season plan.",
+  title: {
+    default: "AgriSense · Plan the season before the soil pays for it",
+    template: "%s · AgriSense",
+  },
+  description:
+    "A Bangladesh-focused crop planning workspace for weather-aware, costed agricultural decisions.",
+  icons: { icon: "/favicon.svg" },
 };
 
 export default function RootLayout({
@@ -32,10 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
-    >
+    <html lang="en">
       <body>
         <Providers>{children}</Providers>
       </body>

@@ -7,6 +7,8 @@ export interface Address {
   district_code: string;
   upazila_name: string;
   upazila_code: string;
+  union_name: string;
+  union_code: string;
 }
 
 export interface AuthUser {
@@ -54,6 +56,39 @@ export interface SessionsResponse {
 export interface MessagesResponse {
   session_id: number;
   results: Message[];
+}
+
+export interface BillingPlan {
+  id: "free" | "plus" | "pro";
+  name: string;
+  amount_bdt: number;
+  billing_cycle: "none" | "monthly";
+  features: string[];
+}
+
+export interface BillingPlansResponse {
+  results: BillingPlan[];
+  provider: "mock" | "bdapps";
+}
+
+export interface Subscription {
+  plan_id: "free" | "plus" | "pro";
+  status: "active" | "inactive" | "cancelled";
+  provider: "internal" | "mock" | "bdapps";
+  provider_status: string;
+  subscriber_id: string;
+  amount_bdt: number;
+  billing_cycle: "none" | "monthly";
+  started_at: string | null;
+  cancelled_at: string | null;
+}
+
+export interface BillingOtpStart {
+  challenge_id: string;
+  expires_in_seconds: number;
+  status_code: string;
+  status_detail: string;
+  demo_otp: string | null;
 }
 
 // ---- SSE stream frames (discriminated union on `type`) ----
