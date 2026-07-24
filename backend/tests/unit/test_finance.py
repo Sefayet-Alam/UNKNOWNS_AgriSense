@@ -5,7 +5,11 @@ from decimal import Decimal
 
 import pytest
 
-from app.engines.finance import build_financial_projection, parse_yield_range
+from app.engines.finance import (
+    build_financial_projection,
+    parse_yield_range,
+    supported_finance_crops,
+)
 
 
 def test_parse_yield_range_accepts_czis_formats_and_rejects_missing_numbers():
@@ -121,3 +125,33 @@ def test_default_price_and_costs_are_prominently_disclosed_as_demo_values():
 def test_invalid_financial_inputs_fail_closed(kwargs, message):
     with pytest.raises(ValueError, match=message):
         _projection(**kwargs)
+
+
+# --------------------------------------------------------------------------- #
+# Broad seeded crop coverage (beyond the 5 season-plan-only focused crops)
+# --------------------------------------------------------------------------- #
+def test_supported_finance_crops_covers_the_broader_rabi_list():
+    crops = supported_finance_crops()
+    assert len(crops) >= 50
+    # the 5 focused-path crops that generate_season_plan can build a calendar for
+    for name in ("wheat", "mustard", "potato", "maize", "boro dhan"):
+        assert name in crops
+    # crops with no BAMIS season-plan calendar but still financially projectable
+    for name in ("onion", "lentil", "tomato", "garlic", "cabbage"):
+        assert name in crops
+
+
+def test_projection_works_for_a_crop_outside_the_five_focused_crops():
+    result = build_financial_projection(
+        crop_name="Lentil",
+        area_decimal=20,
+        yield_low_t_ha=1.1,
+        yield_high_t_ha=1.5,
+        sale_price_bdt_per_kg=110,
+    )
+    assert result["total_cost_bdt"] == sum(
+        item["amount_bdt"] for item in result["cost_items"]
+    )
+    assert result["scenarios"]["base"]["revenue_bdt"] - result["total_cost_bdt"] == pytest.approx(
+        result["scenarios"]["base"]["net_profit_bdt"], abs=0.01
+    )

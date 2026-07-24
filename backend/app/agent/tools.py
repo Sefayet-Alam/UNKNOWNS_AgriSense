@@ -1282,7 +1282,9 @@ def build_financial_tool(user):
     ) -> str:
         """Calculate itemized cost, yield, revenue, profit, ROI and break-even.
 
-        Use for the selected crop and for financial what-if questions. Area and
+        Use for the selected crop and for financial what-if questions. Covers 50
+        seeded Rabi-season crops (a superset of the 5 crops that
+        ``generate_season_plan`` can build a dated calendar for). Area and
         budget come from the active farm. By default, yield is fetched from the
         live CZIS variety table. A farmer-provided expected yield overrides CZIS.
         Price and item costs use clearly labelled seeded demo assumptions unless
@@ -1295,19 +1297,20 @@ def build_financial_tool(user):
         ``cost_adjustment_percent`` changes only non-overridden catalog costs.
         """
         _emit("finance", f"calculating financial projection for {crop_name}")
-        try:
-            canonical = season_planner_mod.canonical_crop_name(crop_name)
-        except ValueError:
+        requested = str(crop_name or "").strip()
+        if requested.lower() not in finance_mod.supported_finance_crops():
             return json.dumps(
                 {
                     "status": "CROP_SEASON_MISMATCH",
                     "message": (
-                        "Financial projection supports Wheat, Mustard, Potato, "
-                        "Maize and Boro dhan on the focused path."
+                        "Financial projection covers the seeded Rabi-season crop "
+                        f"list ({len(finance_mod.supported_finance_crops())} crops); "
+                        f"'{requested}' is not one of them."
                     ),
                 },
                 ensure_ascii=False,
             )
+        canonical = requested
 
         async with AsyncSessionLocal() as session:
             farm = await _get_or_create_active_farm(session, user)
@@ -1350,6 +1353,7 @@ def build_financial_tool(user):
                 ensure_ascii=False,
             )
         crop_id = int(catalog[0]["crop_id"])
+        canonical = str(catalog[0]["name"]).strip()
 
         selected_variety = None
         if expected_yield_t_ha is not None:
