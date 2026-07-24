@@ -1,4 +1,5 @@
 """LangChain tools available to the agent."""
+
 from __future__ import annotations
 
 import ast
@@ -29,7 +30,6 @@ from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
 from ..models import Farm
 from . import memory as memory_mod
-
 
 log = logging.getLogger("agrisense.tools")
 
@@ -351,7 +351,9 @@ def _farm_payload(farm: Farm, warnings: Optional[list[str]] = None) -> dict:
 _SOIL_SURVEY_MARKER = "czis_edaphic_survey_default"
 
 
-def _apply_soil_survey_defaults(farm: Farm, warnings: Optional[list[str]] = None) -> None:
+def _apply_soil_survey_defaults(
+    farm: Farm, warnings: Optional[list[str]] = None
+) -> None:
     """Fill soil_texture/land_type from the upazila survey (marked defaults).
 
     Mechanical, not model-driven: soil is a MANDATORY slot and the LLM cannot
@@ -569,11 +571,17 @@ def build_farm_tools(user):
 
             # ---- location ------------------------------------------------ #
             location_changed = False
-            if division_name is not None and division_name.strip() != farm.division_name:
+            if (
+                division_name is not None
+                and division_name.strip() != farm.division_name
+            ):
                 farm.division_name = division_name.strip()
                 farm.division_code = ""
                 location_changed = True
-            if district_name is not None and district_name.strip() != farm.district_name:
+            if (
+                district_name is not None
+                and district_name.strip() != farm.district_name
+            ):
                 farm.district_name = district_name.strip()
                 farm.district_code = ""
                 location_changed = True
@@ -735,8 +743,10 @@ def build_farm_tools(user):
                     ensure_ascii=False,
                 )
             all_farms = (
-                await session.execute(select(Farm).where(Farm.user_id == user.id))
-            ).scalars().all()
+                (await session.execute(select(Farm).where(Farm.user_id == user.id)))
+                .scalars()
+                .all()
+            )
             for f in all_farms:
                 f.is_active = f.id == farm.id
             await session.commit()
@@ -759,8 +769,10 @@ def build_farm_tools(user):
         _emit("farm", f"creating farm: {name}")
         async with AsyncSessionLocal() as session:
             all_farms = (
-                await session.execute(select(Farm).where(Farm.user_id == user.id))
-            ).scalars().all()
+                (await session.execute(select(Farm).where(Farm.user_id == user.id)))
+                .scalars()
+                .all()
+            )
             for f in all_farms:
                 f.is_active = False
             farm = Farm(
@@ -924,9 +936,7 @@ def build_soil_tool(user):
             payload = {
                 "upazila": farm.upazila_name or code,
                 "upazila_code": code,
-                "survey": {
-                    t: types[t] for t in soil_mod.CORE_TYPES if t in types
-                },
+                "survey": {t: types[t] for t in soil_mod.CORE_TYPES if t in types},
                 "texture_definition": soil_mod.definition(
                     "texture", types.get("texture", {}).get("dominant", "")
                 ),
@@ -1112,12 +1122,7 @@ def build_crop_recommendation_tool(user):
         # Keep one standard/favourable catalog entry per locally recorded crop;
         # tolerant variants must not appear as duplicate candidate names.
         season_field = season_fields[profile["season"]]
-        local_names = {
-            str(row.get(season_field) or "").strip().lower() for row in rows
-        }
-        # Keep the recommendation and planning stages composable: every crop
-        # ranked here must have a deterministic dated plan downstream.
-        supported = set(season_planner_mod.CROP_PLANS)
+        local_names = {str(row.get(season_field) or "").strip().lower() for row in rows}
         catalog_rows = sorted(
             czis_mod.list_crops(season=profile["season"]),
             key=lambda item: (
@@ -1130,7 +1135,12 @@ def build_crop_recommendation_tool(user):
         seen_names: set[str] = set()
         for item in catalog_rows:
             key = str(item["name"]).strip().lower()
-            if key in local_names and key in supported and key not in seen_names:
+            if (
+                key in local_names
+                and crop_ranker_mod.recommendation_capability(key, profile["season"])
+                is not None
+                and key not in seen_names
+            ):
                 catalog.append(item)
                 seen_names.add(key)
 
@@ -1140,7 +1150,7 @@ def build_crop_recommendation_tool(user):
                     "status": "INSUFFICIENT_GROUNDED_CANDIDATES",
                     "message": (
                         "Fewer than three crops have both local recorded economics "
-                        "and a supported agronomic profile for this season."
+                        "and a grounded recommendation capability for this season."
                     ),
                     "candidate_count": len(catalog),
                     "farm_inputs": {**profile, "location": location},
@@ -1247,7 +1257,9 @@ def build_crop_recommendation_tool(user):
                     },
                     "candidate_rule": (
                         "seasonal CZIS catalog ∩ locally recorded CZIS rotations "
-                        "∩ supported agronomic profiles"
+                        "∩ finance-backed recommendation capability; Kharif "
+                        "shortlists do not claim a dated calendar, water need, "
+                        "or forecast-risk assessment without exact sources"
                     ),
                 },
                 "candidates": candidates,
@@ -1284,14 +1296,14 @@ def build_financial_tool(user):
     ) -> str:
         """Calculate itemized cost, yield, revenue, profit, ROI and break-even.
 
-        Use for the selected crop and for financial what-if questions. Covers 50
-        seeded Rabi-season crops (a superset of the 5 crops that
-        ``generate_season_plan`` can build a dated calendar for). Area and
-        budget come from the active farm. By default, yield is fetched from the
-        live CZIS variety table. A farmer-provided expected yield overrides CZIS.
-        Price and item costs use clearly labelled seeded demo assumptions unless
-        the farmer supplies overrides. Never present a seeded_demo_value as a
-        live market or supplier price.
+        Use for the selected crop and for financial what-if questions. Covers
+        seeded Rabi and annual Kharif catalog crops, while only five Rabi crops
+        have a dated calendar. Area and budget come from the active farm. By
+        default, yield is fetched from the live CZIS variety table. A
+        farmer-provided expected yield overrides CZIS. Price and item costs use
+        clearly labelled seeded demo assumptions unless the farmer supplies
+        overrides. Never present a seeded_demo_value as a live market or
+        supplier price.
 
         ``cost_overrides_bdt`` values are ABSOLUTE total BDT for this farm; valid
         keys are land_preparation, seed, fertilizer, irrigation,
@@ -1312,7 +1324,7 @@ def build_financial_tool(user):
                 {
                     "status": "CROP_SEASON_MISMATCH",
                     "message": (
-                        "Financial projection covers the seeded Rabi-season crop "
+                        "Financial projection covers the seeded annual crop "
                         f"list ({len(finance_mod.supported_finance_crops())} crops); "
                         f"'{requested}' is not one of them."
                     ),
@@ -1578,7 +1590,26 @@ def build_season_plan_tool(user):
                 },
             }
 
-        if str(farm_inputs["location"]["division"] or "").strip().casefold() != "rajshahi":
+        if not season_planner_mod.supports_dated_calendar(
+            canonical, farm_inputs["season"]
+        ):
+            return json.dumps(
+                {
+                    "status": "UNSUPPORTED_CROP_SEASON_CALENDAR",
+                    "crop": canonical,
+                    "farm_season": farm_inputs["season"],
+                    "message": (
+                        "This crop may be short-listed, but no exact crop-season "
+                        "dated calendar is bundled. Confirm extension guidance "
+                        "before planting."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+        if (
+            str(farm_inputs["location"]["division"] or "").strip().casefold()
+            != "rajshahi"
+        ):
             return json.dumps(
                 {
                     "status": "UNSUPPORTED_CALENDAR_REGION",
@@ -1688,7 +1719,10 @@ def build_season_plan_tool(user):
             "status": "CZIS_FERTILIZER_UNAVAILABLE",
             "products": [],
         }
-        _emit("czis", f"fetching varieties and fertilizer for crop {selected_crop['crop_id']}")
+        _emit(
+            "czis",
+            f"fetching varieties and fertilizer for crop {selected_crop['crop_id']}",
+        )
         try:
             context = await czis_mod.get_crop_context(
                 selected_crop["crop_id"], lat, lon
@@ -1713,7 +1747,10 @@ def build_season_plan_tool(user):
                         ensure_ascii=False,
                     )
             elif choices:
-                selected_variety = {**choices[0], "selection": "provisional_first_live_option"}
+                selected_variety = {
+                    **choices[0],
+                    "selection": "provisional_first_live_option",
+                }
             if selected_variety is None:
                 raise czis_mod.CzisError("no live variety available at farm point")
             fertilizer = await czis_mod.get_fertilizer_recommendation(
@@ -1743,7 +1780,9 @@ def build_season_plan_tool(user):
         elif selected_variety is not None:
             try:
                 variety_table = await czis_mod.get_varieties(selected_crop["crop_id"])
-                selected_name = str(selected_variety.get("name") or "").strip().casefold()
+                selected_name = (
+                    str(selected_variety.get("name") or "").strip().casefold()
+                )
                 yield_row = next(
                     (
                         row
@@ -1807,10 +1846,13 @@ def build_season_plan_tool(user):
             soil_texture=farm_inputs["soil_texture"] or "",
             land_type=farm_inputs["land_type"] or "",
         )
-        if any(
-            "does not cover planting date" in warning.casefold()
-            for warning in calendar["warnings"]
-        ) and "weather" not in unavailable:
+        if (
+            any(
+                "does not cover planting date" in warning.casefold()
+                for warning in calendar["warnings"]
+            )
+            and "weather" not in unavailable
+        ):
             unavailable.append("weather_forecast_pending")
         knowledge_claims = {
             "fertilizer_timing": {
@@ -1823,7 +1865,9 @@ def build_season_plan_tool(user):
                     }
                     for hit in knowledge_hits
                 ],
-                "status": "supported" if knowledge_hits else "omitted_from_rag_explanation",
+                "status": (
+                    "supported" if knowledge_hits else "omitted_from_rag_explanation"
+                ),
             },
             "dated_crop_stages": {
                 "deterministic_source": calendar["sources"]["crop_calendar"],
@@ -1910,7 +1954,10 @@ def build_scheduler_tool(user):
                 requested_date = date.fromisoformat(planting_date.strip())
             except ValueError:
                 return json.dumps(
-                    {"status": "INVALID_PLANTING_DATE", "message": "planting_date must be YYYY-MM-DD"},
+                    {
+                        "status": "INVALID_PLANTING_DATE",
+                        "message": "planting_date must be YYYY-MM-DD",
+                    },
                     ensure_ascii=False,
                 )
 
@@ -1938,6 +1985,21 @@ def build_scheduler_tool(user):
                 "longitude": farm.longitude,
             }
 
+        if not season_planner_mod.supports_dated_calendar(
+            canonical, farm_inputs["season"]
+        ):
+            return json.dumps(
+                {
+                    "status": "UNSUPPORTED_CROP_SEASON_CALENDAR",
+                    "crop": canonical,
+                    "farm_season": farm_inputs["season"],
+                    "message": (
+                        "No exact crop-season dated calendar is bundled for this "
+                        "schedule; do not reuse a calendar from another season."
+                    ),
+                },
+                ensure_ascii=False,
+            )
         if str(farm_inputs["division"] or "").strip().casefold() != "rajshahi":
             return json.dumps(
                 {
@@ -1976,13 +2038,18 @@ def build_scheduler_tool(user):
                 if str(item["name"]).strip().lower() == canonical.lower()
             ],
             key=lambda item: (
-                str(item.get("variety_group") or "").lower() != "favourable environment",
+                str(item.get("variety_group") or "").lower()
+                != "favourable environment",
                 int(item["crop_id"]),
             ),
         )
         if not catalog:
             return json.dumps(
-                {"status": "CROP_SEASON_MISMATCH", "crop": canonical, "farm_season": farm_inputs["season"]},
+                {
+                    "status": "CROP_SEASON_MISMATCH",
+                    "crop": canonical,
+                    "farm_season": farm_inputs["season"],
+                },
                 ensure_ascii=False,
             )
         selected_crop = {"crop_id": int(catalog[0]["crop_id"]), "name": canonical}
@@ -1993,17 +2060,31 @@ def build_scheduler_tool(user):
             weather = await weather_mod.fetch_forecast(lat, lon, 16)
         except weather_mod.WeatherError as exc:
             unavailable.append("weather")
-            weather = {"status": "WEATHER_UNAVAILABLE", "error": str(exc), "days": [], "summary": {}}
+            weather = {
+                "status": "WEATHER_UNAVAILABLE",
+                "error": str(exc),
+                "days": [],
+                "summary": {},
+            }
 
         selected_variety: Optional[dict] = None
         fertilizer: dict = {"status": "CZIS_FERTILIZER_UNAVAILABLE", "products": []}
-        _emit("czis", f"fetching farm-scaled fertilizer for crop {selected_crop['crop_id']}")
+        _emit(
+            "czis",
+            f"fetching farm-scaled fertilizer for crop {selected_crop['crop_id']}",
+        )
         try:
-            context = await czis_mod.get_crop_context(selected_crop["crop_id"], lat, lon)
+            context = await czis_mod.get_crop_context(
+                selected_crop["crop_id"], lat, lon
+            )
             choices = context.get("varieties") or []
             if variety_id is not None:
                 selected_variety = next(
-                    (item for item in choices if int(item["variety_id"]) == int(variety_id)),
+                    (
+                        item
+                        for item in choices
+                        if int(item["variety_id"]) == int(variety_id)
+                    ),
                     None,
                 )
                 if selected_variety is None:
@@ -2016,7 +2097,10 @@ def build_scheduler_tool(user):
                         ensure_ascii=False,
                     )
             elif choices:
-                selected_variety = {**choices[0], "selection": "provisional_first_live_option"}
+                selected_variety = {
+                    **choices[0],
+                    "selection": "provisional_first_live_option",
+                }
             if selected_variety is None:
                 raise czis_mod.CzisError("no live variety available at farm point")
             fertilizer = await czis_mod.get_fertilizer_recommendation(
@@ -2028,7 +2112,11 @@ def build_scheduler_tool(user):
             )
         except czis_mod.CzisError as exc:
             unavailable.append("fertilizer")
-            fertilizer = {"status": "CZIS_FERTILIZER_UNAVAILABLE", "error": str(exc), "products": []}
+            fertilizer = {
+                "status": "CZIS_FERTILIZER_UNAVAILABLE",
+                "error": str(exc),
+                "products": [],
+            }
 
         calendar = season_planner_mod.build_season_calendar(
             crop_name=canonical,
@@ -2040,8 +2128,12 @@ def build_scheduler_tool(user):
             soil_texture=farm_inputs["soil_texture"] or "",
             land_type=farm_inputs["land_type"] or "",
         )
-        fertilizer_events = [e for e in calendar["events"] if e["category"] == "fertilizer"]
-        irrigation_events = [e for e in calendar["events"] if e["category"] == "irrigation"]
+        fertilizer_events = [
+            e for e in calendar["events"] if e["category"] == "fertilizer"
+        ]
+        irrigation_events = [
+            e for e in calendar["events"] if e["category"] == "irrigation"
+        ]
 
         fertilizer_schedule = scheduler_mod.build_fertilizer_schedule(
             fertilizer_events=fertilizer_events,
@@ -2153,13 +2245,18 @@ def build_scenario_tool(user):
                 if str(item["name"]).strip().lower() == canonical.lower()
             ],
             key=lambda item: (
-                str(item.get("variety_group") or "").lower() != "favourable environment",
+                str(item.get("variety_group") or "").lower()
+                != "favourable environment",
                 int(item["crop_id"]),
             ),
         )
         if not catalog:
             return json.dumps(
-                {"status": "CROP_SEASON_MISMATCH", "crop": canonical, "farm_season": farm_inputs["season"]},
+                {
+                    "status": "CROP_SEASON_MISMATCH",
+                    "crop": canonical,
+                    "farm_season": farm_inputs["season"],
+                },
                 ensure_ascii=False,
             )
         crop_id = int(catalog[0]["crop_id"])
@@ -2168,13 +2265,20 @@ def build_scenario_tool(user):
         selected_variety = None
         if expected_yield_t_ha is not None:
             yield_low = yield_high = expected_yield_t_ha
-            yield_source = {"source_type": "farmer_estimate", "value_t_ha": expected_yield_t_ha}
+            yield_source = {
+                "source_type": "farmer_estimate",
+                "value_t_ha": expected_yield_t_ha,
+            }
         else:
             lat, lon = farm_inputs["latitude"], farm_inputs["longitude"]
             try:
                 varieties_response = await czis_mod.get_varieties(crop_id)
                 varieties = varieties_response.get("varieties") or []
-                selected_variety = {**varieties[0], "selection": "provisional_first_live_option"} if varieties else None
+                selected_variety = (
+                    {**varieties[0], "selection": "provisional_first_live_option"}
+                    if varieties
+                    else None
+                )
                 if selected_variety is None:
                     raise czis_mod.CzisError("no usable CZIS variety yield")
                 yield_low, yield_high = finance_mod.parse_yield_range(
@@ -2258,19 +2362,28 @@ def build_scenario_tool(user):
 
         # ---- compose combined revised economics ------------------------- #
         revised_total_cost = round(revised["total_cost_bdt"] + extra_irrigation_cost, 2)
-        revised_net = round(revised["expected"]["net_profit_bdt"] - extra_irrigation_cost, 2)
+        revised_net = round(
+            revised["expected"]["net_profit_bdt"] - extra_irrigation_cost, 2
+        )
         baseline_net = baseline["expected"]["net_profit_bdt"]
         combined_within_budget = (
-            (revised_total_cost <= revised_budget) if revised_budget is not None else None
+            (revised_total_cost <= revised_budget)
+            if revised_budget is not None
+            else None
         )
         combined_gap = (
-            round(revised_budget - revised_total_cost, 2) if revised_budget is not None else None
+            round(revised_budget - revised_total_cost, 2)
+            if revised_budget is not None
+            else None
         )
 
         # ---- yield risk from a rainfall shortfall ----------------------- #
         yield_risk = None
         if rainfall_change_percent < 0 and water_known:
-            extra_apps = rev_irr["recommended_applications"] - base_irr["recommended_applications"]
+            extra_apps = (
+                rev_irr["recommended_applications"]
+                - base_irr["recommended_applications"]
+            )
             if farm_inputs["irrigation_available"] is False:
                 yield_risk = {
                     "level": "high",
@@ -2305,8 +2418,16 @@ def build_scenario_tool(user):
                     "net_profit_bdt": baseline_net,
                     "roi_percent": baseline["expected"]["roi_percent"],
                     "budget_bdt": budget,
-                    "within_budget": baseline["budget"]["within_budget"] if baseline["budget"] else None,
-                    "irrigation_applications": base_irr.get("recommended_applications") if water_known else None,
+                    "within_budget": (
+                        baseline["budget"]["within_budget"]
+                        if baseline["budget"]
+                        else None
+                    ),
+                    "irrigation_applications": (
+                        base_irr.get("recommended_applications")
+                        if water_known
+                        else None
+                    ),
                     "irrigation_cost_bdt": base_irr_cost if water_known else None,
                 },
                 "revised": {
@@ -2317,12 +2438,20 @@ def build_scenario_tool(user):
                     "within_budget": combined_within_budget,
                     "surplus_or_gap_bdt": combined_gap,
                     "additional_irrigation_cost_bdt": extra_irrigation_cost,
-                    "irrigation_applications": rev_irr.get("recommended_applications") if water_known else None,
+                    "irrigation_applications": (
+                        rev_irr.get("recommended_applications") if water_known else None
+                    ),
                     "irrigation_cost_bdt": rev_irr_cost if water_known else None,
-                    "net_irrigation_mm": rev_irr["water_balance"].get("net_irrigation_mm") if water_known else None,
+                    "net_irrigation_mm": (
+                        rev_irr["water_balance"].get("net_irrigation_mm")
+                        if water_known
+                        else None
+                    ),
                 },
                 "deltas": {
-                    "total_cost_bdt": round(revised_total_cost - baseline["total_cost_bdt"], 2),
+                    "total_cost_bdt": round(
+                        revised_total_cost - baseline["total_cost_bdt"], 2
+                    ),
                     "net_profit_bdt": round(revised_net - baseline_net, 2),
                     "irrigation_cost_bdt": extra_irrigation_cost,
                 },
@@ -2389,7 +2518,9 @@ def build_czis_tools(user):
         point = await _farm_point(user)
         if point is None:
             return json.dumps(
-                {"error": "farm has no location yet — ask the farmer for upazila/union first"},
+                {
+                    "error": "farm has no location yet — ask the farmer for upazila/union first"
+                },
                 ensure_ascii=False,
             )
         try:
@@ -2418,13 +2549,17 @@ def build_czis_tools(user):
         point = await _farm_point(user)
         if point is None:
             return json.dumps(
-                {"error": "farm has no location yet — ask the farmer for upazila/union first"},
+                {
+                    "error": "farm has no location yet — ask the farmer for upazila/union first"
+                },
                 ensure_ascii=False,
             )
         area = float(area_decimal) or point.get("area_decimal")
         if not area:
             return json.dumps(
-                {"error": "no area known — ask the farmer for the plot size (decimals) or pass area_decimal"},
+                {
+                    "error": "no area known — ask the farmer for the plot size (decimals) or pass area_decimal"
+                },
                 ensure_ascii=False,
             )
         try:

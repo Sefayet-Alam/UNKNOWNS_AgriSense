@@ -1,5 +1,5 @@
 {
-  "version": "demo-v2",
+  "version": "demo-v3-kharif",
   "disclosure": "Seeded demo assumptions for an inspectable prototype covering the Rabi-season focused path; these are not live supplier quotes or market-board prices. Farmer-provided values override them. The original 5 focused-path crops (wheat, mustard, potato, maize, boro dhan) cite specific BARC FRG 2024 pages; the remaining crops are illustrative Bangladesh Rabi-crop estimates without a specific page citation, clearly labelled as such via reference_yield_t_ha.source.",
   "crops": {
     "wheat": {
@@ -981,6 +981,91 @@
         "harvest": 90,
         "transport_and_other": 40
       }
+    },
+    "ash gourd": {
+      "price_bdt_per_kg": 18,
+      "reference_yield_t_ha": {"low": 54, "high": 66, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "Kharif-1 crop-pattern tables", "basis": "published Kharif-1 yield goal 60 +/- 6 t/ha", "source_url": "https://apps.barc.gov.bd/fertilizer_recommendation/FRG%20English%2030.10.2024.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 90, "seed": 75, "fertilizer": 140, "irrigation": 45, "labor_and_weeding": 150, "crop_protection": 45, "harvest": 80, "transport_and_other": 35}
+    },
+    "b. aman dhan": {
+      "price_bdt_per_kg": 30,
+      "reference_yield_t_ha": {"low": 4, "high": 5, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative broadcast-Aman yield range; BAMIS confirms Aman calendar but variety, stress class and local yield must be confirmed before spending", "source_url": "https://www.bamis.gov.bd/calendar/1/74/"},
+      "cost_bdt_per_decimal": {"land_preparation": 120, "seed": 65, "fertilizer": 180, "irrigation": 45, "labor_and_weeding": 150, "crop_protection": 55, "harvest": 100, "transport_and_other": 45}
+    },
+    "b. aus dhan": {
+      "price_bdt_per_kg": 30,
+      "reference_yield_t_ha": {"low": 4.5, "high": 5.5, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "T. Aus is published at 5 +/- 0.5 t/ha in FRG; this separate broadcast-AUS catalog row remains a visibly illustrative estimate pending variety-specific evidence", "source_url": "https://apps.barc.gov.bd/fertilizer_recommendation/FRG%20English%2030.10.2024.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 115, "seed": 65, "fertilizer": 170, "irrigation": 55, "labor_and_weeding": 145, "crop_protection": 50, "harvest": 95, "transport_and_other": 40}
+    },
+    "cotton": {
+      "price_bdt_per_kg": 55,
+      "reference_yield_t_ha": {"low": 1.8, "high": 2.4, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative Kharif cotton yield; BAMIS confirms a July-December calendar, but this is not a localized yield or farmgate-price quote", "source_url": "https://www.bamis.gov.bd/calendar/1/96/"},
+      "cost_bdt_per_decimal": {"land_preparation": 100, "seed": 95, "fertilizer": 165, "irrigation": 35, "labor_and_weeding": 140, "crop_protection": 95, "harvest": 105, "transport_and_other": 35}
+    },
+    "cucumber": {
+      "price_bdt_per_kg": 22,
+      "reference_yield_t_ha": {"low": 22.5, "high": 27.5, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative Kharif cucumber yield; kept distinct from the existing cucumber (khira) row because CZIS uses distinct names", "source_url": "https://www.bamis.gov.bd/calendar/1/19/"},
+      "cost_bdt_per_decimal": {"land_preparation": 90, "seed": 70, "fertilizer": 150, "irrigation": 60, "labor_and_weeding": 180, "crop_protection": 60, "harvest": 100, "transport_and_other": 35}
+    },
+    "ginger": {
+      "price_bdt_per_kg": 90,
+      "reference_yield_t_ha": {"low": 27, "high": 33, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "Ginger crop tables", "basis": "published yield goal 30 +/- 3 t/ha; price and costs remain seeded demo values", "source_url": "https://apps.barc.gov.bd/fertilizer_recommendation/FRG%20English%2030.10.2024.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 130, "seed": 380, "fertilizer": 220, "irrigation": 80, "labor_and_weeding": 190, "crop_protection": 75, "harvest": 120, "transport_and_other": 50}
+    },
+    "jute (deshi)": {
+      "price_bdt_per_kg": 50,
+      "reference_yield_t_ha": {"low": 3.15, "high": 3.85, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "Jute-C crop tables", "basis": "published fibre yield goal 3.5 +/- 0.35 t/ha; price and costs remain seeded demo values", "source_url": "https://apps.barc.gov.bd/fertilizer_recommendation/FRG%20English%2030.10.2024.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 100, "seed": 55, "fertilizer": 125, "irrigation": 20, "labor_and_weeding": 150, "crop_protection": 30, "harvest": 120, "transport_and_other": 55}
+    },
+    "jute (tosa)": {
+      "price_bdt_per_kg": 52,
+      "reference_yield_t_ha": {"low": 3.6, "high": 4.4, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "Jute-O crop tables", "basis": "published fibre yield goal 4.0 +/- 0.4 t/ha; price and costs remain seeded demo values", "source_url": "https://apps.barc.gov.bd/fertilizer_recommendation/FRG%20English%2030.10.2024.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 100, "seed": 55, "fertilizer": 130, "irrigation": 20, "labor_and_weeding": 155, "crop_protection": 30, "harvest": 125, "transport_and_other": 55}
+    },
+    "kenaf": {
+      "price_bdt_per_kg": 40,
+      "reference_yield_t_ha": {"low": 2.5, "high": 3.5, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative Kharif fibre-crop yield; no official numeric field-yield anchor was located in this research pass", "source_url": "https://bjri.gov.bd/"},
+      "cost_bdt_per_decimal": {"land_preparation": 95, "seed": 50, "fertilizer": 115, "irrigation": 20, "labor_and_weeding": 135, "crop_protection": 25, "harvest": 110, "transport_and_other": 50}
+    },
+    "mesta": {
+      "price_bdt_per_kg": 38,
+      "reference_yield_t_ha": {"low": 2.5, "high": 3.5, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative Kharif mesta fibre yield; BJRI variety evidence must be matched to location before it becomes a production assumption", "source_url": "https://bjri.gov.bd/site/page/39921b84-7a96-4905-a6af-f073e98fa935/"},
+      "cost_bdt_per_decimal": {"land_preparation": 95, "seed": 50, "fertilizer": 115, "irrigation": 20, "labor_and_weeding": 135, "crop_protection": 25, "harvest": 110, "transport_and_other": 50}
+    },
+    "ridge gourd": {
+      "price_bdt_per_kg": 25,
+      "reference_yield_t_ha": {"low": 15, "high": 22, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative Kharif ridge-gourd yield; research-trial ranges are not used as a generic farm default", "source_url": "https://www.bamis.gov.bd/res/bulletins/2019/08/19/4900.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 90, "seed": 70, "fertilizer": 150, "irrigation": 60, "labor_and_weeding": 180, "crop_protection": 60, "harvest": 100, "transport_and_other": 35}
+    },
+    "sesame": {
+      "price_bdt_per_kg": 85,
+      "reference_yield_t_ha": {"low": 1.35, "high": 1.65, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "Kharif-1 crop-pattern tables", "basis": "published Kharif-1 yield goal 1.5 +/- 0.15 t/ha; price and costs remain seeded demo values", "source_url": "https://apps.barc.gov.bd/fertilizer_recommendation/FRG%20English%2030.10.2024.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 75, "seed": 45, "fertilizer": 70, "irrigation": 15, "labor_and_weeding": 85, "crop_protection": 20, "harvest": 65, "transport_and_other": 25}
+    },
+    "sponge gourd": {
+      "price_bdt_per_kg": 24,
+      "reference_yield_t_ha": {"low": 14, "high": 20, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative Kharif sponge-gourd yield; BAMIS advisory confirms seasonal cultivation, not a local financial quote", "source_url": "https://www.bamis.gov.bd/res/bulletins/2019/08/19/4900.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 90, "seed": 70, "fertilizer": 145, "irrigation": 60, "labor_and_weeding": 175, "crop_protection": 55, "harvest": 100, "transport_and_other": 35}
+    },
+    "t. aman dhan": {
+      "price_bdt_per_kg": 30,
+      "reference_yield_t_ha": {"low": 4, "high": 5.5, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative transplanted-Aman yield range; use variety- and stress-class-specific BRRI data before treating yield as production-ready", "source_url": "https://www.bamis.gov.bd/calendar/1/74/"},
+      "cost_bdt_per_decimal": {"land_preparation": 125, "seed": 70, "fertilizer": 185, "irrigation": 50, "labor_and_weeding": 165, "crop_protection": 60, "harvest": 105, "transport_and_other": 45}
+    },
+    "t. aus dhan": {
+      "price_bdt_per_kg": 30,
+      "reference_yield_t_ha": {"low": 4.5, "high": 5.5, "source": "BARC Fertilizer Recommendation Guide 2024", "pages": "Kharif-1 crop-pattern tables", "basis": "published T. Aus yield goal 5.0 +/- 0.5 t/ha; price and costs remain seeded demo values", "source_url": "https://apps.barc.gov.bd/fertilizer_recommendation/FRG%20English%2030.10.2024.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 115, "seed": 65, "fertilizer": 170, "irrigation": 55, "labor_and_weeding": 145, "crop_protection": 50, "harvest": 95, "transport_and_other": 40}
+    },
+    "teasle gourd": {
+      "price_bdt_per_kg": 28,
+      "reference_yield_t_ha": {"low": 10, "high": 15, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative Kharif teasle-gourd yield; confirm locally before spending", "source_url": "https://www.bamis.gov.bd/calendar/"},
+      "cost_bdt_per_decimal": {"land_preparation": 90, "seed": 70, "fertilizer": 145, "irrigation": 60, "labor_and_weeding": 175, "crop_protection": 55, "harvest": 100, "transport_and_other": 35}
+    },
+    "turmeric": {
+      "price_bdt_per_kg": 80,
+      "reference_yield_t_ha": {"low": 16, "high": 22, "source": "AgriSense seeded demo estimate", "pages": "", "basis": "illustrative turmeric yield; BARI multi-location trial evidence is not treated as a nationwide financial default", "source_url": "https://bari.gov.bd/sites/default/files/files/bari.portal.gov.bd/annual_reports/7c2952eb_e99f_4951_8c31_83c80909bc8b/BARI%20Annual%20Report%202015%20%28With%20Bookmark%29%20%2833%29.pdf"},
+      "cost_bdt_per_decimal": {"land_preparation": 130, "seed": 300, "fertilizer": 200, "irrigation": 70, "labor_and_weeding": 180, "crop_protection": 55, "harvest": 110, "transport_and_other": 45}
     },
     "yard long bean": {
       "price_bdt_per_kg": 30,
