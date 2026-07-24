@@ -8,17 +8,32 @@ graph TD;
 	classify(classify)
 	intake(intake)
 	advisor(advisor)
+	recommender(recommender)
+	planner(planner)
+	finance(finance)
 	tools(tools)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> classify;
 	advisor -.-> __end__;
 	advisor -.-> tools;
 	classify -.-> advisor;
+	classify -.-> finance;
 	classify -.-> intake;
+	classify -.-> planner;
+	classify -.-> recommender;
+	finance -.-> __end__;
+	finance -.-> tools;
 	intake -.-> __end__;
 	intake -.-> tools;
+	planner -.-> __end__;
+	planner -.-> tools;
+	recommender -.-> __end__;
+	recommender -.-> tools;
 	tools -.-> advisor;
+	tools -.-> finance;
 	tools -.-> intake;
+	tools -.-> planner;
+	tools -.-> recommender;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc
