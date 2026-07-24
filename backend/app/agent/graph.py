@@ -139,7 +139,12 @@ NODE_DIRECTIVES = {
         "financial projection; do NOT call calculate_crop_financials again "
         "unless the farmer later asks for a changed-price/cost/yield what-if. "
         "Relay the embedded itemized costs, expected yield/revenue/net profit/"
-        "ROI/break-even, math checks and every seeded-demo warning exactly."
+        "ROI/break-even, math checks and every seeded-demo warning exactly. "
+        "For a focused fertilizer/irrigation management question (quantities by "
+        "growth stage, per-input cost, organic alternatives, or irrigation water "
+        "balance/cost), call generate_input_schedule and relay its staged "
+        "quantities, seeded costs, water balance and organic equivalents exactly "
+        "— present organic quantities as IPNS approximations, never precise doses."
     ),
     "finance": (
         "CURRENT NODE: FINANCE SPECIALIST. Call calculate_crop_financials for "
@@ -149,7 +154,11 @@ NODE_DIRECTIVES = {
         "both break-even values exactly. Always distinguish live CZIS yield, "
         "farmer estimates, and seeded_demo_value assumptions. Never describe "
         "a demo price or cost as current/live. If the crop is not selected, "
-        "ask which crop before calculating."
+        "ask which crop before calculating. For a WHAT-IF scenario (\"what if "
+        "rainfall drops 30%\", \"what if my budget is cut 40%\"), call "
+        "simulate_scenario with the matching signed percent lever(s) and relay "
+        "its baseline-vs-revised numbers, deltas and any yield_risk exactly — "
+        "never answer a scenario generically without the recomputed figures."
     ),
 }
 
@@ -168,7 +177,7 @@ _INTAKE_WORDS = re.compile(
 )
 _RECOMMEND_WORDS = re.compile(
     r"(recommend|suggest|which crop|what crop|what should i (?:plant|grow|"
-    r"farm)|profitable|kon fosol|ki fosol|kon chash|ki chash|ki lagabo|"
+    r"farm)|what if i (?:plant|grow)|profitable|kon fosol|ki fosol|kon chash|ki chash|ki lagabo|"
     r"konta lagabo|ki bunbo|labjonok|labhjonok|suparish|কোন ফসল|কি ফসল|"
     r"কী ফসল|কি চাষ|কী চাষ|চাষ কর|লাগাব|বুনব|লাভজনক|সুপারিশ|ফলন ভালো)",
     re.IGNORECASE,
@@ -188,6 +197,16 @@ _FINANCE_WORDS = re.compile(
     r"খরচের হিসাব|লাভের হিসাব|ব্রেক.?ইভেন|আরওআই)",
     re.IGNORECASE,
 )
+# What-if scenario questions (rainfall/budget/cost/price change) route to the
+# finance node, which owns simulate_scenario alongside the financial tool.
+_SCENARIO_WORDS = re.compile(
+    r"(scenario|simulate|(?:what[ -]?if|if).{0,32}"
+    r"(?:rainfall|rain|budget|price|cost|yield)|if (?:rainfall|rain|budget|price|cost)"
+    r".{0,20}(?:drop|fall|cut|rise|increase|decrease|less|more|down|up)|"
+    r"(?:rainfall|rain|budget|price|cost).{0,20}(?:drops?|falls?|cut|reduced?|"
+    r"kome|কমে|less by|down by).{0,6}\d|যদি.{0,20}(?:কমে|বাড়ে))",
+    re.IGNORECASE,
+)
 
 _BARE_SELECTED_CROPS = {
     "wheat", "গম", "mustard", "sarisha", "সরিষা", "potato", "alu", "আলু",
@@ -202,8 +221,8 @@ _CLASSIFY_PROMPT = (
     "would be profitable to grow\n"
     "- planner : the crop is already selected and the farmer asks for a dated "
     "season plan/calendar/schedule\n"
-    "- finance : itemized cost, profit, ROI, break-even or a financial what-if "
-    "for an already-selected crop\n"
+    "- finance : itemized cost, profit, ROI, break-even, or a what-if scenario "
+    "(what if rainfall drops 30% / budget is cut 40%) for a selected crop\n"
     "- intake  : stating or correcting farm facts (land size, budget, "
     "irrigation, soil, season, location)\n"
     "- advisor : anything else (weather questions, pests, fertilizer for a "
@@ -218,6 +237,8 @@ def classify_heuristic(text: str) -> str:
     # so "kon fosol labjonok hobe?" outranks generic advice routing.
     if _RECOMMEND_WORDS.search(text or ""):
         return "recommender"
+    if _SCENARIO_WORDS.search(text or ""):
+        return "finance"
     if _PLAN_WORDS.search(text or ""):
         return "planner"
     if _FINANCE_WORDS.search(text or ""):

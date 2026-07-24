@@ -118,41 +118,74 @@ export function Sidebar({ activeSessionId, onNewChat, onSelect, onDeleted }: Pro
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-14 shrink-0 flex-col items-center border-r border-jute-300/55 bg-paper-100 py-3">
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          aria-label="Expand sidebar"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition hover:-translate-y-0.5 hover:bg-paper-50 hover:text-field-700 hover:shadow-card"
-        >
-          <PanelLeftOpen size={18} />
-        </button>
-        <button
-          type="button"
-          onClick={onNewChat}
-          title="New chat"
-          className="mt-3 flex h-9 w-9 items-center justify-center rounded-full bg-field-700 text-white shadow-card transition hover:-translate-y-1 hover:bg-field-900 hover:shadow-lift"
-        >
-          <Plus size={18} strokeWidth={2} />
-        </button>
-        <div className="flex-1" />
-        <Link href="/profile?tab=info" title={user?.username ?? "Profile"} className="mb-2 transition hover:-translate-y-1">
-          <Avatar name={user?.username} size={34} />
-        </Link>
-        <button
-          type="button"
-          onClick={() => logout()}
-          aria-label="Log out"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition hover:-translate-y-0.5 hover:bg-paper-50 hover:text-status-error"
-        >
-          <LogOut size={17} />
-        </button>
-      </aside>
+      <>
+        <div className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b border-jute-300/55 bg-paper-100/95 px-3 backdrop-blur sm:hidden">
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            aria-label="Open chats"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition hover:bg-paper-50 hover:text-field-700"
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+          <LeafMark size="sm" showWordmark={false} />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onNewChat}
+              title="New chat"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-field-700 text-white shadow-card transition hover:bg-field-900"
+            >
+              <Plus size={18} strokeWidth={2} />
+            </button>
+            <Link href="/profile?tab=info" title={user?.username ?? "Profile"} className="transition hover:-translate-y-0.5">
+              <Avatar name={user?.username} size={34} />
+            </Link>
+          </div>
+        </div>
+        <aside className="hidden h-full w-14 shrink-0 flex-col items-center border-r border-jute-300/55 bg-paper-100 py-3 sm:flex">
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            aria-label="Expand sidebar"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition hover:-translate-y-0.5 hover:bg-paper-50 hover:text-field-700 hover:shadow-card"
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={onNewChat}
+            title="New chat"
+            className="mt-3 flex h-9 w-9 items-center justify-center rounded-full bg-field-700 text-white shadow-card transition hover:-translate-y-1 hover:bg-field-900 hover:shadow-lift"
+          >
+            <Plus size={18} strokeWidth={2} />
+          </button>
+          <div className="flex-1" />
+          <Link href="/profile?tab=info" title={user?.username ?? "Profile"} className="mb-2 transition hover:-translate-y-1">
+            <Avatar name={user?.username} size={34} />
+          </Link>
+          <button
+            type="button"
+            onClick={() => logout()}
+            aria-label="Log out"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-text-muted transition hover:-translate-y-0.5 hover:bg-paper-50 hover:text-status-error"
+          >
+            <LogOut size={17} />
+          </button>
+        </aside>
+      </>
     );
   }
 
   return (
-    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-jute-300/55 bg-paper-100">
+    <>
+      <button
+        type="button"
+        aria-label="Close chats"
+        onClick={() => setCollapsed(true)}
+        className="fixed inset-0 z-40 bg-field-950/25 backdrop-blur-[1px] sm:hidden"
+      />
+      <aside className="fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(320px,calc(100vw-2rem))] shrink-0 flex-col border-r border-jute-300/55 bg-paper-100 shadow-2xl sm:relative sm:z-auto sm:h-full sm:w-[280px] sm:shadow-none">
       <div className="flex items-center justify-between px-4 py-4">
         <LeafMark size="sm" />
         <button
@@ -217,6 +250,7 @@ export function Sidebar({ activeSessionId, onNewChat, onSelect, onDeleted }: Pro
           <LogOut size={16} strokeWidth={1.75} className="text-primary-600" /> Log out
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

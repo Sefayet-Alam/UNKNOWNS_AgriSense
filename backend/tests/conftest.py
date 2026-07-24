@@ -183,6 +183,12 @@ async def _bind_app_to_test_engine(test_engine, session_factory, monkeypatch):
     monkeypatch.setattr(chat_router, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(tools_module, "AsyncSessionLocal", session_factory)
 
+    # Hermetic SMS: never send a real message from the suite regardless of a
+    # local .env with SMS_DRY_RUN=false. Adapter tests override this per-test.
+    from app.config import settings as _settings
+
+    monkeypatch.setattr(_settings, "SMS_DRY_RUN", True)
+
     yield
 
     app.dependency_overrides.pop(get_db, None)

@@ -26,7 +26,7 @@ interface Props {
   onSuccess: (subscription: Subscription) => void;
 }
 
-const row = "flex justify-between gap-4 py-1";
+const row = "flex flex-wrap justify-between gap-x-4 gap-y-1 py-1";
 
 export function BdAppsCheckout({
   planId,
@@ -75,8 +75,8 @@ export function BdAppsCheckout({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm overflow-hidden border border-jute-300/70 bg-surface shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2 sm:items-center sm:p-4">
+      <div className="max-h-[calc(100dvh-1rem)] w-full max-w-sm overflow-y-auto rounded-t-2xl border border-jute-300/70 bg-surface shadow-2xl sm:rounded-none">
         <div className="flex items-center justify-between border-b border-jute-300/55 bg-paper-100 px-4 py-3">
           <span className="flex items-center gap-2 text-sm font-semibold text-text-primary">
             <ShieldCheck size={16} className="text-primary-600" />
@@ -95,7 +95,7 @@ export function BdAppsCheckout({
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="p-4 sm:p-5">
           {step === "confirm" && (
             <div className="space-y-4">
               <div className="border border-jute-300/60 p-3 text-sm">
@@ -155,7 +155,9 @@ export function BdAppsCheckout({
               {provider === "bdapps" && (
                 <p className="text-xs leading-relaxed text-text-muted">
                   Successful verification immediately activates the recurring
-                  ৳{amount}/month subscription.
+                  ৳{amount}/month subscription. BDApps owns the carrier charge;
+                  AgriSense treats a REGISTERED response as charge confirmation
+                  and never sends a second direct-debit request.
                 </p>
               )}
               {demoOtp && (
@@ -174,7 +176,7 @@ export function BdAppsCheckout({
                   setOtp(event.target.value.replace(/\D/g, ""))
                 }
                 placeholder="Enter OTP"
-                className="nums min-h-12 w-full rounded-lg border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-center font-mono text-lg tracking-[0.4em] outline-none transition focus:border-clay-400 focus:ring-0 focus:shadow-[0_8px_24px_-18px_rgba(23,38,28,0.55)]"
+                className="nums min-h-12 w-full rounded-lg border border-jute-300/70 bg-paper-50 px-3.5 py-2.5 text-center font-mono text-lg tracking-[0.24em] outline-none transition focus:border-clay-400 focus:ring-0 focus:shadow-[0_8px_24px_-18px_rgba(23,38,28,0.55)] sm:tracking-[0.4em]"
               />
               {err && <p className="text-xs text-status-error">{err}</p>}
               <button

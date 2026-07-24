@@ -31,16 +31,21 @@ class Settings(BaseSettings):
     OTP_MAX_ATTEMPTS: int = 5
     OTP_REQUEST_COOLDOWN_SECONDS: int = 60
     BDAPPS_BASE_URL: str = "https://developer.bdapps.com"
-    # Each BDApps subscription application has one provisioned tariff.
+    # Plus is the only live carrier plan. BDApps labels the issued server
+    # credential "API Key"; PASSWORD remains as a backwards-compatible alias.
     BDAPPS_PLUS_APPLICATION_ID: str = ""
+    BDAPPS_PLUS_API_KEY: str = ""
     BDAPPS_PLUS_PASSWORD: str = ""
     BDAPPS_PLUS_APPLICATION_HASH: str = ""
+    # Retained only so older environments still parse. Pro is deliberately
+    # mock-only and these values are never used for carrier requests.
     BDAPPS_PRO_APPLICATION_ID: str = ""
     BDAPPS_PRO_PASSWORD: str = ""
     BDAPPS_PRO_APPLICATION_HASH: str = ""
-    # Legacy single-app values remain as a temporary Plus/Pro fallback based
-    # on BDAPPS_PLAN_ID, so existing deployments can migrate without downtime.
+    # Legacy single-app values remain as a temporary Plus fallback so existing
+    # deployments can migrate without copying secrets immediately.
     BDAPPS_APPLICATION_ID: str = ""
+    BDAPPS_API_KEY: str = ""
     BDAPPS_PASSWORD: str = ""
     BDAPPS_APPLICATION_HASH: str = ""
     BDAPPS_PLAN_ID: str = "plus"
