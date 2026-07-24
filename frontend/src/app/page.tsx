@@ -8,6 +8,7 @@ import {
   CalendarRange,
   CloudSun,
   CircleDollarSign,
+  LogOut,
   MapPinned,
   MessageSquareText,
   RefreshCcw,
@@ -21,6 +22,7 @@ import FieldAtlasScene from "@/components/home/FieldAtlasScene";
 import { Reveal } from "@/components/home/Reveal";
 import { Logo, LogoMark } from "@/components/ui/Logo";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { useAuth } from "@/lib/auth";
 import { gsap, motionAllowed, registerGsap } from "@/lib/motion";
 import { getAccess } from "@/lib/tokens";
 
@@ -177,6 +179,7 @@ function PlanningSequence() {
 }
 export default function HomePage() {
   const [authed, setAuthed] = useState(false);
+  const { logout } = useAuth();
 
   useEffect(() => {
     setAuthed(Boolean(getAccess()));
@@ -188,18 +191,22 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-[1380px] items-center justify-between px-5 py-3.5 sm:px-8">
           <Logo />
           <nav aria-label="Primary navigation" className="flex items-center gap-2">
-            <Link
-              href="/demo"
-              className="hidden min-h-11 items-center px-3 text-sm font-semibold text-ink-700 transition hover:text-field-700 sm:inline-flex"
-            >
-              Field demo
-            </Link>
             {authed ? (
-              <Link href="/chat" className="atlas-button">
-                <span className="sm:hidden">Open</span>
-                <span className="hidden sm:inline">Open workspace</span>
-                <ArrowUpRight size={16} />
-              </Link>
+              <>
+                <Link href="/chat" className="atlas-button">
+                  <span className="sm:hidden">Open</span>
+                  <span className="hidden sm:inline">Open workspace</span>
+                  <ArrowUpRight size={16} />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-jute-300/70 bg-paper-50 px-4 py-2.5 text-sm font-semibold text-ink-700 transition duration-200 hover:-translate-y-0.5 hover:border-clay-400 hover:text-clay-700"
+                >
+                  <span className="hidden sm:inline">Log out</span>
+                  <LogOut size={16} />
+                </button>
+              </>
             ) : (
               <>
                 <Link
@@ -246,9 +253,6 @@ export default function HomePage() {
                 <div className="mt-9 flex flex-wrap gap-3">
                   <Link href={authed ? "/chat" : "/register"} className="atlas-button">
                     Build a crop plan <ArrowRight size={17} />
-                  </Link>
-                  <Link href="/demo" className="atlas-button-secondary">
-                    Explore the demo
                   </Link>
                 </div>
               </Reveal>
@@ -319,8 +323,8 @@ export default function HomePage() {
                 constraints in the same conversation so a promising crop does not become an
                 impossible season.
               </p>
-              <Link href="/demo" className="mt-8 inline-flex items-center gap-2 font-semibold text-field-700 underline decoration-jute-300 decoration-2 underline-offset-8">
-                Walk through a sample season <ArrowUpRight size={17} />
+              <Link href={authed ? "/chat" : "/register"} className="mt-8 inline-flex items-center gap-2 font-semibold text-field-700 underline decoration-jute-300 decoration-2 underline-offset-8">
+                Start with your own field <ArrowUpRight size={17} />
               </Link>
             </Reveal>
           </div>
