@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  BadgeCheck,
-  Check,
   Loader2,
   ShieldCheck,
   Smartphone,
@@ -16,7 +14,7 @@ import {
 import { formatBdPhone } from "@/lib/phone";
 import type { Subscription } from "@/lib/types";
 
-type Step = "confirm" | "otp" | "processing" | "receipt";
+type Step = "confirm" | "otp" | "processing";
 
 interface Props {
   planId: "plus" | "pro";
@@ -43,7 +41,6 @@ export function BdAppsCheckout({
   const [demoOtp, setDemoOtp] = useState<string | null>(null);
   const [otp, setOtp] = useState("");
   const [err, setErr] = useState("");
-  const [subscription, setSubscription] = useState<Subscription | null>(null);
 
   const sendOtp = async () => {
     setBusy(true);
@@ -66,8 +63,7 @@ export function BdAppsCheckout({
     setStep("processing");
     try {
       const result = await apiVerifyBillingOtp(challengeId, otp);
-      setSubscription(result);
-      setStep("receipt");
+      onSuccess(result);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Could not verify OTP.");
       setStep("otp");
@@ -87,8 +83,9 @@ export function BdAppsCheckout({
           <button
             type="button"
             onClick={onClose}
+            disabled={busy}
             aria-label="Close"
-            className="rounded-full p-1 text-text-muted transition hover:-translate-y-0.5 hover:bg-paper-50 hover:text-text-primary hover:shadow-card"
+            className="rounded-full p-1 text-text-muted transition hover:-translate-y-0.5 hover:bg-paper-50 hover:text-text-primary hover:shadow-card disabled:cursor-not-allowed disabled:opacity-40"
           >
             <X size={18} />
           </button>
@@ -178,50 +175,8 @@ export function BdAppsCheckout({
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <Loader2 size={28} className="animate-spin text-primary-600" />
               <p className="text-sm text-text-muted">
-                Activating your subscription…
+                Verifying OTP and activating your subscription…
               </p>
-            </div>
-          )}
-
-          {step === "receipt" && subscription && (
-            <div className="space-y-4">
-              <div className="flex flex-col items-center gap-1 text-center">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 text-primary-600">
-                  <Check size={26} />
-                </span>
-                <p className="font-display text-lg font-semibold text-text-primary">
-                  Subscription active
-                </p>
-                <p className="text-xs text-text-muted">
-                  {subscription.provider === "mock"
-                    ? "Demo provider"
-                    : "Verified by bdapps"}{" "}
-                  · {subscription.provider_status}
-                </p>
-              </div>
-              <div className="border border-jute-300/60 p-3 text-xs">
-                <div className={row}>
-                  <span className="text-text-muted">Plan</span>
-                  <span className="font-medium text-text-primary">{tierName}</span>
-                </div>
-                <div className={row}>
-                  <span className="text-text-muted">Amount</span>
-                  <span className="nums text-text-primary">৳{amount}/month</span>
-                </div>
-                <div className={row}>
-                  <span className="text-text-muted">Status</span>
-                  <span className="font-medium uppercase text-primary-700">
-                    {subscription.status}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onSuccess(subscription)}
-                className="atlas-button w-full"
-              >
-                <BadgeCheck size={15} /> Continue with {tierName}
-              </button>
             </div>
           )}
         </div>

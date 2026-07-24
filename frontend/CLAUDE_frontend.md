@@ -15,6 +15,9 @@ Last updated by: Codex (Jul 24, 2026).
 - Frontend client functions live in `src/lib/api.ts`; subscription UI is in
   `src/app/profile/page.tsx` and `src/components/billing/BdAppsCheckout.tsx`.
 - Mock billing OTP is `1234`. Real BDApps mode never exposes the OTP.
+- `/api/billing/otp/verify` is the terminal subscription action. On success,
+  `BdAppsCheckout` immediately calls `onSuccess`, updates the active plan, and closes;
+  do not restore a receipt-gated “Continue with subscription” button.
 - Password recovery route: `/forgot-password`, linked from login and registration.
 - Profile password change calls `/api/auth/password/change`.
 
@@ -46,13 +49,14 @@ Last updated by: Codex (Jul 24, 2026).
 - `npm run typecheck` passes.
 - `npm run build` passes.
 - The production route manifest contains no `/demo`.
-- Full backend suite: 135 tests pass.
+- Full backend suite: 159 tests pass.
 - Backend test command from inside Compose:
   `docker compose exec -T -e TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test backend pytest -q`.
 - Docker services are running on frontend `:3000`, backend `:8080`, Postgres `:5433`.
 
 ## Remaining BDApps work
 
-Add provisioned `BDAPPS_APPLICATION_ID` and `BDAPPS_PASSWORD` to root `.env`, set
-`BILLING_PROVIDER=bdapps`, ensure `BDAPPS_PLAN_ID` matches the portal tariff, rebuild
-the backend, then test request/verify/status/cancel with a real eligible number.
+Add provisioned `BDAPPS_APPLICATION_ID` and `BDAPPS_PASSWORD` to root `.env`, optionally set
+`BDAPPS_APPLICATION_HASH`, set `BILLING_PROVIDER=bdapps`, ensure `BDAPPS_PLAN_ID` matches the
+portal tariff, rebuild the backend, then test request/verify/status/cancel with a real eligible
+number. Portal callbacks use `/api/bdapps/sms/receive` and `/api/bdapps/subscription/notify`.

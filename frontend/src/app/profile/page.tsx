@@ -388,6 +388,11 @@ function ProfileContent() {
           onSuccess={(activeSubscription) => {
             setSubscription(activeSubscription);
             setTier(activeSubscription.plan_id);
+            setBillingMsg(
+              `${checkout.name} activated successfully through ${
+                activeSubscription.provider === "bdapps" ? "BDApps" : "the development provider"
+              }.`,
+            );
             setCheckout(null);
           }}
         />

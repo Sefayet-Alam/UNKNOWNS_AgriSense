@@ -117,9 +117,10 @@ class BdAppsBillingProvider:
         return data
 
     async def request_otp(self, subscriber_id: str) -> OtpStartResult:
-        data = await self._post(
-            "/otp/request", {"subscriberId": subscriber_id}
-        )
+        payload = {"subscriberId": subscriber_id}
+        if settings.BDAPPS_APPLICATION_HASH:
+            payload["applicationHash"] = settings.BDAPPS_APPLICATION_HASH
+        data = await self._post("/otp/request", payload)
         code = str(data.get("statusCode", ""))
         if code != "S1000" or not data.get("referenceNo"):
             raise BillingProviderError(

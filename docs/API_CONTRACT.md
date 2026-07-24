@@ -92,10 +92,27 @@ an OTP.
 ### POST /api/billing/otp/verify
 Req: `{ "challenge_id": str, "otp": str }`
 Res 200: `Subscription`. The server persists the activated subscription.
+Successful verification is the terminal activation action; the browser must
+update its plan immediately and must not require a second continuation button.
 
 ### POST /api/billing/subscription/cancel
 Res 200: `{ "subscription": Subscription, "status_code": str, "status_detail": str }`
 BDApps mode calls `/subscription/send` with action `"0"`.
+
+## BDApps callbacks (public; authenticated by provisioned application values)
+
+### POST /api/bdapps/sms/receive
+BDApps Message Receiving URL:
+`https://agrisense.cortextech.dev/api/bdapps/sms/receive`.
+Accepts the official SMS MO payload and returns
+`{ "statusCode": "S1000", "statusDetail": "Request was successfully processed" }`.
+Message content is intentionally not persisted.
+
+### POST /api/bdapps/subscription/notify
+BDApps Subscription Notification URL:
+`https://agrisense.cortextech.dev/api/bdapps/subscription/notify`.
+Validates `applicationId` and `password`, then synchronizes REGISTERED /
+UNREGISTERED status into the existing subscription record.
 
 ## Gazetteer (public, no auth — used by the register form)
 

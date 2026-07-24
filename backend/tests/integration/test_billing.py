@@ -68,3 +68,68 @@ async def test_server_rejects_free_plan_otp(auth_client):
         "/api/billing/otp/request", json={"plan_id": "free"}
     )
     assert response.status_code == 400
+
+
+async def test_bdapps_sms_callback_requires_matching_application(client, monkeypatch):
+    monkeypatch.setattr(settings, "BDAPPS_APPLICATION_ID", "APP_TEST")
+    monkeypatch.setattr(settings, "BDAPPS_PASSWORD", "secret")
+    payload = {
+        "version": "1.0",
+        "applicationId": "APP_TEST",
+        "sourceAddress": "tel:8801712345678",
+        "message": "PLAN",
+        "requestId": "sms-request-1",
+        "encoding": "0",
+    }
+
+    accepted = await client.post("/api/bdapps/sms/receive", json=payload)
+    assert accepted.status_code == 200
+    assert accepted.json() == {
+        "statusCode": "S1000",
+        "statusDetail": "Request was successfully processed",
+    }
+
+    payload["applicationId"] = "APP_OTHER"
+    rejected = await client.post("/api/bdapps/sms/receive", json=payload)
+    assert rejected.status_code == 403
+
+
+async def test_bdapps_notification_synchronizes_subscription(
+    auth_client, monkeypatch
+):
+    monkeypatch.setattr(settings, "BDAPPS_APPLICATION_ID", "APP_TEST")
+    monkeypatch.setattr(settings, "BDAPPS_PASSWORD", "secret")
+    monkeypatch.setattr(settings, "BDAPPS_PLAN_ID", "plus")
+    notification = {
+        "timeStamp": "2607241800",
+        "version": "1.0",
+        "applicationId": "APP_TEST",
+        "password": "secret",
+        "subscriberId": "tel:8801712345678",
+        "frequency": "monthly",
+        "status": "REGISTERED.",
+    }
+
+    registered = await auth_client.post(
+        "/api/bdapps/subscription/notify", json=notification
+    )
+    assert registered.status_code == 200
+    subscription = await auth_client.get("/api/billing/subscription")
+    assert subscription.status_code == 200
+    assert subscription.json()["plan_id"] == "plus"
+    assert subscription.json()["status"] == "active"
+    assert subscription.json()["provider"] == "bdapps"
+
+    notification["status"] = "UNREGISTERED."
+    unregistered = await auth_client.post(
+        "/api/bdapps/subscription/notify", json=notification
+    )
+    assert unregistered.status_code == 200
+    subscription = await auth_client.get("/api/billing/subscription")
+    assert subscription.json()["status"] == "cancelled"
+
+    notification["password"] = "wrong"
+    rejected = await auth_client.post(
+        "/api/bdapps/subscription/notify", json=notification
+    )
+    assert rejected.status_code == 403

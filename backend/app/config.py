@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     BDAPPS_BASE_URL: str = "https://developer.bdapps.com"
     BDAPPS_APPLICATION_ID: str = ""
     BDAPPS_PASSWORD: str = ""
+    BDAPPS_APPLICATION_HASH: str = ""
     BDAPPS_PLAN_ID: str = "plus"
     BDAPPS_TIMEOUT_SECONDS: float = 15.0
 
