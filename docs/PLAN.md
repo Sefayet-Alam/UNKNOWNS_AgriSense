@@ -180,20 +180,34 @@ Estimated wall-clock in parentheses; ~20h remain. Tests accompany each task
 > longer depends on live geocoding. Task 3 therefore shrinks to the
 > crop-specific endpoints below (`get_unions` is done — read the bundle).
 
-1. `backend/app/adapters/czis.py`: `get_unions(upazila_code)`,
-   `get_union_info(geocode)`, `get_varieties(crop_id)` (parse yield/duration),
-   `get_fertilizer_recommendation(crop_id, union_geocode, variety, land_type,
-   area_decimal)` (parse product-gram rows). httpx + 10s timeout + retry →
-   **cached snapshot fallback** (bundled JSON w/ snapshot date, disclosed in
-   output + trace — scenario #29).
-2. Tools: `get_land_context(farm)` (union resolution + variety availability),
-   exposed evidence: endpoint, params, fetched_at, live-vs-cached.
-3. Record real responses as fixtures.
-4. Tests: parsers over saved HTML/JSON fixtures; fallback path (mocked outage →
-   snapshot used + disclosure string present).
+**SHIPPED (2026-07-24, `backend/app/adapters/czis.py`).** The real endpoints
+differ from the earlier (broken) `recommendationunion/.../var/lt/area` guess —
+discovered from the CZIS front-end JS, all **point-based (lon/lat)**, which fits
+coordinates-first perfectly:
+- `list_crops(season?, name?)` — bundled catalog `app/data/czis_crops.json`
+  (129 crops w/ id + season, from `/crops/list2`; refresh via
+  `scripts/data_harvest/fetch_czis_crops.py`). Offline, always available.
+- `get_varieties(crop_id)` — `/popup/cropvarietylist/{id}` → name / yield t/ha /
+  duration days / characteristics.
+- `get_crop_context(crop_id, lat, lon)` — `/mobile/fertilizer/czis/byvar/crop/
+  {id}/point/lon/{lon}/lat/{lat}` → crop name + variety `<option>` **ids** (the
+  id feeds the fertilizer call).
+- `get_fertilizer_recommendation(crop_id, lat, lon, variety_id, area_decimal)` —
+  `/czis/fertilizer/recommendationbypoint/crop/{id}/lon/{lon}/lat/{lat}/var/{v}/
+  {area}` → CZIS server-computed Urea/TSP/DAP/MoP/Gypsum/Zinc doses (AEZ+soil
+  aware, area-scaled), "or" alternatives + organic note. Relayed verbatim.
+- httpx + retry + `CzisError`/`CZIS_UNAVAILABLE` sentinel (fall back to FRG KB,
+  never invent). Evidence metadata on every result. Regex parsers (no bs4 dep).
+- Agent tools `czis_list_crops / czis_crop_varieties / czis_crop_context /
+  czis_fertilizer_recommendation` on the advisor node — point-based ones default
+  to the active farm's coordinates. Fixtures + 7 parser/sentinel tests
+  (`tests/unit/test_czis.py`), live-smoked against Tanore.
 
-**Done when:** for Tanore farm, agent can fetch real union list, variety
-yields/durations, and a real computed fertilizer dose — visible in chips.
+  DEFERRED (not needed for Tier 0): cached-snapshot fallback for fertilizer
+  (FRG structured tables are the documented offline fallback per D4).
+
+**Done ✓:** for a Tanore farm the agent fetches the real crop catalog, variety
+yields/durations, and a real computed fertilizer dose — all as trace chips.
 
 ### Task 4 — Knowledge base + RAG (≈2.5h) — Tier 0 #7 (12 pts)
 

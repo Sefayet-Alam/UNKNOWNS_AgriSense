@@ -29,6 +29,7 @@ from .messages import (
     tool_call_traces,
 )
 from .tools import (
+    build_czis_tools,
     build_farm_tools,
     build_memory_tools,
     build_static_tools,
@@ -155,10 +156,15 @@ async def stream_agent_turn(
         static_tools = build_static_tools()
         weather_tool = build_weather_tool(user)
         farm_tools = build_farm_tools(user)
+        czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         tool_groups = {
             "intake": static_tools + farm_tools,
-            "advisor": static_tools + [weather_tool] + farm_tools + memory_tools,
+            "advisor": static_tools
+            + [weather_tool]
+            + farm_tools
+            + czis_tools
+            + memory_tools,
         }
         all_tool_names = sorted(
             {t.name for group in tool_groups.values() for t in group}

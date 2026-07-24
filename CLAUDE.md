@@ -87,6 +87,15 @@ that runs end-to-end in a 4-minute demo.
   `find_place`/`find_upazila_by_name`/`find_union_by_name`, `union_valid`).
   Public dropdown endpoint `GET /api/geo/unions/{upazila_code}`
   ([backend/app/routers/geo.py](backend/app/routers/geo.py)).
+- **CZIS crop grounding (Task 3)**: [backend/app/adapters/czis.py](backend/app/adapters/czis.py) — live
+  BARC Crop Zoning endpoints (un-authed, **point-based lon/lat**, regex parsers,
+  no bs4 dep). `list_crops` (bundled 129-crop catalog
+  [backend/app/data/czis_crops.json](backend/app/data/czis_crops.json)), `get_varieties` (yield/duration),
+  `get_crop_context` (variety **ids** at a point), `get_fertilizer_recommendation`
+  (CZIS server-computed Urea/TSP/DAP/MoP/Gypsum/Zinc doses — relayed verbatim,
+  never recomputed). `CzisError`/`CZIS_UNAVAILABLE` → fall back to FRG KB.
+  Advisor tools `czis_list_crops/czis_crop_varieties/czis_crop_context/
+  czis_fertilizer_recommendation` default to the active farm's coordinates.
 - **Weather (Task 1)**: `get_weather` tool → [backend/app/adapters/weather.py](backend/app/adapters/weather.py)
   (Open-Meteo, keyless, 16-day max, ET0, retry + WEATHER_UNAVAILABLE sentinel,
   evidence metadata). **Coordinates-first**: default = the active farm's stored
@@ -117,8 +126,8 @@ that runs end-to-end in a 4-minute demo.
 
 - **THE ROADMAP is [docs/PLAN.md](docs/PLAN.md)** — locked architecture decisions
   (D1-D5), verified data-source matrix, and the incremental Task 1→10 sequence
-  (Task N only starts when Task N-1 is solid; Tasks 1-2 shipped). Next: Task 3
-  CZIS adapter → Task 4 FRG RAG KB → Task 5 crop ranker → Task 6 season plan →
+  (Task N only starts when Task N-1 is solid; Tasks 1-3 shipped). Next: Task 4
+  FRG RAG KB → Task 5 crop ranker → Task 6 season plan →
   Task 7 finance (= Tier 0 complete checkpoint) → 8 polish → 9 Tier 1 → 10 Tier 2.
 - **New agent tools** (CZIS, KB retrieval, ranking, planning, finance) → add
   `@tool`/factory functions in [backend/app/agent/tools.py](backend/app/agent/tools.py); register in the
@@ -173,7 +182,8 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 144 tests: unit (security/phone/tools/weather adapter/geo
+  (or `make test`). 151 tests: unit (security/phone/tools/weather adapter/czis
+  adapter/geo
   gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
