@@ -16,6 +16,10 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# entrypoint.sh runs `alembic upgrade head` (which also creates the pgvector
+# extension via the first migration) and then execs uvicorn.
+ENTRYPOINT ["/app/entrypoint.sh"]

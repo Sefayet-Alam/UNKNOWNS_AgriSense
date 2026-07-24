@@ -5,12 +5,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 
 from .config import settings
-from .database import Base, engine
+from .database import engine
 
-# Import models so they register on Base.metadata before create_all.
+# Import models so they register on Base.metadata (used by Alembic autogenerate
+# and by the test-suite's create_all). Schema is now owned by Alembic
+# migrations, run at container start via entrypoint.sh — NOT here.
 from . import models  # noqa: F401
 from .routers import auth as auth_router
 from .routers import chat as chat_router
@@ -18,10 +19,9 @@ from .routers import chat as chat_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        # pgvector extension must exist before create_all builds Vector columns.
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-        await conn.run_sync(Base.metadata.create_all)
+    # Schema creation and the pgvector extension are handled by Alembic
+    # migrations (see migrations/ and entrypoint.sh), so startup does no
+    # DDL. Nothing to set up here; just clean up the engine on shutdown.
     yield
     await engine.dispose()
 

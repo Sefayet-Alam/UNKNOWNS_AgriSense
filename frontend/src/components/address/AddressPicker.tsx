@@ -49,9 +49,7 @@ const toOpts = (rows: { name: string; code: string }[]): SelectOption[] =>
 
 export function AddressPicker({ value, onChange, onBlur, error }: Props) {
   const division = DIVISIONS.find((d) => d.code === value.division_code);
-  const district = division?.districts.find(
-    (z) => z.code === value.district_code,
-  );
+  const district = division?.districts.find((z) => z.code === value.district_code);
 
   const onDivision = (code: string) => {
     const d = DIVISIONS.find((x) => x.code === code);

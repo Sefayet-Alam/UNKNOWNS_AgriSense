@@ -18,8 +18,10 @@ backend:
   depends_on: [db]
 ```
 
-The app runs `CREATE EXTENSION IF NOT EXISTS vector;` and
-`Base.metadata.create_all` on startup — no migrations needed for the scaffold.
+Schema is owned by **Alembic migrations**. The container entrypoint
+(`entrypoint.sh`) runs `alembic upgrade head` (the first migration creates the
+`vector` extension) and then launches uvicorn. The app no longer calls
+`create_all` on startup.
 
 ### Local
 ```bash
@@ -28,6 +30,50 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 # point DATABASE_URL at a reachable pgvector Postgres, then:
 uvicorn app.main:app --reload --port 8000
+```
+
+## Database migrations (Alembic)
+
+Schema changes are versioned with Alembic (async `env.py`, uses
+`settings.DATABASE_URL`, `compare_type=True`). **Model changes now mean a new
+migration — never nuke the database.**
+
+```bash
+# after editing app/models.py, generate a migration from the diff:
+alembic revision --autogenerate -m "add crop_notes table"
+#  ^ review the generated file in migrations/versions/ before committing
+
+# apply all pending migrations (this is what the container does at start):
+alembic upgrade head
+
+# roll back the most recent migration:
+alembic downgrade -1
+```
+
+Notes:
+- The `Makefile` wraps these: `make makemigrations m="msg"`, `make migrate`.
+- The initial migration (`0001_initial`) `CREATE EXTENSION IF NOT EXISTS vector`
+  before creating `long_term_memory`; keep the extension creation in the
+  migration, not app startup.
+- pgvector `Vector` columns render via a `render_item` hook in `env.py`, so
+  autogenerate emits `pgvector.sqlalchemy.Vector(dim=...)` correctly.
+- Running against a throwaway DB to sanity-check:
+  ```bash
+  DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_migtest \
+    alembic upgrade head        # creates all tables + extension
+  DATABASE_URL=... alembic downgrade base   # cleanly reverses
+  ```
+
+## Tests
+
+See `tests/README.md`. Quick start (inside the backend container, against the
+compose Postgres):
+
+```bash
+pip install -r requirements-dev.txt
+TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test \
+  pytest -q
+# or: make test
 ```
 
 ## Environment

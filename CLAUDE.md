@@ -29,7 +29,7 @@ whose crop advice ignores the weather it just fetched will be noticed.
 
 | # | Capability | Done when | Status |
 |---|---|---|---|
-| 1 | Conversational intake | Collects ≥ location, farm size, soil type, water availability, budget, target season; asks targeted follow-ups only for missing fields | ❌ TODO (agent is generic; no slot-filling) |
+| 1 | Conversational intake | Collects ≥ location, farm size, soil type, water availability, budget, target season; asks targeted follow-ups only for missing fields | ⚠️ partial — **location (division/district/upazila_code) captured at registration**; agent still needs slot-filling for farm size/soil/water/budget/season |
 | 2 | Live weather grounding | Calls a **real** weather API by location; uses actual rainfall/temp, no invented forecasts | ❌ TODO (no weather tool) |
 | 3 | Crop recommendation | Ranks ≥3 candidate crops w/ suitability, water need, risk, rough profit | ❌ TODO |
 | 4 | Season plan | Dated calendar: sowing window, fertilizer timing, irrigation, weed/pest checkpoints, harvest | ❌ TODO |
@@ -60,8 +60,12 @@ that runs end-to-end in a 4-minute demo.
 Full-stack scaffold already runs end-to-end; the domain capabilities above are the
 remaining work.
 
-- **Auth**: JWT register/login/me + refresh with rotation, jti blacklisting, reuse
-  detection, logout blacklist. ([backend/app/routers/auth.py](backend/app/routers/auth.py), [backend/app/security.py](backend/app/security.py))
+- **Auth**: **phone number is the identity** (unique login credential; no email —
+  rural farmers have phones). `username` is a non-unique display name. Registration
+  also captures the farm **address with CZIS/BBS geocodes** (division/district/
+  **upazila_code**) → feeds the weather/CZIS tools directly. JWT register/login/me +
+  refresh with rotation, jti blacklisting, reuse detection, logout blacklist.
+  ([backend/app/routers/auth.py](backend/app/routers/auth.py), [backend/app/security.py](backend/app/security.py), [backend/app/schemas.py](backend/app/schemas.py))
 - **Chat**: SSE streaming, user-scoped sessions/messages, tool-trace display.
   ([backend/app/routers/chat.py](backend/app/routers/chat.py), [backend/app/agent/runner.py](backend/app/agent/runner.py))
 - **Agent**: single-agent LangGraph ReAct loop, OpenRouter default (Ollama optional).
@@ -88,21 +92,48 @@ remaining work.
 - The API + SSE contract is **frozen** in [docs/API_CONTRACT.md](docs/API_CONTRACT.md); honor it so the
   frontend keeps working.
 
+## Key design docs (read before building Tier 0)
+
+- [docs/INSIGHTS.md](docs/INSIGHTS.md) — **architecture steer**: build a *bounded
+  agricultural planning workflow*, NOT a general chatbot with scraping tools. The
+  LLM gathers info + explains; **deterministic services** do crop ranking,
+  fertilizer calc, scheduling, and financial math. Maps the real data sources and
+  their roles (BARC FRG 2024 → fertilizer rules/tables, hybrid RAG+relational; CZIS
+  crop zoning → structured/geospatial by upazila; BAMIS crop-weather calendar →
+  crop stages/calendars; live weather API → direct tool; market/cost → structured).
+  Core rule: never let the LLM invent a fertilizer/finance number — retrieve/compute
+  it, then have the LLM explain and cite.
+- [docs/RESEARCH_crop_disease_models.md](docs/RESEARCH_crop_disease_models.md) —
+  parked Tier 2 leaf-photo disease detection (off-the-shelf models + integration).
+
 ## Dev commands
 
 ```bash
 cp .env.example .env          # set JWT_SECRET_KEY + OPENROUTER_API_KEY
 docker compose up --build     # db (pgvector) + backend + frontend
 docker compose logs -f backend
-docker compose down           # stop  (-v also wipes the db volume)
+docker compose down           # stop
+docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 ```
 
+- **Migrations = Alembic** (schema is Alembic-owned; startup runs `alembic upgrade
+  head` via `entrypoint.sh`, no more `create_all`). After changing a DB model:
+  `alembic revision --autogenerate -m "msg"` → review → `alembic upgrade head`
+  (or `make makemigrations m="msg"` / `make migrate` in `backend/`). **No db nuke
+  needed for schema changes anymore** — nuke only to clear data.
+- **Tests** (regression guard, run before/after changes): from `backend/`,
+  `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
+  TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
+  (or `make test`). 54 tests: unit (security/phone/tools), integration (auth
+  rotation/blacklist, chat ownership), streaming (SSE tool_trace→message_update→
+  done). LLM is faked — no network. Isolated against a separate `argi_test` db.
+  Realtime transport is **SSE, not WebSocket**. Add tests with any new feature.
 - Frontend http://localhost:3000 · Backend http://localhost:8080 (docs `/docs`) ·
   Postgres localhost:5433. (Host ports 8080/5433 avoid local clashes; container
   ports are 8000/5432. `NEXT_PUBLIC_API_URL` in `.env` is baked into the frontend at
   build time — rebuild the frontend after changing it.)
-- Seeded test user during dev: `farmer1` / `greenpass1`.
-- Quick backend smoke test: register → login → `POST /api/chat/stream` with
+- Quick backend smoke test: register (username + **phone** + password1/2 + address
+  fields) → login by **phone** → `POST /api/chat/stream` with
   `Accept: text/event-stream, */*` and a `Bearer` access token.
 
 ## Conventions & constraints
