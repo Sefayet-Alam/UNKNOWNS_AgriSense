@@ -71,7 +71,13 @@ NODE_DIRECTIVES = {
         "update_farm_profile when the farmer states new ones. For anything "
         "weather-related, fetch the real forecast with get_weather and "
         "answer grounded in the returned values only, relating it to the "
-        "farmer's crops/plans when profile context is available."
+        "farmer's crops/plans when profile context is available. "
+        "For crop choice, varieties and fertilizer, GROUND the answer in the "
+        "CZIS tools: czis_list_crops (by season) -> czis_crop_varieties "
+        "(yield/duration) -> czis_crop_context (gets the variety_id at the "
+        "farm) -> czis_fertilizer_recommendation (server-computed doses). "
+        "Never invent variety yields or fertilizer amounts; if CZIS is "
+        "unavailable, say so and use the knowledge base."
     ),
 }
 

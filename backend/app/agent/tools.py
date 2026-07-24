@@ -13,6 +13,7 @@ from langchain_core.tools import tool
 from sqlalchemy import select
 
 from .. import geo as geo_mod
+from ..adapters import czis as czis_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
 from ..database import AsyncSessionLocal
@@ -669,6 +670,134 @@ def build_farm_tools(user):
             return json.dumps(_farm_payload(farm), ensure_ascii=False)
 
     return [get_farm_profile, update_farm_profile, list_farms, select_farm, create_farm]
+
+
+# --------------------------------------------------------------------------- #
+# CZIS crop / variety / fertilizer tools (factory — coordinates-first)
+# --------------------------------------------------------------------------- #
+async def _farm_point(user) -> Optional[dict]:
+    """Active farm's coordinates + area (for point-based CZIS calls)."""
+    async with AsyncSessionLocal() as session:
+        farm = await _get_or_create_active_farm(session, user)
+    lat, lon = farm.latitude, farm.longitude
+    if lat is None or lon is None:
+        resolved = geo_mod.resolve_coords(
+            union_code=farm.union_geocode or "",
+            upazila_code=farm.upazila_code or "",
+            district_code=farm.district_code or "",
+        )
+        if resolved:
+            lat, lon = resolved["lat"], resolved["lon"]
+    if lat is None or lon is None:
+        return None
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "area_decimal": farm.area_decimal,
+        "label": farm.union_name or farm.upazila_name or farm.district_name,
+    }
+
+
+def build_czis_tools(user):
+    """CZIS grounding tools. Fertilizer/context are POINT-based and default to
+    the active farm's coordinates (union/upazila centroid) — the same
+    coordinates-first contract as weather. On any CZIS outage the tools return
+    a CZIS_UNAVAILABLE sentinel; callers must fall back to the FRG knowledge
+    base, never invent numbers.
+    """
+
+    @tool
+    async def czis_list_crops(season: str = "") -> str:
+        """List candidate crops from the national CZIS catalog (129 crops).
+
+        Args:
+            season: optional filter — "rabi" (winter), "kharif-1" (pre-monsoon),
+                or "kharif-2" (monsoon). Empty returns all.
+
+        Returns crop_id, name, season and variety_group. Use crop_id with the
+        other czis tools. This is a bundled reference catalog (always available).
+        """
+        _emit("czis", f"listing crops (season={season or 'all'})")
+        crops = czis_mod.list_crops(season=season or None)
+        return json.dumps(
+            {"count": len(crops), "crops": crops, "source": czis_mod.crops_source()},
+            ensure_ascii=False,
+        )
+
+    @tool
+    async def czis_crop_varieties(crop_id: int) -> str:
+        """Live CZIS variety table for a crop: name, yield (t/ha), duration
+        (days), and characteristics. Use to compare varieties when ranking or
+        picking a crop. crop_id comes from czis_list_crops."""
+        _emit("czis", f"fetching varieties for crop {crop_id}")
+        try:
+            data = await czis_mod.get_varieties(crop_id)
+        except czis_mod.CzisError as exc:
+            return f"CZIS_UNAVAILABLE: {exc}. Fall back to the knowledge base; do not invent variety data."
+        return json.dumps(data, ensure_ascii=False)
+
+    @tool
+    async def czis_crop_context(crop_id: int) -> str:
+        """Live CZIS crop context at the farm's location: the official crop name
+        plus the selectable varieties WITH their CZIS variety_id. You need a
+        variety_id from here before calling czis_fertilizer_recommendation.
+        Uses the active farm's coordinates automatically."""
+        _emit("czis", f"fetching crop {crop_id} context at farm location")
+        point = await _farm_point(user)
+        if point is None:
+            return json.dumps(
+                {"error": "farm has no location yet — ask the farmer for upazila/union first"},
+                ensure_ascii=False,
+            )
+        try:
+            data = await czis_mod.get_crop_context(
+                crop_id, point["latitude"], point["longitude"]
+            )
+        except czis_mod.CzisError as exc:
+            return f"CZIS_UNAVAILABLE: {exc}. Fall back to the knowledge base; do not invent data."
+        return json.dumps(data, ensure_ascii=False)
+
+    @tool
+    async def czis_fertilizer_recommendation(
+        crop_id: int, variety_id: int, area_decimal: float = 0.0
+    ) -> str:
+        """Live CZIS server-computed fertilizer doses (Urea/TSP/DAP/MoP/Gypsum/
+        Zinc) for a crop + variety at the farm, scaled to area.
+
+        Args:
+            crop_id: from czis_list_crops.
+            variety_id: from czis_crop_context (NOT the variety name).
+            area_decimal: land area in decimals; 0 uses the farm's saved area.
+
+        These doses are computed by CZIS (AEZ + soil aware) — relay them with
+        the source; never recompute. Coordinates come from the active farm."""
+        _emit("czis", f"computing fertilizer for crop {crop_id} var {variety_id}")
+        point = await _farm_point(user)
+        if point is None:
+            return json.dumps(
+                {"error": "farm has no location yet — ask the farmer for upazila/union first"},
+                ensure_ascii=False,
+            )
+        area = float(area_decimal) or point.get("area_decimal")
+        if not area:
+            return json.dumps(
+                {"error": "no area known — ask the farmer for the plot size (decimals) or pass area_decimal"},
+                ensure_ascii=False,
+            )
+        try:
+            data = await czis_mod.get_fertilizer_recommendation(
+                crop_id, point["latitude"], point["longitude"], variety_id, area
+            )
+        except czis_mod.CzisError as exc:
+            return f"CZIS_UNAVAILABLE: {exc}. Fall back to the FRG knowledge base; do not invent fertilizer numbers."
+        return json.dumps(data, ensure_ascii=False)
+
+    return [
+        czis_list_crops,
+        czis_crop_varieties,
+        czis_crop_context,
+        czis_fertilizer_recommendation,
+    ]
 
 
 # --------------------------------------------------------------------------- #

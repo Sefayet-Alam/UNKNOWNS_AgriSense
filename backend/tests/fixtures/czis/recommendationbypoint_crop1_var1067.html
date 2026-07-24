@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Fertilizer Recommendation</title>
+    <!-- <link rel="stylesheet" href="https://czis.cropzoning.gov.bd/cz_assets/js/bootstrap/css/bootstrap.css"> -->
+    <style>
+        .table th, .table td {
+        padding: 0.2rem;
+        vertical-align: top;
+        border-top: 1px solid #dee2e6;
+    }
+
+    ul {
+        padding-inline-start: 5px;
+    }
+
+    </style>
+
+</head>
+
+<body style="font-size: 1.0rem;">
+
+
+<table class="table table-hover table-striped table-fit">
+    <thead class="bg-warning">
+    <tr>
+        <th>Fertilizer</th>
+        <th>Nutrient Element</th>
+        <th class="text-right">Amount (per 33 decimal)</th>
+    </tr>
+    </thead>
+    <tbody>
+    <!-- Array
+(
+    [0] => stdClass Object
+        (
+            [name] => Nitrogen
+            [val] => 1.76888950215369
+            [fertilizer] => Urea
+            [fert_name_en] => Urea
+            [nut_amount] => 201.067
+        )
+
+    [1] => stdClass Object
+        (
+            [name] => Nitrogen with DAP
+            [val] => 1.68805401312828
+            [fertilizer] => Urea (if DAP is used)
+            [fert_name_en] => Urea (if DAP is used)
+            [nut_amount] => 0
+        )
+
+    [2] => stdClass Object
+        (
+            [name] => Phosphorus
+            [val] => 0.224543079959683
+            [fertilizer] => TSP
+            [fert_name_en] => TSP
+            [nut_amount] => 11.0971
+        )
+
+    [3] => stdClass Object
+        (
+            [name] => Phosphorus
+            [val] => 0.224543079959683
+            [fertilizer] => DAP
+            [fert_name_en] => DAP
+            [nut_amount] => 11.0971
+        )
+
+    [4] => stdClass Object
+        (
+            [name] => Potassium
+            [val] => 0.935274941834253
+            [fertilizer] => MoP
+            [fert_name_en] => MoP
+            [nut_amount] => 115.556
+        )
+
+    [5] => stdClass Object
+        (
+            [name] => Sulfur
+            [val] => 0.406634733534644
+            [fertilizer] => Gypsum
+            [fert_name_en] => Gypsum
+            [nut_amount] => 18.0867
+        )
+
+    [6] => stdClass Object
+        (
+            [name] => Zinc
+            [val] => 0.00514184658430069
+            [fertilizer] => Zinc Sulphate (M)
+            [fert_name_en] => Zinc Sulphate (M)
+            [nut_amount] => 0.457407
+        )
+
+    [7] => stdClass Object
+        (
+            [name] => Zinc
+            [val] => 0.00881459359317419
+            [fertilizer] => Zinc Sulphate (H)
+            [fert_name_en] => Zinc Sulphate (H)
+            [nut_amount] => 0.457407
+        )
+
+)
+ -->
+                
+                        
+            <!-- to ensure min 1 gm for low value  -->
+            <!--   -->
+                        <!--  -->
+
+            
+
+            
+            
+                <tr>
+                    <th>Urea</th>
+                    <td>Nitrogen</td>
+                    <td class="text-right">
+                                                                            58.373 kg
+                        
+                    </td>
+                </tr>
+
+            
+
+
+            
+            
+            
+
+
+            
+                                
+            <!-- to ensure min 1 gm for low value  -->
+            <!--   -->
+                        <!--  -->
+
+            
+
+            
+                            <tr>
+                    <td colspan="3" class="pl-4">or</td>
+                </tr>
+                <tr>
+                    <th>Urea (if DAP is used)</th>
+                    <td>Nitrogen with DAP</td>
+                    <td class="text-right">
+                                                                            55.706 kg
+                        
+                    </td>
+                </tr>
+
+            
+
+
+            
+            
+            
+
+
+            
+                                
+            <!-- to ensure min 1 gm for low value  -->
+            <!--   -->
+                        <!--  -->
+
+            
+
+            
+            
+                <tr>
+                    <th>TSP</th>
+                    <td>Phosphorus</td>
+                    <td class="text-right">
+                                                                            7.41 kg
+                        
+                    </td>
+                </tr>
+
+            
+
+
+            
+            
+            
+
+
+            
+                                
+            <!-- to ensure min 1 gm for low value  -->
+            <!--   -->
+                        <!--  -->
+
+            
+
+                            <tr>
+                    <td colspan="3" class="pl-4">or</td>
+                </tr>
+            
+            
+                <tr>
+                    <th>DAP</th>
+                    <td>Phosphorus</td>
+                    <td class="text-right">
+                                                                            7.41 kg
+                        
+                    </td>
+                </tr>
+
+            
+
+
+            
+            
+            
+
+
+            
+                                
+            <!-- to ensure min 1 gm for low value  -->
+            <!--   -->
+                        <!--  -->
+
+            
+
+            
+            
+                <tr>
+                    <th>MoP</th>
+                    <td>Potassium</td>
+                    <td class="text-right">
+                                                                            30.864 kg
+                        
+                    </td>
+                </tr>
+
+            
+
+
+            
+            
+            
+
+
+            
+                                
+            <!-- to ensure min 1 gm for low value  -->
+            <!--   -->
+                        <!--  -->
+
+            
+
+            
+            
+                <tr>
+                    <th>Gypsum</th>
+                    <td>Sulfur</td>
+                    <td class="text-right">
+                                                                            13.419 kg
+                        
+                    </td>
+                </tr>
+
+            
+
+
+            
+            
+            
+
+
+            
+                                
+            <!-- to ensure min 1 gm for low value  -->
+            <!--   -->
+                        <!--  -->
+
+            
+
+            
+            
+                <tr>
+                    <th>Zinc Sulphate (M)</th>
+                    <td>Zinc</td>
+                    <td class="text-right">
+                                                                            169.68 gm
+                        
+                    </td>
+                </tr>
+
+            
+
+
+            
+            
+            
+
+
+            
+                                
+            <!-- to ensure min 1 gm for low value  -->
+            <!--   -->
+                        <!--  -->
+
+            
+
+                            <tr>
+                    <td colspan="3" class="pl-4">or</td>
+                </tr>
+            
+            
+                <tr>
+                    <th>Zinc Sulphate (H)</th>
+                    <td>Zinc</td>
+                    <td class="text-right">
+                                                                            290.88 gm
+                        
+                    </td>
+                </tr>
+
+            
+
+
+            
+            
+            
+
+
+            
+            
+                <tr>
+            <td colspan="3" class="pl-4">
+                <b>* Note: </b>
+            </td>
+        </tr>
+    
+    
+    
+    
+            <tr>
+            <td colspan="3" class="pl-4">
+                * Before transplanting Boro rice, at the final stage of land preparation, 8 kg of organic fertilizer (such as cow dung, compost, etc.) should be mixed thoroughly with the soil per decimal of land.
+            </td>
+        </tr>
+    
+    
+
+    </tbody>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+</table>
+
+<!-- <div id="rec-btm" class="btm-offset" style="margin: 1.5rem !important; padding: 1.5rem;"></div> -->
+
+
+</body>
+</html>
