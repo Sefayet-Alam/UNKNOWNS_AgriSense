@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+import inspect
 
 import pytest
 
-from app.agent.tools import calculator, get_current_time
+from app.agent import tools as tools_mod
+from app.agent import runner as runner_mod
+from app.agent.tools import build_research_tools, calculator, get_current_time
 
 pytestmark = pytest.mark.unit
 
@@ -47,3 +50,44 @@ def test_get_current_time_returns_iso8601():
     # Must be parseable as ISO 8601.
     parsed = datetime.fromisoformat(result)
     assert parsed.tzinfo is not None  # UTC-aware
+
+
+@pytest.mark.asyncio
+async def test_research_tool_factory_returns_untrusted_web_results(monkeypatch):
+    async def fake_search_web(query, max_results):
+        assert query == "mustard disease"
+        assert max_results == 2
+        return {
+            "source": "DuckDuckGo search",
+            "content_trust": "untrusted_external_reference",
+            "results": [{"title": "Example", "url": "https://example.test", "snippet": "x"}],
+        }
+
+    monkeypatch.setattr(tools_mod.research_mod, "search_web", fake_search_web)
+    web_search, _wikipedia = build_research_tools()
+
+    result = await web_search.ainvoke({"query": "mustard disease", "max_results": 2})
+
+    assert '"status": "ok"' in result
+    assert '"content_trust": "untrusted_external_reference"' in result
+
+
+@pytest.mark.asyncio
+async def test_research_tool_returns_honest_unavailable_status(monkeypatch):
+    async def unavailable(*_args, **_kwargs):
+        raise tools_mod.research_mod.ResearchError("Wikipedia is unavailable")
+
+    monkeypatch.setattr(tools_mod.research_mod, "search_wikipedia", unavailable)
+    _web_search, wikipedia = build_research_tools()
+
+    result = await wikipedia.ainvoke({"query": "mustard"})
+
+    assert '"status": "RESEARCH_UNAVAILABLE"' in result
+    assert "Wikipedia is unavailable" in result
+
+
+def test_research_tools_are_not_exposed_to_any_agent_specialist_yet():
+    """They remain reviewed/tested capabilities until explicitly enabled."""
+    runner_source = inspect.getsource(runner_mod)
+
+    assert "build_research_tools" not in runner_source
