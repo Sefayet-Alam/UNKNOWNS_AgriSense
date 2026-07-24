@@ -82,11 +82,11 @@ class Settings(BaseSettings):
     HISTORY_LIMIT: int = 40
     MEMORY_TOP_K: int = 5
 
-    # ---- Proactive weather alerts (SMS via bulksmsbd.net) ----
+    # ---- Proactive weather alerts (SMS via sms.net.bd) ----
     # Dry-run is the SAFE default: the daily scan computes and records
-    # alerts (sms_status="dry_run") without calling the SMS API. Flip to
-    # false only once the bulksmsbd account has sending access enabled.
-    SMS_API_URL: str = "http://bulksmsbd.net/api/smsapi"
+    # alerts (sms_status="dry_run") without calling the SMS API or spending
+    # credit. Flip to false (with a funded SMS_API_KEY) to send for real.
+    SMS_API_URL: str = "https://api.sms.net.bd/sendsms"
     SMS_API_KEY: str = ""
     SMS_SENDER_ID: str = ""
     SMS_DRY_RUN: bool = True

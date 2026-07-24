@@ -187,18 +187,21 @@ that runs end-to-end in a 4-minute demo.
   (plan-aware: fertilizer-delay/skip-irrigation vs the farm's LATEST saved
   plan using BAMIS per-crop `weather_warning` thresholds; generic fallback:
   heavy-rain/heat/cold constants when no live plan) → fixed English SMS
-  templates (LLM never in the SMS path) → bulksmsbd adapter
-  [backend/app/adapters/sms.py](backend/app/adapters/sms.py) (msisdn 8801…,
-  success `response_code` 202, provider rejection recorded not raised) →
-  `weather_alerts` audit/dedup log (idempotent re-scans). **`SMS_DRY_RUN=true`
-  is the default** — full pipeline runs and records `sms_status="dry_run"`
-  until the bulksmsbd account gets sending access (set `SMS_DRY_RUN=false` +
-  `SMS_API_KEY` + `SMS_SENDER_ID` in `.env` to go live). Manual demo trigger
+  templates (LLM never in the SMS path) → **sms.net.bd** adapter
+  [backend/app/adapters/sms.py](backend/app/adapters/sms.py) (POST form
+  `api_key`/`msg`/`to`, msisdn 8801…, success `error==0` with `data.request_id`,
+  provider rejection recorded not raised; **leave `SMS_SENDER_ID` blank** — an
+  unapproved masking sender id is rejected with error 413, blank uses the
+  default non-masking route) → `weather_alerts` audit/dedup log (idempotent
+  re-scans). **`SMS_DRY_RUN=true` is the safe default** (records
+  `sms_status="dry_run"`, no send/credit); set `SMS_DRY_RUN=false` +
+  a funded `SMS_API_KEY` in `.env` to go live. Manual demo trigger
   `POST /api/alerts/scan-now` + history `GET /api/alerts`
   ([backend/app/routers/alerts.py](backend/app/routers/alerts.py)); advisor
   tool `get_weather_alerts` relays stored advisories in chat. Live-verified:
-  real Paba forecast (12.8 mm) tripped a skip-irrigation advisory on a saved
-  plan, dedup on re-scan, and the chat advisor relayed the stored SMS text.
+  real SMS delivered via sms.net.bd (`error:0`, request_id), a real Paba
+  forecast tripped a skip-irrigation advisory on a saved plan, dedup on
+  re-scan, and the chat advisor relayed the stored SMS text.
 - **Frontend**: Next.js login/register/chat, agri-green theme, streaming + tool
   chips. ([frontend/src/](frontend/src/)) Gotcha fixed in `0b31359`: never key ChatColumn by
   session id and never abort the stream on the session-frame echo — that killed

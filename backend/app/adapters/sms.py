@@ -1,9 +1,10 @@
-"""Outbound SMS via bulksmsbd.net (proactive weather advisories).
+"""Outbound SMS via sms.net.bd (proactive weather advisories).
 
-Contract (per bulksmsbd docs):
-- GET  {SMS_API_URL}?api_key=..&type=text&number=8801XXXXXXXXX&senderid=..&message=..
-- The JSON reply's ``response_code`` is 202 on success; every other code is
-  a provider-side rejection (e.g. 1031 = account has no sending access).
+Contract (per sms.net.bd docs):
+- POST {SMS_API_URL} form fields: api_key, msg, to (comma-separated
+  ``8801XXXXXXXXX`` numbers), optional sender_id.
+- The JSON reply's ``error`` is 0 on success (``data.request_id`` present);
+  any non-zero ``error`` is a provider-side rejection with ``msg``.
 
 Design rules (mirrors adapters/weather.py):
 - Injectable ``httpx.AsyncClient`` so tests run offline via MockTransport.
@@ -11,8 +12,8 @@ Design rules (mirrors adapters/weather.py):
   farmer's failed delivery must never abort a whole scan. Only transport /
   malformed-response errors raise ``SmsError`` (also caught per-recipient
   by the scan job).
-- ``settings.SMS_DRY_RUN`` short-circuits before any HTTP: the pipeline
-  stays fully demoable while the bulksmsbd account awaits sending access.
+- ``settings.SMS_DRY_RUN`` short-circuits before any HTTP so the pipeline
+  stays fully demoable / test-safe without spending SMS credit.
 """
 from __future__ import annotations
 
@@ -26,8 +27,8 @@ from ..schemas import normalize_bd_phone
 
 log = logging.getLogger("agrisense.adapters.sms")
 
-TIMEOUT_S = 15.0
-SUCCESS_CODE = 202
+TIMEOUT_S = 20.0
+SUCCESS_ERROR = 0
 
 
 class SmsError(Exception):
@@ -35,7 +36,7 @@ class SmsError(Exception):
 
 
 def to_bd_msisdn(phone: str) -> str:
-    """Canonical local ``01XXXXXXXXX`` -> bulksmsbd's ``8801XXXXXXXXX``."""
+    """Canonical local ``01XXXXXXXXX`` -> sms.net.bd's ``8801XXXXXXXXX``."""
     return "88" + normalize_bd_phone(phone)
 
 
@@ -55,18 +56,18 @@ async def send_sms(
         log.info("SMS dry-run to %s: %s", number, message)
         return {"status": "dry_run", "number": number, "response": None}
 
-    params = {
+    data = {
         "api_key": settings.SMS_API_KEY,
-        "type": "text",
-        "number": number,
-        "senderid": settings.SMS_SENDER_ID,
-        "message": message,
+        "msg": message,
+        "to": number,
     }
+    if settings.SMS_SENDER_ID:
+        data["sender_id"] = settings.SMS_SENDER_ID
     owns = client is None
     cl = client or httpx.AsyncClient(timeout=TIMEOUT_S)
     try:
         try:
-            resp = await cl.get(settings.SMS_API_URL, params=params)
+            resp = await cl.post(settings.SMS_API_URL, data=data)
             payload = resp.json()
         except Exception as exc:  # transport error / non-JSON body
             raise SmsError(f"SMS transport failure: {exc}") from exc
@@ -74,9 +75,9 @@ async def send_sms(
         if owns:
             await cl.aclose()
 
-    code = payload.get("response_code")
-    if code == SUCCESS_CODE:
-        log.info("SMS sent to %s (response_code=202)", number)
+    if payload.get("error") == SUCCESS_ERROR:
+        request_id = (payload.get("data") or {}).get("request_id")
+        log.info("SMS sent to %s (request_id=%s)", number, request_id)
         return {"status": "sent", "number": number, "response": payload}
     log.warning("SMS to %s rejected by provider: %s", number, payload)
     return {"status": "failed", "number": number, "response": payload}
