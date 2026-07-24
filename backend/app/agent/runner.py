@@ -37,6 +37,8 @@ from .tools import (
     build_crop_recommendation_tool,
     build_financial_tool,
     build_disease_tool,
+    build_scenario_tool,
+    build_scheduler_tool,
     build_season_plan_tool,
     build_soil_tool,
     build_static_tools,
@@ -226,6 +228,8 @@ async def stream_agent_turn(
         financial_tool = build_financial_tool(user)
         season_plan_tool = build_season_plan_tool(user)
         disease_tool = build_disease_tool(user)
+        scheduler_tool = build_scheduler_tool(user)
+        scenario_tool = build_scenario_tool(user)
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
@@ -236,7 +240,7 @@ async def stream_agent_turn(
             "advisor": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool, patterns_tool, disease_tool]
+            + [soil_tool, patterns_tool, disease_tool, scheduler_tool]
             + czis_tools
             + kb_tools
             + memory_tools,
@@ -252,8 +256,8 @@ async def stream_agent_turn(
             + kb_tools,
             "planner": static_tools
             + farm_tools
-            + [soil_tool, season_plan_tool, financial_tool],
-            "finance": static_tools + farm_tools + [financial_tool],
+            + [soil_tool, season_plan_tool, scheduler_tool, financial_tool, scenario_tool],
+            "finance": static_tools + farm_tools + [financial_tool, scenario_tool],
         }
         all_tool_names = sorted(
             {t.name for group in tool_groups.values() for t in group}
