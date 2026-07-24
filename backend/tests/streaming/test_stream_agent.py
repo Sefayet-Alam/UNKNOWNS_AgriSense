@@ -264,6 +264,9 @@ async def test_multi_turn_intake_fills_profile_across_turns(
     assert farm.irrigation_available is True
     assert farm.budget_bdt == 80000
     assert farm.season == "rabi"
+    # Soil (mandatory slot) was filled by get_soil_context from the bundled
+    # survey — Tanore's dominant texture — so the phase could advance.
+    assert farm.soil_texture == "Clay Loam"
     assert farm.phase == "ready_for_planning"
 
     # Final assistant summary (Bengali) reached the client intact.

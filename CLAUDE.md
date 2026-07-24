@@ -29,7 +29,7 @@ whose crop advice ignores the weather it just fetched will be noticed.
 
 | # | Capability | Done when | Status |
 |---|---|---|---|
-| 1 | Conversational intake | Collects ≥ location, farm size, soil type, water availability, budget, target season; asks targeted follow-ups only for missing fields | ✅ DONE (Task 2) — farm-scoped slot-filling via `get_farm_profile`/`update_farm_profile` (missing_required_fields tracking, deterministic unit conversion w/ ASSUMED bigha/kani flags, plausibility warnings, multi-farm). Soil comes from CZIS in Task 3 |
+| 1 | Conversational intake | Collects ≥ location, farm size, soil type, water availability, budget, target season; asks targeted follow-ups only for missing fields | ✅ DONE (Task 2 + soil) — SIX MANDATORY slots (location, farm_size, **soil_type**, water, budget, season); crop advice is HARD-GATED until all present. Soil auto-fills mechanically from the bundled CZIS edaphic survey (480 upazilas, [backend/app/data/bd_soil.json](backend/app/data/bd_soil.json), accessors [backend/app/soil.py](backend/app/soil.py)) as a marked `survey_default_confirm_with_farmer`; farmer statements override and survive moves; unsurveyed upazila → default cleared, `get_soil_context` returns SOIL_UNKNOWN → agent must ask. Multi-farm: facts apply to the ACTIVE farm; different/new field → list/select/create_farm (create_farm now geo-resolves + soil-prefills); new farm = full six-field intake before advice |
 | 2 | Live weather grounding | Calls a **real** weather API by location; uses actual rainfall/temp, no invented forecasts | ✅ DONE (Task 1) — `get_weather` tool → Open-Meteo (keyless), 16-day daily incl. ET0, geocode w/ bundled-centroid fallback, WEATHER_UNAVAILABLE on outage (never invents) |
 | 3 | Crop recommendation | Ranks ≥3 candidate crops w/ suitability, water need, risk, rough profit | ❌ TODO (Task 5) |
 | 4 | Season plan | Dated calendar: sowing window, fertilizer timing, irrigation, weed/pest checkpoints, harvest | ❌ TODO (Task 6) |
@@ -182,7 +182,7 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 151 tests: unit (security/phone/tools/weather adapter/czis
+  (or `make test`). 158 tests: unit (security/phone/tools/weather adapter/czis
   adapter/geo
   gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +

@@ -62,8 +62,14 @@ NODE_DIRECTIVES = {
         "profile facts (get_farm_profile / update_farm_profile). Save every "
         "explicitly stated fact immediately, relay warnings, then ask ONE "
         "or two targeted questions for the most important missing field. "
-        "Do not give full crop advice here — once the profile is complete, "
-        "summarize and confirm it."
+        "Soil usually auto-fills from the upazila survey (soil_source="
+        "survey_default_confirm_with_farmer) — present it as an assumption "
+        "to confirm; only when soil_type is missing ask the farmer for it "
+        "(get_soil_context gives the survey breakdown). If the farmer is "
+        "talking about a different/new field, resolve WHICH farm first "
+        "(list_farms / select_farm / create_farm). Do not give full crop "
+        "advice here — once all six mandatory fields are present, "
+        "summarize and confirm the profile."
     ),
     "advisor": (
         "CURRENT NODE: GENERAL ADVISOR. Give practical agronomic advice "
@@ -77,7 +83,14 @@ NODE_DIRECTIVES = {
         "(yield/duration) -> czis_crop_context (gets the variety_id at the "
         "farm) -> czis_fertilizer_recommendation (server-computed doses). "
         "Never invent variety yields or fertilizer amounts; if CZIS is "
-        "unavailable, say so and use the knowledge base."
+        "unavailable, say so and use the knowledge base. HARD GATE: check "
+        "get_farm_profile first — while ANY of the six mandatory fields "
+        "(location, farm_size, soil_type, water_availability, budget, "
+        "season) is missing, do NOT give crop recommendations or plans; "
+        "ask for at most TWO missing fields per turn (never a numbered "
+        "list of 3+ questions). Soil usually auto-fills from the survey "
+        "(soil_source=survey_default_confirm_with_farmer) — mention it as "
+        "an assumption to confirm rather than asking for it."
     ),
 }
 
