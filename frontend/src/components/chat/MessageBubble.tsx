@@ -5,6 +5,7 @@ import { memo } from "react";
 import { PlanCard } from "@/components/plan/PlanCard";
 import { planParse } from "@/lib/plan";
 import type { Message, ProgressFrame } from "@/lib/types";
+import { AttachmentImage } from "./AttachmentImage";
 import { Markdown } from "./Markdown";
 import { StatusPill } from "./StatusPill";
 
@@ -26,10 +27,18 @@ function MessageBubbleImpl({
   onToggleTrace,
 }: Props) {
   if (message.role === "user") {
+    const images = (message.attachments || []).filter((a) => a.kind === "image");
     return (
       <div className="flex animate-fade-in justify-end">
-        <div className="max-w-[75%] whitespace-pre-wrap rounded-[1.35rem] rounded-br-sm bg-field-700 px-4 py-2.5 text-paper-50 shadow-card">
-          {message.content}
+        <div className="flex max-w-[75%] flex-col items-end gap-1.5">
+          {images.map((a) => (
+            <AttachmentImage key={a.id} id={a.id} />
+          ))}
+          {message.content && (
+            <div className="whitespace-pre-wrap rounded-[1.35rem] rounded-br-sm bg-field-700 px-4 py-2.5 text-paper-50 shadow-card">
+              {message.content}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -74,6 +83,7 @@ export const MessageBubble = memo(MessageBubbleImpl, (prev, next) => {
     a.id === b.id &&
     a.content === b.content &&
     a.tool_trace === b.tool_trace &&
+    a.attachments === b.attachments &&
     a.model === b.model &&
     prev.live === next.live &&
     prev.durationMs === next.durationMs &&

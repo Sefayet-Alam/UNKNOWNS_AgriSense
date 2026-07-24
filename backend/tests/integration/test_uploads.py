@@ -97,6 +97,25 @@ async def test_oversized_upload_is_rejected(auth_client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_uploaded_image_can_be_fetched_back(auth_client):
+    img = _png_bytes()
+    up = await auth_client.post(
+        "/api/uploads", files={"file": ("leaf.png", img, "image/png")}
+    )
+    aid = up.json()["id"]
+    got = await auth_client.get(f"/api/uploads/{aid}/content")
+    assert got.status_code == 200
+    assert got.headers["content-type"].startswith("image/png")
+    assert got.content == img
+
+
+@pytest.mark.asyncio
+async def test_content_missing_attachment_is_404(auth_client):
+    resp = await auth_client.get("/api/uploads/999999/content")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_upload_requires_auth(client):
     resp = await client.post(
         "/api/uploads",

@@ -183,9 +183,33 @@ async def stream_agent_turn(
 
         yield {"type": "session", "session_id": session.id}
 
+        # ---- resolve attachments (user-scoped) for this turn ------------ #
+        attachment_refs: list[dict] = []
+        if attachment_ids:
+            rows = (
+                (
+                    await db.execute(
+                        select(Attachment).where(
+                            Attachment.id.in_(attachment_ids),
+                            Attachment.user_id == user.id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            attachment_refs = [
+                {"id": row.id, "kind": row.kind, "mime_type": row.mime_type}
+                for row in rows
+            ]
+
         # ---- persist user message + echo bubble ------------------------- #
         user_msg = ChatMessage(
-            session_id=session.id, role="user", content=message, tool_trace=[]
+            session_id=session.id,
+            role="user",
+            content=message,
+            tool_trace=[],
+            attachments=attachment_refs,
         )
         db.add(user_msg)
         await db.commit()
@@ -271,22 +295,10 @@ async def stream_agent_turn(
         lc_messages.extend(history_to_lc_messages(history))
 
         # ---- multimodal: nudge the advisor to diagnose attached photos --- #
-        if attachment_ids:
-            image_rows = (
-                (
-                    await db.execute(
-                        select(Attachment).where(
-                            Attachment.id.in_(attachment_ids),
-                            Attachment.user_id == user.id,
-                            Attachment.kind == "image",
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
+        if attachment_refs:
+            image_rows = [r for r in attachment_refs if r["kind"] == "image"]
             if image_rows:
-                ids = ", ".join(f"attachment_id={row.id}" for row in image_rows)
+                ids = ", ".join(f"attachment_id={row['id']}" for row in image_rows)
                 lc_messages.append(
                     SystemMessage(
                         content=(

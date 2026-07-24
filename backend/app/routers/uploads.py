@@ -12,6 +12,8 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..adapters.transcribe import TranscribeError, transcribe_audio
@@ -102,3 +104,22 @@ async def upload(
         "transcript": row.transcript,
         "warning": warning,
     }
+
+
+@router.get("/{attachment_id}/content")
+async def content(
+    attachment_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream a user's own uploaded file back (e.g. to render a sent photo)."""
+    row = (
+        await db.execute(
+            select(Attachment).where(
+                Attachment.id == attachment_id, Attachment.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or not Path(row.path).exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "attachment not found")
+    return FileResponse(row.path, media_type=row.mime_type)

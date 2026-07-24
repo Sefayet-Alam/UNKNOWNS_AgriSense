@@ -248,6 +248,7 @@ def serialize_message(msg) -> dict[str, Any]:
         "role": msg.role,
         "content": msg.content or "",
         "tool_trace": msg.tool_trace or [],
+        "attachments": getattr(msg, "attachments", None) or [],
         "model": msg.model or "",
         "created_at": _iso(msg.created_at),
     }

@@ -32,11 +32,18 @@ export interface ToolCall {
 
 export type Role = "user" | "assistant";
 
+export interface MessageAttachment {
+  id: number;
+  kind: "image" | "audio";
+  mime_type: string;
+}
+
 export interface Message {
   id: number;
   role: Role;
   content: string;
   tool_trace: ToolCall[];
+  attachments?: MessageAttachment[];
   model: string;
   created_at: string;
 }

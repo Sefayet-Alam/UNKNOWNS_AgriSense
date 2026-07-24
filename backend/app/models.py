@@ -232,6 +232,9 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(16))  # "user" | "assistant"
     content: Mapped[str] = mapped_column(Text, default="")
     tool_trace: Mapped[list] = mapped_column(JSON, default=list)
+    # Compact refs to files the farmer sent with this turn ({id, kind, mime_type})
+    # so the photo can be rendered back in the thread after reload.
+    attachments: Mapped[list] = mapped_column(JSON, default=list)
     model: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, server_default=func.now()
