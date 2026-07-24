@@ -124,19 +124,30 @@ def detect_reply_language(text: str) -> str:
     return "english"
 
 
-def reply_language_directive(user_message: str) -> SystemMessage:
-    """Per-turn, deterministic language instruction for the model."""
-    lang = detect_reply_language(user_message)
+def language_directive(lang: str) -> SystemMessage:
+    """Language instruction from the conversation's language STATE.
+
+    ``lang`` is ``OrchestratorState.reply_language`` ("bengali" | "english"),
+    set deterministically by the classify node from the farmer's last message.
+    Every specialist node injects this directive so the reply follows the
+    state, not model whim.
+    """
     if lang == "bengali":
         detail = "Reply in BENGALI SCRIPT (বাংলা)."
     else:
+        lang = "english"
         detail = "Reply in ENGLISH."
     return SystemMessage(
         content=(
-            "REPLY LANGUAGE FOR THIS TURN (detected from the farmer's last "
-            f"message): {lang.upper()}. {detail}"
+            "REPLY LANGUAGE FOR THIS TURN (language state, set from the "
+            f"farmer's last message): {lang.upper()}. {detail}"
         )
     )
+
+
+def reply_language_directive(user_message: str) -> SystemMessage:
+    """Detect + build in one step (kept for direct/legacy call sites)."""
+    return language_directive(detect_reply_language(user_message))
 
 
 # --------------------------------------------------------------------------- #

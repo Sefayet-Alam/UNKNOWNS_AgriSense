@@ -36,6 +36,7 @@ from langgraph.prebuilt import ToolNode
 
 from ..config import settings
 from .llm import build_chat_model
+from .messages import detect_reply_language, language_directive
 from .state import OrchestratorState
 
 MAX_TURNS = 8  # tool rounds per REQUEST turn (history rounds excluded)
@@ -197,14 +198,18 @@ def build_graph(tool_groups: dict[str, list]):
     async def classify_node(state: OrchestratorState):
         text = _last_human_text(state["messages"])
         intent = await _classify(text)
+        # Language STATE: refreshed on every user message (deterministic).
+        reply_language = detect_reply_language(text)
         farm = state.get("farm_context") or {}
         log.info(
-            "classify: intent=%s (missing_fields=%s) message=%r",
+            "classify: intent=%s reply_language=%s (missing_fields=%s) "
+            "message=%r",
             intent,
+            reply_language,
             farm.get("missing_required_fields"),
             text[:120],
         )
-        return {"intent": intent}
+        return {"intent": intent, "reply_language": reply_language}
 
     def make_agent_node(name: str):
         async def agent_node(state: OrchestratorState):
@@ -228,7 +233,16 @@ def build_graph(tool_groups: dict[str, list]):
                 len(messages),
             )
             directive = SystemMessage(content=NODE_DIRECTIVES[name])
-            response = await active.ainvoke([directive] + list(messages))
+            # Reply language comes from graph STATE (set by classify each
+            # user message); fall back to detecting from the last human
+            # message when the graph is driven without a classify pass.
+            lang = state.get("reply_language") or detect_reply_language(
+                _last_human_text(messages)
+            )
+            lang_directive = language_directive(lang)
+            response = await active.ainvoke(
+                [directive, lang_directive] + list(messages)
+            )
             return {"messages": [response], "active_agent": name}
 
         agent_node.__name__ = f"{name}_node"

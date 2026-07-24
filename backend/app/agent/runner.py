@@ -24,7 +24,6 @@ from .messages import (
     build_system_messages,
     fill_trace_result,
     history_to_lc_messages,
-    reply_language_directive,
     text_of,
     tool_call_traces,
 )
@@ -226,16 +225,18 @@ async def stream_agent_turn(
             SYSTEM_PROMPT, session.summary, recalled
         )
         lc_messages.extend(history_to_lc_messages(history))
-        # Deterministic per-turn language directive (last user message wins).
-        lc_messages.append(reply_language_directive(message))
 
         # ---- run the graph ---------------------------------------------- #
+        # Reply language lives in graph STATE: the classify node re-detects
+        # it from this user message and every specialist node injects the
+        # directive from state (see state.py / graph.py).
         graph = build_graph(tool_groups)
         inputs = {
             "messages": lc_messages,
             "intent": "",
             "active_agent": "",
             "farm_context": farm_context,
+            "reply_language": "",
         }
         log.info(
             "graph invoke: session=%s models=[%s|lite=%s] history_msgs=%d "
@@ -275,10 +276,13 @@ async def stream_agent_turn(
                     continue
                 # Routing decision from the classify node -> progress frame.
                 if _node == "classify" and payload.get("intent"):
+                    detail = f"specialist: {payload['intent']}"
+                    if payload.get("reply_language"):
+                        detail += f" · reply: {payload['reply_language']}"
                     yield {
                         "type": "progress",
                         "stage": "routing",
-                        "detail": f"specialist: {payload['intent']}",
+                        "detail": detail,
                     }
                     continue
                 for msg in payload.get("messages", []) or []:
