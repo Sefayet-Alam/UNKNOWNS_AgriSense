@@ -86,8 +86,31 @@ async def test_research_tool_returns_honest_unavailable_status(monkeypatch):
     assert "Wikipedia is unavailable" in result
 
 
-def test_research_tools_are_not_exposed_to_any_agent_specialist_yet():
-    """They remain reviewed/tested capabilities until explicitly enabled."""
+def test_research_tools_are_enabled_for_the_season_planner():
+    """The planner node exposes the web + Wikipedia research tools."""
     runner_source = inspect.getsource(runner_mod)
 
-    assert "build_research_tools" not in runner_source
+    assert "build_research_tools" in runner_source
+
+
+def test_forced_tool_sequence_names_are_real_registered_tools():
+    """Every forced tool_choice name must be an actual tool the node exposes.
+
+    tool_choice forces the model to call a function by name; a typo or an
+    unregistered tool would fail live (the model is compelled to call a tool
+    that the shared ToolNode cannot execute). Guard the invariant offline.
+    """
+    from app.agent.graph import FORCED_TOOL_SEQUENCE
+
+    research_names = {t.name for t in build_research_tools()}
+    kb_names = {t.name for t in tools_mod.build_kb_tools()}
+
+    assert FORCED_TOOL_SEQUENCE["recommender"] == ["rank_crop_candidates"]
+    # The planner's forced trio: KB retrieval then the two research tools.
+    assert FORCED_TOOL_SEQUENCE["planner"] == [
+        "search_knowledge_base",
+        "web_search",
+        "search_wikipedia",
+    ]
+    assert "search_knowledge_base" in kb_names
+    assert {"web_search", "search_wikipedia"} <= research_names

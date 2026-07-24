@@ -36,6 +36,7 @@ from .tools import (
     build_patterns_tool,
     build_crop_recommendation_tool,
     build_financial_tool,
+    build_research_tools,
     build_scenario_tool,
     build_scheduler_tool,
     build_season_plan_tool,
@@ -206,6 +207,7 @@ async def stream_agent_turn(
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
+        research_tools = build_research_tools()
         tool_groups = {
             "intake": static_tools + farm_tools + [soil_tool],
             # KB retrieval is an advisor tool (D1 Rev 3: capabilities land as
@@ -227,9 +229,14 @@ async def stream_agent_turn(
             + [soil_tool, patterns_tool, recommendation_tool]
             + czis_tools
             + kb_tools,
+            # Season-plan node: forced STRICT research trio (KB -> web ->
+            # Wikipedia) grounds the plan before generate_season_plan runs.
+            # See FORCED_TOOL_SEQUENCE in graph.py.
             "planner": static_tools
             + farm_tools
-            + [soil_tool, season_plan_tool, scheduler_tool, financial_tool, scenario_tool],
+            + [soil_tool, season_plan_tool, scheduler_tool, financial_tool, scenario_tool]
+            + kb_tools
+            + research_tools,
             "finance": static_tools + farm_tools + [financial_tool, scenario_tool],
         }
         all_tool_names = sorted(
