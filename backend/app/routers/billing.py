@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..adapters.billing import (
     BillingProviderError,
     bdapps_subscriber_id,
-    configured_bdapps_plan_ids,
     effective_billing_provider_name,
     get_billing_provider,
+    provider_name_for_plan,
 )
 from ..config import settings
 from ..database import get_db
@@ -153,20 +153,17 @@ async def plans(
     subscription = await _subscription_for(db, user.id)
     is_upgrade = _is_plus_to_pro_upgrade(subscription, "pro")
     provider = effective_billing_provider_name()
-    if provider == "bdapps":
-        subscribable_plan_ids = configured_bdapps_plan_ids()
-        # A BDApps subscription application has a fixed recurring tariff.
-        # The regular ৳499 Pro application cannot safely represent a ৳249
-        # Plus-to-Pro upgrade.
-        if is_upgrade:
-            subscribable_plan_ids = [
-                plan_id
-                for plan_id in subscribable_plan_ids
-                if plan_id != "pro"
-            ]
-    else:
+    # Every paid plan is subscribable: plans with complete BDApps credentials
+    # use the real carrier (Plus), the rest fall back to the labelled dev mock
+    # (OTP 1234, e.g. Pro) instead of being blocked as "credentials pending".
+    subscribable_plan_ids = [
+        plan.id for plan in PLANS.values() if plan.id != "free"
+    ]
+    # A real BDApps Pro app has a fixed ৳499 tariff and cannot represent the
+    # ৳249 Plus->Pro upgrade — hide Pro only when it would hit the real carrier.
+    if is_upgrade and provider_name_for_plan("pro") == "bdapps":
         subscribable_plan_ids = [
-            plan.id for plan in PLANS.values() if plan.id != "free"
+            plan_id for plan_id in subscribable_plan_ids if plan_id != "pro"
         ]
     results = list(PLANS.values())
     if is_upgrade:

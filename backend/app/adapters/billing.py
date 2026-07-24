@@ -224,7 +224,7 @@ class BdAppsBillingProvider:
         payload = {"subscriberId": subscriber_id}
         if self.credentials.application_hash:
             payload["applicationHash"] = self.credentials.application_hash
-        data = await self._post("/otp/request", payload)
+        data = await self._post("/subscription/otp/request", payload)
         code = str(data.get("statusCode", ""))
         if code != "S1000" or not data.get("referenceNo"):
             raise BillingProviderError(
@@ -240,7 +240,7 @@ class BdAppsBillingProvider:
         self, reference_no: str, otp: str
     ) -> SubscriptionResult:
         data = await self._post(
-            "/otp/verify", {"referenceNo": reference_no, "otp": otp}
+            "/subscription/otp/verify", {"referenceNo": reference_no, "otp": otp}
         )
         return SubscriptionResult(
             status_code=str(data.get("statusCode", "")),
@@ -279,22 +279,37 @@ class BdAppsBillingProvider:
         )
 
 
+def provider_name_for_plan(plan_id: str) -> str:
+    """Per-plan provider for a NEW subscription (mixed mode).
+
+    A plan with complete BDApps credentials uses the real carrier (e.g. Plus);
+    any other paid plan falls back to the labelled development mock with OTP
+    1234 (e.g. Pro) instead of being blocked. This lets a partially provisioned
+    deployment run one plan live and keep another as an explicit dummy.
+    """
+    if settings.BILLING_PROVIDER.strip().lower() != "bdapps":
+        return "mock"
+    return "bdapps" if bdapps_credentials_for_plan(plan_id).is_complete else "mock"
+
+
 def get_billing_provider(
     plan_id: str | None = None,
     provider_name: str | None = None,
 ):
     """Return the configured provider, or the provider persisted on a record.
 
-    New subscriptions use ``BILLING_PROVIDER``. Existing subscriptions pass
-    their stored provider so status and cancellation never jump gateways when
-    the deployment changes between mock, simulator, and production modes.
+    New subscriptions resolve their provider PER PLAN (see
+    ``provider_name_for_plan``) so a real plan and a dummy plan can coexist.
+    Existing subscriptions pass their stored provider so status and
+    cancellation never jump gateways when the deployment changes.
     """
 
-    provider = (
-        provider_name.strip().lower()
-        if provider_name is not None
-        else effective_billing_provider_name()
-    )
+    if provider_name is not None:
+        provider = provider_name.strip().lower()
+    elif plan_id:
+        provider = provider_name_for_plan(plan_id)
+    else:
+        provider = effective_billing_provider_name()
     if provider == "mock":
         return MockBillingProvider()
     if provider == "bdapps":

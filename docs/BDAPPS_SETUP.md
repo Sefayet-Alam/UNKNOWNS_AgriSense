@@ -36,11 +36,14 @@ BDAPPS_BASE_URL=https://developer.bdapps.com
 provider (OTP `1234`). **Filling the Plus password is what flips Plus to real.**
 As soon as one complete app exists, mock activation is disabled globally.
 
-## 2. Plus real vs Pro dummy — how the gating works (no code change)
-- `configured_bdapps_plan_ids()` returns only plans whose credentials are complete →
-  with just Plus filled, **only Plus** is in `subscribable_plan_ids`.
-- `GET /api/billing/plans` still lists Pro (৳499) for display, but it is **not**
-  in `subscribable_plan_ids`, so the UI shows it disabled → the "dummy" behavior.
+## 2. Plus real vs Pro dummy — per-plan providers (mixed mode)
+`provider_name_for_plan(plan_id)` picks the gateway **per plan**: real BDApps for
+a plan with complete credentials (**Plus**), the labelled dev mock (**OTP 1234**)
+for any paid plan without them (**Pro**). Both paid plans stay subscribable — Pro
+simply runs on the dummy provider and never charges a mobile number.
+- Subscribe to **Plus** → real BDApps OTP SMS (live carrier).
+- Subscribe to **Pro** → mock OTP **`1234`** (`demo_otp` is returned in the response).
+- The old "Pro credentials pending" state is gone: Pro is now a working dummy.
 
 ## 3. BDApps dashboard config for APP_139278 (needs a public URL)
 Server→BDApps OTP calls are outbound and need no hosting. The async callbacks do —
@@ -63,9 +66,12 @@ reconciles async status.
 5. `POST /api/billing/subscription/cancel` → BDApps `/subscription/send {action:"0"}` → `cancelled`.
 
 ## 5. Real vs mock (for the submission README)
-- **Real/live:** Plus plan — genuine BDApps OTP + Subscription API calls (sandbox).
-- **Dummy:** Pro plan — displayed, not subscribable (no approved application).
-- **Dev default:** with no credentials, `mock` provider uses OTP `1234` (offline, deterministic).
+- **Real/live:** Plus plan — genuine BDApps OTP + Subscription API calls. Endpoint
+  paths are `/subscription/otp/request` and `/subscription/otp/verify` per the
+  official BDApps API doc (ROB-API-DGD v1.1.3, §6) — an earlier `/otp/request`
+  path 404'd.
+- **Dummy:** Pro plan — subscribable via the labelled mock (OTP `1234`); never charges a number.
+- **Dev default:** with no credentials at all, both plans use the `mock` provider (OTP `1234`).
 
 ## 6. After editing `.env`
 ```bash
