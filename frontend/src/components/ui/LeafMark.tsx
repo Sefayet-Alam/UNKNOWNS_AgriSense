@@ -25,7 +25,7 @@ export function LeafMark({
         <span
           className={`font-display font-semibold tracking-tight text-primary-700 ${word}`}
         >
-          Argi
+          AgriSense
         </span>
       )}
     </div>

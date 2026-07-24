@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { isValidBdPhone } from "@/lib/phone";
 import { getAccess } from "@/lib/tokens";
 import { LeafMark } from "@/components/ui/LeafMark";
 import { PasswordInput } from "@/components/ui/PasswordInput";
@@ -14,7 +15,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
 
-  const [username, setUsername] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [touched, setTouched] = useState<{ u?: boolean; p?: boolean }>({});
   const [submitting, setSubmitting] = useState(false);
@@ -25,8 +26,10 @@ export default function LoginPage() {
     if (getAccess()) router.replace("/chat");
   }, [router]);
 
-  const userError =
-    touched.u && !username.trim() ? "Username is required." : undefined;
+  const phoneError =
+    touched.u && !isValidBdPhone(phone)
+      ? "Enter a valid mobile number (e.g. 01712345678)."
+      : undefined;
   const passError =
     touched.p && !password ? "Password is required." : undefined;
 
@@ -34,16 +37,16 @@ export default function LoginPage() {
     e.preventDefault();
     setTouched({ u: true, p: true });
     setFormError(null);
-    if (!username.trim() || !password) return;
+    if (!isValidBdPhone(phone) || !password) return;
 
     setSubmitting(true);
     try {
-      await login(username.trim(), password);
+      await login(phone.trim(), password);
       router.replace("/chat");
     } catch (err) {
       setFormError(
         err instanceof ApiError && err.status === 401
-          ? "Invalid username or password."
+          ? "Invalid mobile number or password."
           : "Could not sign in. Please try again.",
       );
       setSubmitting(false);
@@ -62,17 +65,20 @@ export default function LoginPage() {
             Welcome back
           </h1>
           <p className="mb-6 text-sm text-text-muted">
-            Sign in to your Argi agronomy copilot.
+            Sign in to your AgriSense agronomy copilot.
           </p>
 
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
             <TextInput
-              label="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              label="Mobile number"
+              type="tel"
+              inputMode="numeric"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
               onBlur={() => setTouched((t) => ({ ...t, u: true }))}
-              error={userError}
-              autoComplete="username"
+              error={phoneError}
+              autoComplete="tel"
+              placeholder="01XXXXXXXXX"
               autoFocus
             />
             <PasswordInput
@@ -100,7 +106,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-6 text-center text-sm text-text-muted">
-            New to Argi?{" "}
+            New to AgriSense?{" "}
             <Link
               href="/register"
               className="font-medium text-primary-700 hover:text-primary-800"

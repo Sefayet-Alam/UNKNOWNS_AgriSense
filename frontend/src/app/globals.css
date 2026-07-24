@@ -12,31 +12,60 @@ body {
 }
 
 body {
-  background-color: #f7faf5;
-  color: #1b2a17;
+  background-color: #ffffff;
+  color: #16211b;
   font-family: var(--font-inter), Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  line-height: 1.6;
-}
-
-/* Dark-mode surfaces via the `dark` class (optional). */
-.dark body {
-  background-color: #10190e;
-  color: #eaf3e4;
+  line-height: 1.55;
 }
 
 @layer utilities {
-  /* Very-subtle leaf-vein background for auth screens (~6% opacity). */
+  /* Tabular figures so data/numbers never shift layout on recompute. */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Very subtle topographic contour texture (~3%) — quiet, professional. */
+  .topo-bg {
+    background-color: #ffffff;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='%2315803D' stroke-width='1' stroke-opacity='0.035'%3E%3Cpath d='M-20 60 C40 40 80 90 140 70 C200 50 240 90 300 70'/%3E%3Cpath d='M-20 130 C40 110 80 160 140 140 C200 120 240 160 300 140'/%3E%3Cpath d='M-20 200 C40 180 80 230 140 210 C200 190 240 230 300 210'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: repeat;
+  }
+
   .leaf-vein-bg {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%2347823A' stroke-width='1' stroke-opacity='0.06'%3E%3Cpath d='M60 10 C60 40 60 80 60 110'/%3E%3Cpath d='M60 30 C75 25 90 20 105 15'/%3E%3Cpath d='M60 30 C45 25 30 20 15 15'/%3E%3Cpath d='M60 55 C78 50 96 46 112 42'/%3E%3Cpath d='M60 55 C42 50 24 46 8 42'/%3E%3Cpath d='M60 80 C76 76 92 72 106 68'/%3E%3Cpath d='M60 80 C44 76 28 72 14 68'/%3E%3C/g%3E%3C/svg%3E");
+    background-color: #ffffff;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cg fill='none' stroke='%2315803D' stroke-width='1' stroke-opacity='0.035'%3E%3Cpath d='M-20 60 C40 40 80 90 140 70 C200 50 240 90 300 70'/%3E%3Cpath d='M-20 130 C40 110 80 160 140 140 C200 120 240 160 300 140'/%3E%3Cpath d='M-20 200 C40 180 80 230 140 210 C200 190 240 230 300 210'/%3E%3C/g%3E%3C/svg%3E");
     background-repeat: repeat;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 8px;
+    width: 9px;
+    height: 9px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #dce7d6;
+    background-color: #d5ddd5;
     border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Visible focus ring (green). */
+:focus-visible {
+  outline: 2px solid #15803d;
+  outline-offset: 2px;
+}
+
+/* Respect reduced motion globally. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
