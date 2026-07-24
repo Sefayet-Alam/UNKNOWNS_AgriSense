@@ -207,6 +207,71 @@ async def test_weather_tool_turn_traces_real_adapter_values(
     assert any("তানোরে" in c for c in finals)
 
 
+@pytest.mark.parametrize("fake_llm", ["intake"], indirect=True)
+async def test_multi_turn_intake_fills_profile_across_turns(
+    auth_client, fake_llm, db_session
+):
+    """Two-turn slot-fill: profile check + saves happen as visible tool chips
+    and the farm row ends complete (EXAMPLE_FLOW #1/#2 shape)."""
+    from sqlalchemy import select
+
+    from app.models import Farm
+
+    # Turn 1: farmer gives place/area/water; agent reads profile, saves, asks.
+    events1 = await stream_turn(
+        auth_client, "vai amar jomi Tanore te. 3 bigha. shallow pump ase."
+    )
+    types1 = _types(events1)
+    assert types1[-1] == "done"
+    assert "error" not in types1
+    session_id = events1[0]["session_id"]
+
+    chips1 = [
+        t["tool"]
+        for e in events1
+        if e["type"] == "message"
+        for t in e["message"].get("tool_trace") or []
+    ]
+    assert "get_farm_profile" in chips1
+    assert "update_farm_profile" in chips1
+
+    # The update result relayed the ASSUMED bigha conversion.
+    updates1 = [
+        t["result"]
+        for e in events1
+        if e["type"] == "message_update"
+        for t in e["message"].get("tool_trace") or []
+        if t.get("tool") == "update_farm_profile" and t.get("result")
+    ]
+    assert any("ASSUMED" in r for r in updates1)
+
+    # Turn 2 (same session): budget + season.
+    events2 = await stream_turn(
+        auth_client, "budget 80k. robi te korbo.", session_id=session_id
+    )
+    assert _types(events2)[-1] == "done"
+    assert "error" not in _types(events2)
+
+    # Farm row is complete: converted area, budget, season, phase advanced.
+    farm = (
+        await db_session.execute(select(Farm).order_by(Farm.id.desc()))
+    ).scalars().first()
+    assert farm is not None
+    assert farm.area_decimal == pytest.approx(99.0)
+    assert farm.irrigation_available is True
+    assert farm.budget_bdt == 80000
+    assert farm.season == "rabi"
+    assert farm.phase == "ready_for_planning"
+
+    # Final assistant summary (Bengali) reached the client intact.
+    finals = [
+        e["message"]["content"]
+        for e in events2
+        if e["type"] == "message" and e["message"]["role"] == "assistant"
+    ]
+    assert any("৮০,০০০" in c for c in finals)
+
+
 @pytest.mark.parametrize("fake_llm", ["plain"], indirect=True)
 async def test_continue_existing_session(auth_client, fake_llm):
     first = await stream_turn(auth_client, "first message")
