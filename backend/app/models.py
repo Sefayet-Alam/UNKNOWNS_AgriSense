@@ -1,13 +1,14 @@
 """SQLAlchemy ORM models."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -119,6 +120,78 @@ class Farm(Base):
         default=_utcnow,
         server_default=func.now(),
         onupdate=_utcnow,
+    )
+
+
+class SeasonPlan(Base):
+    """A persisted, dated season-plan calendar generated for one farm.
+
+    Every ``generate_season_plan`` call that reaches a calendar (status ok or
+    degraded — never a hard-gate failure) appends a row; consumers read the
+    newest row per farm. The full deterministic calendar and the embedded
+    financial projection are stored verbatim so proactive advice can check
+    the forecast against *exact* saved event dates without recomputing.
+    """
+
+    __tablename__ = "season_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    farm_id: Mapped[int] = mapped_column(
+        ForeignKey("farms.id", ondelete="CASCADE"), index=True
+    )
+    crop_name: Mapped[str] = mapped_column(String(60))
+    crop_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # "ok" | "degraded" — mirrors the tool's returned status at save time.
+    status: Mapped[str] = mapped_column(String(12), default="ok")
+    planting_date: Mapped[date] = mapped_column(Date)
+    harvest_date: Mapped[date] = mapped_column(Date)
+    duration_days: Mapped[int] = mapped_column(Integer)
+    selected_variety: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    calendar: Mapped[dict] = mapped_column(JSON)
+    financial_projection: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=_utcnow,
+        server_default=func.now(),
+        onupdate=_utcnow,
+    )
+
+
+class WeatherAlert(Base):
+    """One proactive weather-triggered advisory sent (or dry-run recorded)
+    for a farm. Doubles as the dedup log: the scan skips a decision whose
+    (farm_id, alert_type, event_date, trigger_date) already has a row.
+    """
+
+    __tablename__ = "weather_alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    farm_id: Mapped[int] = mapped_column(
+        ForeignKey("farms.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # Null = generic (no-plan) alert.
+    season_plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("season_plans.id", ondelete="SET NULL"), nullable=True
+    )
+    # delay_fertilizer | skip_irrigation | heavy_rain_generic | heat_stress |
+    # cold_stress
+    alert_type: Mapped[str] = mapped_column(String(30))
+    event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    trigger_date: Mapped[date] = mapped_column(Date)
+    message: Mapped[str] = mapped_column(String(480))
+    # dry_run | sent | failed
+    sms_status: Mapped[str] = mapped_column(String(16), default="dry_run")
+    sms_response: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
     )
 
 

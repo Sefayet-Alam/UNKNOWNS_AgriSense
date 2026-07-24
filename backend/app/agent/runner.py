@@ -29,6 +29,7 @@ from .messages import (
     tool_call_traces,
 )
 from .tools import (
+    build_alerts_tool,
     build_czis_tools,
     build_farm_tools,
     build_kb_tools,
@@ -229,6 +230,7 @@ async def stream_agent_turn(
         financial_tool = build_financial_tool(user)
         season_plan_tool = build_season_plan_tool(user)
         disease_tool = build_disease_tool(user)
+        alerts_tool = build_alerts_tool(user)
         scheduler_tool = build_scheduler_tool(user)
         scenario_tool = build_scenario_tool(user)
         czis_tools = build_czis_tools(user)
@@ -242,7 +244,7 @@ async def stream_agent_turn(
             "advisor": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool, patterns_tool, disease_tool, scheduler_tool]
+            + [soil_tool, patterns_tool, disease_tool, alerts_tool, scheduler_tool]
             + czis_tools
             + kb_tools
             + memory_tools,
