@@ -35,7 +35,9 @@ The database lives **only** in docker-compose (pgvector image). Backend and fron
 
 ## Screens
 1. **Login / reset password** — mobile-number auth with mock OTP recovery.
-2. **Register** — name, mobile, Bangladesh address and password.
+2. **Register** — name, mobile, Bangladesh address and password. The cascading
+   division/district/upazila list is generated from the canonical
+   `docs/upazilas.csv` dataset.
 3. **Chat** — session sidebar + streaming agentic chat with tool-call traces.
 4. **Profile / billing** — persisted subscription, cancel, and password change.
 
@@ -76,8 +78,15 @@ failure drills, and persisted raw-trace checks.
 - Default `BILLING_PROVIDER=mock`: OTP is `1234`; subscription state is real
   Postgres data, but no operator charge occurs.
 - `BILLING_PROVIDER=bdapps`: the backend uses the real BDApps OTP and
-  Subscription APIs with server-only credentials. Configure the variables in
-  `.env.example`; never expose the password through a `NEXT_PUBLIC_*` variable.
+  Subscription APIs with server-only credentials. While there are zero complete
+  BDApps credential pairs, it automatically exposes the local OTP `1234` flow.
+  As soon as any app pair is complete, mock activation is disabled globally and
+  only fully credentialed tariffs remain selectable. Configure
+  `.env.example`; never expose passwords through `NEXT_PUBLIC_*` variables.
+- In development mode, an active Plus subscriber can upgrade directly to Pro
+  for the loyalty price of BDT 249/month; no manual cancellation is required.
+  A real carrier upgrade at that price requires a separate BDT 249 BDApps
+  subscription application because BDApps tariffs are fixed per application.
 
 ## LLM setup
 - `OPENROUTER_API_KEY` + `OPENROUTER_MODEL` — the default chat provider.

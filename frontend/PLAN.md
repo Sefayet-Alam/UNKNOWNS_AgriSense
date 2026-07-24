@@ -11,6 +11,13 @@ plan artifact + right collapsible trace panel). Branch: `features/redesign`.
 - Mock mode uses OTP `1234`; real mode is ready for BDApps credentials.
 - Plus and Pro use separate BDApps application credentials and expose availability through
   `subscribable_plan_ids`; cancel-before-switch prevents simultaneous carrier subscriptions.
+- With zero complete BDApps app credentials, effective provider is `mock`, both paid plans are
+  selectable, and OTP `1234` is clearly labeled. Any complete credential pair disables mock
+  globally; only fully credentialed BDApps tariffs remain selectable.
+- When no application API password is configured, Billing explicitly shows approval/credentials
+  pending instead of the ambiguous “not provisioned” label.
+- Existing subscriptions resolve status/cancellation through their persisted provider, so changing
+  runtime mode cannot strand a mock/simulator record or send it through a different gateway.
 - `/forgot-password` is linked from login and registration; profile password change is persisted.
 - The unauthenticated field-demo route and mock workspace have been removed. Authenticated users
   enter the real workspace from the landing page and can log out beside that button.
@@ -18,6 +25,16 @@ plan artifact + right collapsible trace panel). Branch: `features/redesign`.
   `message_update` rows win stale query snapshots, and completed empty tool-step bubbles collapse.
   Every completed reply—including no-tool replies—has a clickable persisted-duration trace.
 - `npm run typecheck` and production `npm run build` pass.
+- Development OTP requests have no cooldown; the anti-spam delay applies only to real carrier OTP.
+- Active Plus users see a personalized Pro loyalty price of BDT 249/month and can upgrade directly
+  in development mode; verification replaces Plus with Pro without manual cancellation.
+- Real BDApps mode keeps that upgrade unavailable until a distinct BDT 249 carrier app exists; it
+  never sends a BDT 249 consent screen through the regular BDT 499 Pro application.
+- Registration and profile location dropdowns are generated from `docs/upazilas.csv`
+  (8 divisions, 64 districts, 497 upazilas); the stale 7-division CZIS snapshot and its
+  metropolitan/thana entries are removed.
+- Merged-tree verification: all 224 backend tests pass; frontend typecheck and production build
+  pass after merging the latest `origin/main`.
 
 ## Locked decisions
 - Identity: mobile-number auth + address (PR #1, pending merge).
@@ -74,10 +91,14 @@ src/styles/ theme via tailwind.config.ts + globals.css (Agronomic Instrument tok
 - [x] **M8 · Landing hero** — licensed Bangladesh paddy photo, field-brief overlay, and GSAP entrance.
 - [x] **M9 · BDApps subscription foundation** — persisted mock flow + real provider adapter.
       Independent Plus/Pro app routing is complete; portal passwords, Pro ID, and live tests remain.
+      The internal mock is a local rehearsal only. The published official simulator documents SMS,
+      USSD, and CaaS but no OTP/Subscription endpoints.
 - [x] **M10 · Reliable agent trace display** — cache write-through/live precedence, final-answer
       turn aggregation, and `Thought for <duration>` status on every completed prompt; state
       regression and backend streaming tests pass.
-- [ ] **M11 · Release readiness** — judge click-path rehearsal and README integration table.
+- [x] **M11 · Canonical address picker** — registration/profile hierarchy generated from
+      `docs/upazilas.csv`; frontend bundle matches all 497 canonical rows.
+- [ ] **M12 · Release readiness** — judge click-path rehearsal and README integration table.
 
 ## Skills, used surgically
 - Structure/logic: `nextjs-developer`, `react-expert`, `typescript-pro`. Styling: `ckm-ui-styling` (Tailwind/Radix primitives).

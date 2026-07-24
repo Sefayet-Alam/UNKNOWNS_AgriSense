@@ -1,8 +1,9 @@
 "use client";
 
 // Cascading Division -> District -> Upazila -> Union picker.
-// Divisions/districts/upazilas ship in src/data/bd-geocodes.json; unions are
-// fetched from the backend gazetteer (/api/geo/unions/{upazila_code}) — 7.7k
+// Divisions/districts/upazilas are generated from the canonical
+// docs/upazilas.csv into src/data/bd-geocodes.json; unions are fetched from
+// the backend gazetteer (/api/geo/unions/{upazila_code}) — 7.7k
 // rows are too heavy to bundle client-side. Every selection carries the real
 // CZIS/BBS code (e.g. union 50819427) that the agent later feeds straight
 // into CZIS + weather tools. Codes are NEVER free-typed — this is the guard

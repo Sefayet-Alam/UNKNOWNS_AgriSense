@@ -93,6 +93,21 @@ def configured_bdapps_plan_ids() -> list[str]:
     ]
 
 
+def effective_billing_provider_name() -> str:
+    """Resolve the provider used for new subscriptions.
+
+    An explicitly selected BDApps deployment falls back to the deterministic
+    development provider only while *zero* complete BDApps app credentials
+    exist. As soon as one real app is configured, mock activation is disabled
+    globally and only fully configured BDApps plans remain selectable.
+    """
+
+    provider = settings.BILLING_PROVIDER.strip().lower()
+    if provider == "bdapps" and not configured_bdapps_plan_ids():
+        return "mock"
+    return provider
+
+
 def bdapps_subscriber_id(phone: str) -> str:
     """Convert canonical 01XXXXXXXXX into BDApps' tel:8801… form."""
     return f"tel:88{phone}"
@@ -264,8 +279,22 @@ class BdAppsBillingProvider:
         )
 
 
-def get_billing_provider(plan_id: str | None = None):
-    provider = settings.BILLING_PROVIDER.strip().lower()
+def get_billing_provider(
+    plan_id: str | None = None,
+    provider_name: str | None = None,
+):
+    """Return the configured provider, or the provider persisted on a record.
+
+    New subscriptions use ``BILLING_PROVIDER``. Existing subscriptions pass
+    their stored provider so status and cancellation never jump gateways when
+    the deployment changes between mock, simulator, and production modes.
+    """
+
+    provider = (
+        provider_name.strip().lower()
+        if provider_name is not None
+        else effective_billing_provider_name()
+    )
     if provider == "mock":
         return MockBillingProvider()
     if provider == "bdapps":

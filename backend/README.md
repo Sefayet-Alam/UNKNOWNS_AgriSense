@@ -88,7 +88,7 @@ See `../.env.example`. Key vars:
 | `JWT_SECRET_KEY` / `JWT_ALGORITHM` | — / `HS256` | token signing |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | access lifetime |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | refresh lifetime |
-| `BILLING_PROVIDER` | `mock` | `mock` (OTP `1234`) or real `bdapps` |
+| `BILLING_PROVIDER` | `mock` | `mock` (OTP `1234`) or `bdapps`; BDApps with zero complete credentials automatically uses development OTP, then disables it once any app is complete |
 | `BDAPPS_PLUS_APPLICATION_ID` / `BDAPPS_PLUS_PASSWORD` | — | server-only BDT 199 Plus app credentials |
 | `BDAPPS_PRO_APPLICATION_ID` / `BDAPPS_PRO_PASSWORD` | — | server-only BDT 499 Pro app credentials |
 | `BDAPPS_PLUS_APPLICATION_HASH` / `BDAPPS_PRO_APPLICATION_HASH` | — | optional per-app OTP hashes |
@@ -100,6 +100,12 @@ See `../.env.example`. Key vars:
 | `HISTORY_LIMIT` | `40` | message window before rolling summary |
 | `MEMORY_TOP_K` | `5` | semantic recall depth |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | comma-separated allowed origins |
+
+Billing plan responses are user-aware: while a user has active Plus, Pro is
+offered as a direct BDT 249/month development upgrade. OTP verification replaces
+the local Plus record with Pro; the user does not cancel manually. Real BDApps
+mode does not route that discounted upgrade through the regular BDT 499 Pro
+application—a separate BDT 249 carrier application is required.
 
 > Embeddings default to `fake` so long-term memory works fully offline.
 > The **chat** model always needs a valid `OPENROUTER_API_KEY`.

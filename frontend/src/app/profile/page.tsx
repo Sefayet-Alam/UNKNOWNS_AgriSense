@@ -300,6 +300,25 @@ function ProfileContent() {
               Your plan controls model quality and thinking depth. Subscription
               status is stored securely on the server.
             </p>
+            {billingProvider === "mock" && (
+              <div className="border border-river-300/70 bg-river-50 px-4 py-3 text-sm text-river-900">
+                <p className="font-semibold">Development billing is enabled</p>
+                <p className="mt-1 text-xs leading-relaxed text-river-800">
+                  Use OTP 1234 to test Plus or Pro without a mobile charge. This
+                  fallback switches off automatically when BDApps application
+                  credentials are configured.
+                </p>
+              </div>
+            )}
+            {billingProvider === "bdapps" && subscribablePlanIds.length < 2 && (
+              <div className="border border-clay-300/70 bg-clay-50 px-4 py-3 text-sm text-clay-900">
+                <p className="font-semibold">Some BDApps credentials are still pending</p>
+                <p className="mt-1 text-xs leading-relaxed text-clay-800">
+                  Development OTP is disabled because live BDApps access is configured.
+                  Only plans with complete application credentials can be selected.
+                </p>
+              </div>
+            )}
             <div className="grid gap-4 md:grid-cols-3">
               {TIERS.map((t) => {
                 const current = t.id === tier;
@@ -308,8 +327,8 @@ function ProfileContent() {
                 const availableForCheckout =
                   t.id === "free" ||
                   subscribablePlanIds.includes(t.id as "plus" | "pro");
-                const switchRequiresCancellation =
-                  tier !== "free" && canUpgrade && availableForCheckout;
+                const amount = serverPrices[t.id] ?? PRICE[t.id];
+                const discountedUpgrade = tier === "plus" && t.id === "pro";
                 return (
                   <div
                     key={t.id}
@@ -322,7 +341,14 @@ function ProfileContent() {
                       {t.id === "pro" && <Sprout size={16} className="text-primary-600" />}
                     </div>
                     <p className="text-xs text-text-muted">{t.tagline}</p>
-                    <p className="nums mt-3 font-display text-2xl font-semibold">{t.price}</p>
+                    <p className="nums mt-3 font-display text-2xl font-semibold">
+                      {t.id === "free" ? t.price : `৳${amount}/mo`}
+                    </p>
+                    {discountedUpgrade && (
+                      <p className="mt-1 text-xs font-semibold text-clay-700">
+                        Plus loyalty price · save ৳250/month
+                      </p>
+                    )}
                     <ul className="mt-4 flex-1 space-y-2 text-sm">
                       {t.features.map((f) => (
                         <li key={f} className="flex items-start gap-2 text-text-primary">
@@ -335,11 +361,6 @@ function ProfileContent() {
                         <span className="block rounded-xl bg-primary-100 py-2.5 text-center text-sm font-medium text-primary-700">
                           Current plan
                         </span>
-                      ) : switchRequiresCancellation ? (
-                        <span className="block rounded-xl border border-border px-3 py-2.5 text-center text-xs text-text-muted">
-                          Cancel {TIERS.find((plan) => plan.id === tier)?.name}{" "}
-                          before switching
-                        </span>
                       ) : canUpgrade && availableForCheckout ? (
                         <button
                           type="button"
@@ -347,16 +368,20 @@ function ProfileContent() {
                             setCheckout({
                               id: t.id as PaidTierId,
                               name: t.name,
-                              amount: serverPrices[t.id] ?? PRICE[t.id],
+                              amount,
                             })
                           }
                           className="atlas-button w-full"
                         >
-                          Upgrade to {t.name}
+                          {discountedUpgrade
+                            ? "Upgrade directly for ৳249"
+                            : `Upgrade to ${t.name}`}
                         </button>
                       ) : canUpgrade ? (
                         <span className="block rounded-xl border border-border px-3 py-2.5 text-center text-xs text-text-muted">
-                          Not provisioned for this BDApps application
+                          {discountedUpgrade
+                            ? "৳249 BDApps upgrade app pending"
+                            : `${t.name} BDApps credentials pending`}
                         </span>
                       ) : included ? (
                         <span className="block rounded-xl border border-border py-2.5 text-center text-sm text-text-muted">
