@@ -1,0 +1,264 @@
+"""Agent turn runner: drives the graph and yields contract SSE event dicts."""
+from __future__ import annotations
+
+from typing import Any, AsyncGenerator, Optional
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..config import settings
+from ..models import ChatMessage, ChatSession, User
+from ..schemas import serialize_message
+from . import memory as memory_mod
+from .graph import build_graph
+from .llm import build_chat_model
+from .tools import build_memory_tools, build_static_tools
+
+SYSTEM_PROMPT = (
+    "You are Argi, an expert agriculture assistant for farmers. Give "
+    "practical, accurate, and concise advice on crops, soil, pests, weather, "
+    "irrigation, and markets. Use the available tools when they help: check "
+    "the current time, do arithmetic, save durable facts about the user with "
+    "save_memory, and recall them with recall_memory. Be clear and friendly."
+)
+
+
+def _text_of(content: Any) -> str:
+    """Flatten LangChain message content (str or list-of-parts) to plain text."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                if part.get("type") == "text" and "text" in part:
+                    parts.append(part["text"])
+        return "".join(parts)
+    return str(content)
+
+
+def _compact_trace(tool_trace: list) -> str:
+    lines = []
+    for entry in tool_trace or []:
+        tool = entry.get("tool", "")
+        args = entry.get("args", {})
+        result = entry.get("result", "")
+        lines.append(f"[tool {tool} args={args} -> {result}]")
+    return "\n".join(lines)
+
+
+async def _touch_session(db: AsyncSession, session: ChatSession) -> None:
+    from datetime import datetime, timezone
+
+    session.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+
+
+async def _message_count(db: AsyncSession, session_id: int) -> int:
+    result = await db.execute(
+        select(func.count(ChatMessage.id)).where(
+            ChatMessage.session_id == session_id
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def stream_agent_turn(
+    db: AsyncSession,
+    user: User,
+    session_or_none: Optional[ChatSession],
+    message: str,
+) -> AsyncGenerator[dict, None]:
+    """Run one user turn; yield event dicts matching the frozen contract."""
+    session = session_or_none
+    try:
+        # ---- get-or-create session -------------------------------------- #
+        if session is None:
+            title = message.strip()[:60] or "New chat"
+            session = ChatSession(user_id=user.id, title=title)
+            db.add(session)
+            await db.commit()
+            await db.refresh(session)
+
+        yield {"type": "session", "session_id": session.id}
+
+        # ---- persist user message + echo bubble ------------------------- #
+        user_msg = ChatMessage(
+            session_id=session.id, role="user", content=message, tool_trace=[]
+        )
+        db.add(user_msg)
+        await db.commit()
+        await db.refresh(user_msg)
+        yield {"type": "message", "message": serialize_message(user_msg)}
+
+        # ---- build tools ------------------------------------------------ #
+        memory_tools = build_memory_tools(user.id, db)
+        tools = build_static_tools() + memory_tools
+
+        # ---- auto-recall top-K memories --------------------------------- #
+        yield {
+            "type": "progress",
+            "stage": "memory",
+            "detail": "recalling relevant memories",
+        }
+        recalled = await memory_mod.recall_memory(
+            db, user.id, message, settings.MEMORY_TOP_K
+        )
+
+        # ---- load windowed history + summary prefix --------------------- #
+        hist_result = await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session.id)
+            .order_by(ChatMessage.id.desc())
+            .limit(settings.HISTORY_LIMIT)
+        )
+        history = list(reversed(hist_result.scalars().all()))
+        total_count = await _message_count(db, session.id)
+
+        lc_messages: list = [SystemMessage(content=SYSTEM_PROMPT)]
+        if session.summary:
+            lc_messages.append(
+                SystemMessage(
+                    content=f"Conversation summary so far:\n{session.summary}"
+                )
+            )
+        if recalled:
+            joined = "\n".join(f"- {r}" for r in recalled)
+            lc_messages.append(
+                SystemMessage(
+                    content=(
+                        "Relevant long-term memories about this user:\n"
+                        f"{joined}"
+                    )
+                )
+            )
+        for m in history:
+            if m.role == "user":
+                lc_messages.append(HumanMessage(content=m.content))
+            else:
+                text = m.content or ""
+                if m.tool_trace:
+                    text = f"{text}\n{_compact_trace(m.tool_trace)}".strip()
+                lc_messages.append(AIMessage(content=text))
+
+        # ---- run the graph ---------------------------------------------- #
+        graph = build_graph(tools)
+        inputs = {"messages": lc_messages}
+
+        # tool_call_id -> (db ChatMessage, index in its tool_trace)
+        tool_call_map: dict[str, tuple[ChatMessage, int]] = {}
+
+        async for mode, chunk in graph.astream(
+            inputs, stream_mode=["updates", "custom"]
+        ):
+            if mode == "custom":
+                yield {
+                    "type": "progress",
+                    "stage": chunk.get("stage", "tool")
+                    if isinstance(chunk, dict)
+                    else "tool",
+                    "detail": chunk.get("detail", "")
+                    if isinstance(chunk, dict)
+                    else str(chunk),
+                }
+                continue
+
+            if mode != "updates" or not isinstance(chunk, dict):
+                continue
+
+            for _node, payload in chunk.items():
+                if not isinstance(payload, dict):
+                    continue
+                for msg in payload.get("messages", []) or []:
+                    if isinstance(msg, AIMessage):
+                        text = _text_of(msg.content)
+                        traces = []
+                        for tc in msg.tool_calls or []:
+                            traces.append(
+                                {
+                                    "tool": tc.get("name", ""),
+                                    "args": tc.get("args", {}) or {},
+                                    "result": "",
+                                }
+                            )
+                        # Persist a bubble (carries text and/or tool_trace).
+                        db_msg = ChatMessage(
+                            session_id=session.id,
+                            role="assistant",
+                            content=text,
+                            tool_trace=traces,
+                            model=settings.OPENROUTER_MODEL,
+                        )
+                        db.add(db_msg)
+                        await db.commit()
+                        await db.refresh(db_msg)
+                        for idx, tc in enumerate(msg.tool_calls or []):
+                            tc_id = tc.get("id")
+                            if tc_id:
+                                tool_call_map[tc_id] = (db_msg, idx)
+                        yield {
+                            "type": "message",
+                            "message": serialize_message(db_msg),
+                        }
+
+                    elif isinstance(msg, ToolMessage):
+                        owner = tool_call_map.get(msg.tool_call_id)
+                        if owner is None:
+                            continue
+                        db_msg, idx = owner
+                        trace = list(db_msg.tool_trace or [])
+                        if 0 <= idx < len(trace):
+                            updated = dict(trace[idx])
+                            updated["result"] = _text_of(msg.content)
+                            trace[idx] = updated
+                            db_msg.tool_trace = trace  # reassign -> tracked
+                            await db.commit()
+                            await db.refresh(db_msg)
+                            yield {
+                                "type": "message_update",
+                                "message": serialize_message(db_msg),
+                            }
+
+        # ---- bump session, refresh rolling summary on overflow ---------- #
+        await _touch_session(db, session)
+
+        new_total = await _message_count(db, session.id)
+        if new_total > settings.HISTORY_LIMIT:
+            # Summarize everything that has now fallen outside the window.
+            offset = new_total - settings.HISTORY_LIMIT
+            cutoff_result = await db.execute(
+                select(ChatMessage.id)
+                .where(ChatMessage.session_id == session.id)
+                .order_by(ChatMessage.id)
+                .offset(offset - 1)
+                .limit(1)
+            )
+            cutoff_id = cutoff_result.scalar_one_or_none()
+            if cutoff_id and cutoff_id > (session.summary_upto_id or 0):
+                yield {
+                    "type": "progress",
+                    "stage": "summary",
+                    "detail": "updating conversation summary",
+                }
+                try:
+                    summary_model = build_chat_model()
+                    await memory_mod.refresh_summary(
+                        db, session, cutoff_id, summary_model
+                    )
+                except Exception:
+                    pass
+
+        yield {"type": "done"}
+
+    except Exception as exc:  # surface as terminal error frame
+        sid = session.id if session is not None else 0
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        yield {"type": "error", "detail": str(exc), "session_id": sid}
