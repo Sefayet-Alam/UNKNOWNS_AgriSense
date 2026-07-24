@@ -100,7 +100,7 @@ def test_forced_tool_sequence_names_are_real_registered_tools():
     unregistered tool would fail live (the model is compelled to call a tool
     that the shared ToolNode cannot execute). Guard the invariant offline.
     """
-    from app.agent.graph import FORCED_TOOL_SEQUENCE
+    from app.agent.graph import FORCED_TOOL_SEQUENCE, FORCED_UNORDERED_TOOLS
 
     research_names = {t.name for t in build_research_tools()}
     kb_names = {t.name for t in tools_mod.build_kb_tools()}
@@ -108,6 +108,12 @@ def test_forced_tool_sequence_names_are_real_registered_tools():
     static_names = {t.name for t in tools_mod.build_static_tools()}
 
     assert FORCED_TOOL_SEQUENCE["recommender"] == ["rank_crop_candidates"]
+    # Recommender ALSO requires one web + one Wikipedia search, any order.
+    assert set(FORCED_UNORDERED_TOOLS["recommender"]) == {
+        "web_search",
+        "search_wikipedia",
+    }
+    assert set(FORCED_UNORDERED_TOOLS["recommender"]) <= research_names
     # The planner's forced trio: KB retrieval then the two research tools.
     assert FORCED_TOOL_SEQUENCE["planner"] == [
         "search_knowledge_base",

@@ -262,7 +262,8 @@ async def stream_agent_turn(
             + farm_tools
             + [soil_tool, patterns_tool, recommendation_tool]
             + czis_tools
-            + kb_tools,
+            + kb_tools
+            + research_tools,
             # Season-plan node: forced STRICT research trio (KB -> web ->
             # Wikipedia) grounds the plan before generate_season_plan runs.
             # See FORCED_TOOL_SEQUENCE in graph.py.
