@@ -89,7 +89,12 @@ NODE_DIRECTIVES = {
         "yields or fertilizer amounts; if CZIS is unavailable, say so. "
         "Choosing WHICH crop to grow is the recommender specialist's job — "
         "you may answer general questions, but a proper ranked "
-        "recommendation should follow its flow."
+        "recommendation should follow its flow. "
+        "If the farmer attached a leaf photo (a system note gives the "
+        "attachment id), call classify_leaf_disease with that id, then relay "
+        "the on-device diagnosis label and confidence exactly and advise next "
+        "steps; never guess the disease yourself. Confirm treatment with local "
+        "extension staff."
     ),
     "recommender": (
         "CURRENT NODE: CROP RECOMMENDER. Your ONLY job: recommend crops "

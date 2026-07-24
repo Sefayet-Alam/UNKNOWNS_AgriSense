@@ -45,9 +45,11 @@ scenario simulation ("what if rainfall drops 30%?" → revised numbers).
 
 ### Tier 2 — Bonus (only after Tier 0 solid)
 Marketplace/supplier comparison (mock catalog OK), market price intelligence
-(sell/store/wait), leaf-photo disease detection, **bdapps CaaS Payment Gateway**
-(sandbox — docs: https://dev.bdapps.com/API_Documentation/bdapps_tap_api.html),
-Bengali/voice interaction.
+(sell/store/wait), **leaf-photo disease detection (✅ DONE)**, **bdapps CaaS
+Payment Gateway** (sandbox — docs:
+https://dev.bdapps.com/API_Documentation/bdapps_tap_api.html),
+**Bengali/voice interaction (✅ DONE — voice-note transcription; Bengali replies
+already supported end-to-end)**.
 
 ### Judging (100 pts)
 Agentic behavior 20 · Scope & execution 15 · Accuracy & practicality 20 ·
@@ -144,6 +146,28 @@ that runs end-to-end in a 4-minute demo.
   crop ranker, fertilizer split allocation, season calendar, and Decimal finance).
   Core rule: LLM never
   computes farmer-facing numbers.
+- **Leaf-disease detection (Tier 2)**: on-device, bundled multi-head TFLite model
+  [backend/app/data/crop_disease_int8.tflite](backend/app/data/crop_disease_int8.tflite)
+  (int8, 224×224 float input; heads = crop classifier + potato/rice/tomato
+  disease, labels in [backend/app/data/class_names.json](backend/app/data/class_names.json)).
+  Pure engine [backend/app/engines/leaf_disease.py](backend/app/engines/leaf_disease.py)
+  (LiteRT + Pillow; crop head → matching disease head, or a farmer/farm crop hint
+  overrides it) → advisor tool `classify_leaf_disease(attachment_id)`. The MODEL
+  is the deterministic classifier; the LLM only relays the labelled diagnosis +
+  confidence and advises confirming with extension staff — never guesses. Model
+  outage → `DISEASE_MODEL_UNAVAILABLE`, no invented diagnosis.
+- **Voice notes + uploads (Tier 2 accessibility)**: `POST /api/uploads`
+  ([backend/app/routers/uploads.py](backend/app/routers/uploads.py)) stores a
+  user-scoped image or audio file (`attachments` table, migration 0007). Audio is
+  transcribed immediately via Gemini
+  ([backend/app/adapters/transcribe.py](backend/app/adapters/transcribe.py),
+  `GEMINI_API_KEY`; Bengali/English, injectable client, fail-open on outage) so a
+  spoken question flows through the normal text pipeline (Bengali replies already
+  work via `reply_language`). Chat `/stream` accepts `attachment_ids`; the runner
+  injects a system note for image attachments so the advisor calls
+  `classify_leaf_disease`. Frontend composer has 📷 photo + 🎤 voice controls
+  ([frontend/src/components/chat/Composer.tsx](frontend/src/components/chat/Composer.tsx)).
+  Uploaded files are gitignored, never committed.
 - **Memory**: long-term semantic recall via pgvector + rolling per-session summary,
   PLUS post-turn **automatic extraction** (PR #8): flash-lite pulls durable personal
   facts from every completed turn (no tool call needed), dedups by embedding
@@ -237,16 +261,20 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 327 tests: unit (security/phone/tools/weather adapter/KB
+  (or `make test`). 358 tests: unit (security/phone/tools/weather adapter/KB
   chunker/czis adapter/geo gazetteer/unit
-  conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
-  cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
-  chip, multi-turn intake, and six recommendation SSE journeys covering success,
-  source outages, no irrigation, tight budget, and exclusions), plus selected-crop
-  season-plan journeys for success, weather delay, financial composition and
-  degraded sources, plus financial input-sensitivity/what-if journeys and 16
-  dedicated whole-product E2E cases (five-turn PDF path + every focused crop's
-  plan, finance, and incomplete-profile gate). LLM +
+  conversion, plus Tier-2 leaf-disease engine gold tests + Gemini transcription
+  adapter tests), integration (auth rotation/blacklist, chat ownership, farm
+  tools + cross-user isolation), streaming (SSE tool_trace→message_update→done,
+  weather chip, multi-turn intake, and six recommendation SSE journeys covering
+  success, source outages, no irrigation, tight budget, and exclusions), plus
+  selected-crop season-plan journeys for success, weather delay, financial
+  composition and degraded sources, plus financial input-sensitivity/what-if
+  journeys and 16 dedicated whole-product E2E cases (five-turn PDF path + every
+  focused crop's plan, finance, and incomplete-profile gate), plus Tier-2 upload
+  endpoint (image/audio/transcription-outage/limits/auth) and disease-tool
+  (diagnosis relay, crop hint, missing/non-image attachment, model outage)
+  coverage. LLM +
   HTTP are faked — no network. Isolated against a separate `argi_test` db.
   Realtime transport is **SSE, not WebSocket**. Add tests with any new feature.
   NOTE: the container has no source volume mount — `docker compose up -d --build

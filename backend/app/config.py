@@ -58,6 +58,16 @@ class Settings(BaseSettings):
     OPENROUTER_MODEL_LITE: str = "google/gemini-2.5-flash-lite"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
+    # ---- LLM: Gemini (voice-note transcription for accessibility) ----
+    GEMINI_API_KEY: str = ""
+    GEMINI_TRANSCRIBE_MODEL: str = "gemini-2.5-flash"
+
+    # ---- Uploads (leaf photos + voice notes) ----
+    UPLOAD_DIR: str = "uploads"
+    MAX_UPLOAD_MB: int = 10
+    DISEASE_MODEL_PATH: str = "app/data/crop_disease_int8.tflite"
+    DISEASE_CLASS_NAMES_PATH: str = "app/data/class_names.json"
+
     # ---- LLM: Ollama (optional secondary provider) ----
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
     OLLAMA_MODEL: str = "llama3.1"

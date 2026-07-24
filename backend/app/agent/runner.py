@@ -10,13 +10,13 @@ import logging
 import os
 from typing import AsyncGenerator, Optional
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..logging_setup import trunc
-from ..models import ChatMessage, ChatSession, User
+from ..models import Attachment, ChatMessage, ChatSession, User
 from ..schemas import serialize_message
 from . import memory as memory_mod
 from .graph import build_graph
@@ -36,6 +36,7 @@ from .tools import (
     build_patterns_tool,
     build_crop_recommendation_tool,
     build_financial_tool,
+    build_disease_tool,
     build_season_plan_tool,
     build_soil_tool,
     build_static_tools,
@@ -161,6 +162,7 @@ async def stream_agent_turn(
     user: User,
     session_or_none: Optional[ChatSession],
     message: str,
+    attachment_ids: Optional[list[int]] = None,
 ) -> AsyncGenerator[dict, None]:
     """Run one user turn; yield event dicts matching the frozen contract."""
     session = session_or_none
@@ -199,6 +201,7 @@ async def stream_agent_turn(
         recommendation_tool = build_crop_recommendation_tool(user)
         financial_tool = build_financial_tool(user)
         season_plan_tool = build_season_plan_tool(user)
+        disease_tool = build_disease_tool(user)
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
@@ -209,7 +212,7 @@ async def stream_agent_turn(
             "advisor": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool, patterns_tool]
+            + [soil_tool, patterns_tool, disease_tool]
             + czis_tools
             + kb_tools
             + memory_tools,
@@ -266,6 +269,35 @@ async def stream_agent_turn(
             SYSTEM_PROMPT, session.summary, recalled, farmer_name=user.username
         )
         lc_messages.extend(history_to_lc_messages(history))
+
+        # ---- multimodal: nudge the advisor to diagnose attached photos --- #
+        if attachment_ids:
+            image_rows = (
+                (
+                    await db.execute(
+                        select(Attachment).where(
+                            Attachment.id.in_(attachment_ids),
+                            Attachment.user_id == user.id,
+                            Attachment.kind == "image",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if image_rows:
+                ids = ", ".join(f"attachment_id={row.id}" for row in image_rows)
+                lc_messages.append(
+                    SystemMessage(
+                        content=(
+                            f"The farmer attached {len(image_rows)} leaf photo(s) "
+                            f"({ids}). Call classify_leaf_disease with the "
+                            "attachment id to get an on-device diagnosis, then "
+                            "explain the labelled result and confidence and advise "
+                            "next steps. Never guess a disease without the tool."
+                        )
+                    )
+                )
 
         # ---- run the graph ---------------------------------------------- #
         # Reply language lives in graph STATE: the classify node re-detects

@@ -186,6 +186,7 @@ class BillingCancelOut(BaseModel):
 class ChatStreamRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     session_id: int | None = None
+    attachment_ids: list[int] | None = None
 
 
 class ToolTraceEntry(BaseModel):

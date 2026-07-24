@@ -44,3 +44,7 @@ pgdata/
 logs/
 backend/logs/
 scripts/data_harvest/bd_cropping_patterns.json
+
+# Tier 2 uploaded files (leaf photos, voice notes) — never commit user data
+uploads/
+backend/uploads/

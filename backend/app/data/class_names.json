@@ -1,0 +1,31 @@
+{
+  "crops": [
+    "potato",
+    "rice",
+    "tomato"
+  ],
+  "diseases": {
+    "potato": [
+      "Potato_Early_blight",
+      "Potato_Late_blight",
+      "Potato_healthy"
+    ],
+    "rice": [
+      "Rice_Bacterial_Leaf_Blight",
+      "Rice_Brown_Spot",
+      "Rice_Healthy_Leaf",
+      "Rice_Leaf_Blast",
+      "Rice_Sheath_Blight"
+    ],
+    "tomato": [
+      "Tomato_Bacterial_spot",
+      "Tomato_Early_blight",
+      "Tomato_Late_blight",
+      "Tomato_Leaf_Mold",
+      "Tomato_Spider_mites_Two_spotted_spider_mite",
+      "Tomato_Tomato_YellowLeaf_Curl_Virus",
+      "Tomato_Tomato_mosaic_virus",
+      "Tomato_healthy"
+    ]
+  }
+}

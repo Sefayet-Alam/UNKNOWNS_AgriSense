@@ -52,7 +52,7 @@ async def chat_stream(
 
             try:
                 async for event in stream_agent_turn(
-                    db, user, session, payload.message
+                    db, user, session, payload.message, payload.attachment_ids
                 ):
                     yield f"data: {json.dumps(event)}\n\n"
             except Exception as exc:  # backstop

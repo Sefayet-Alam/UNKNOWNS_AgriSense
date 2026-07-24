@@ -8,6 +8,7 @@ import type { StreamFrame } from "./types";
 export interface StreamArgs {
   message: string;
   sessionId: number | null;
+  attachmentIds?: number[];
   signal: AbortSignal;
   onEvent: (frame: StreamFrame) => void;
 }
@@ -15,6 +16,7 @@ export interface StreamArgs {
 async function openStream(
   message: string,
   sessionId: number | null,
+  attachmentIds: number[] | undefined,
   access: string | null,
   signal: AbortSignal,
 ): Promise<Response> {
@@ -25,7 +27,11 @@ async function openStream(
       Accept: "text/event-stream, */*",
       ...(access ? { Authorization: `Bearer ${access}` } : {}),
     },
-    body: JSON.stringify({ message, session_id: sessionId ?? null }),
+    body: JSON.stringify({
+      message,
+      session_id: sessionId ?? null,
+      attachment_ids: attachmentIds && attachmentIds.length ? attachmentIds : null,
+    }),
     signal,
   });
 }
@@ -37,15 +43,16 @@ async function openStream(
 export async function streamChat({
   message,
   sessionId,
+  attachmentIds,
   signal,
   onEvent,
 }: StreamArgs): Promise<void> {
-  let res = await openStream(message, sessionId, getAccess(), signal);
+  let res = await openStream(message, sessionId, attachmentIds, getAccess(), signal);
 
   // One refresh + reconnect on an unauthorized stream.
   if (res.status === 401) {
     const access = await refreshTokens();
-    res = await openStream(message, sessionId, access, signal);
+    res = await openStream(message, sessionId, attachmentIds, access, signal);
   }
 
   if (!res.ok || !res.body) {

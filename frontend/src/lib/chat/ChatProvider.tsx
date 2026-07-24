@@ -27,7 +27,7 @@ interface ChatCtx {
   thinking: ProgressFrame[];
   streamingTurnId: number | null; // assistant message id of the live turn
   error: string | null;
-  send: (message: string) => Promise<void>;
+  send: (message: string, attachmentIds?: number[]) => Promise<void>;
   stop: () => void;
   newChat: () => void;
   selectSession: (id: number) => void;
@@ -59,7 +59,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const messages = useMemo(() => mergeById(persisted ?? [], live), [persisted, live]);
 
   const send = useCallback(
-    async (message: string) => {
+    async (message: string, attachmentIds?: number[]) => {
       if (streaming) return;
       setError(null);
       setThinking([]);
@@ -73,6 +73,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       await streamChat({
         message,
         sessionId,
+        attachmentIds,
         signal: controller.signal,
         onEvent: (frame) => {
           switch (frame.type) {

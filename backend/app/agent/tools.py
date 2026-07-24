@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import json
 import logging
 import operator
@@ -23,10 +24,11 @@ from ..adapters import weather as weather_mod
 from ..config import settings
 from ..engines import crop_ranker as crop_ranker_mod
 from ..engines import finance as finance_mod
+from ..engines import leaf_disease as leaf_disease_mod
 from ..engines import season_planner as season_planner_mod
 from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
-from ..models import Farm
+from ..models import Attachment, Farm
 from . import memory as memory_mod
 
 
@@ -1847,6 +1849,92 @@ def build_season_plan_tool(user):
         )
 
     return generate_season_plan
+
+
+# --------------------------------------------------------------------------- #
+# Leaf-disease detection (Tier 2): on-device TFLite classification of an
+# uploaded photo. The model is the deterministic engine; the agent only relays
+# and explains the labelled diagnosis.
+# --------------------------------------------------------------------------- #
+def build_disease_tool(user):
+    """Return the leaf-photo disease-classification tool for this farmer."""
+
+    @tool
+    async def classify_leaf_disease(attachment_id: int, crop: str = "") -> str:
+        """Diagnose crop disease from an uploaded leaf photo (on-device model).
+
+        Use when the farmer has attached a leaf photo. ``attachment_id`` is the
+        id returned by the upload; it is looked up scoped to this farmer. Pass
+        ``crop`` (potato, rice, or tomato) if the farmer named it, to read the
+        matching disease head instead of the model's crop guess. Returns the
+        crop, diagnosis label, confidence and top-k alternatives from the bundled
+        int8 TFLite classifier — relay the label and confidence exactly and never
+        invent a disease; recommend confirming with local extension staff.
+        """
+        _emit("disease", f"classifying leaf photo (attachment {attachment_id})")
+        async with AsyncSessionLocal() as session:
+            row = (
+                await session.execute(
+                    select(Attachment).where(
+                        Attachment.id == int(attachment_id),
+                        Attachment.user_id == user.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return json.dumps(
+                    {"status": "ATTACHMENT_NOT_FOUND", "attachment_id": attachment_id},
+                    ensure_ascii=False,
+                )
+            if row.kind != "image":
+                return json.dumps(
+                    {
+                        "status": "NOT_AN_IMAGE",
+                        "attachment_id": attachment_id,
+                        "kind": row.kind,
+                    },
+                    ensure_ascii=False,
+                )
+            path = row.path
+
+        try:
+            with open(path, "rb") as handle:
+                image_bytes = handle.read()
+        except OSError as exc:
+            return json.dumps(
+                {"status": "ATTACHMENT_UNREADABLE", "error": str(exc)},
+                ensure_ascii=False,
+            )
+
+        try:
+            result = await asyncio.to_thread(
+                leaf_disease_mod.classify_image_bytes, image_bytes, crop_hint=crop
+            )
+        except leaf_disease_mod.LeafDiseaseError as exc:
+            return json.dumps(
+                {
+                    "status": "DISEASE_MODEL_UNAVAILABLE",
+                    "error": str(exc),
+                    "instruction": "No diagnosis was invented.",
+                },
+                ensure_ascii=False,
+            )
+
+        return json.dumps(
+            {
+                "status": "ok",
+                "attachment_id": attachment_id,
+                "result": result,
+                "grounding_rule": (
+                    "Diagnosis is produced by the bundled on-device TFLite model, "
+                    "not the LLM. Relay the label and confidence exactly; advise "
+                    "confirming with local extension staff before treatment."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    return classify_leaf_disease
 
 
 def build_czis_tools(user):

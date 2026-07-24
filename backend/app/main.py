@@ -21,6 +21,7 @@ from .routers import bdapps as bdapps_router
 from .routers import billing as billing_router
 from .routers import chat as chat_router
 from .routers import geo as geo_router
+from .routers import uploads as uploads_router
 
 
 @asynccontextmanager
@@ -47,6 +48,7 @@ app.include_router(bdapps_router.router)
 app.include_router(billing_router.router)
 app.include_router(chat_router.router)
 app.include_router(geo_router.router)
+app.include_router(uploads_router.router)
 
 
 @app.get("/health")
