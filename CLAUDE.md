@@ -131,7 +131,11 @@ that runs end-to-end in a 4-minute demo.
 - **Deterministic engines** live in [backend/app/engines/](backend/app/engines/) (units done; crop
   ranker/fertilizer/calendar/finance land in Tasks 5-7). Core rule: LLM never
   computes farmer-facing numbers.
-- **Memory**: long-term semantic recall via pgvector + rolling per-session summary.
+- **Memory**: long-term semantic recall via pgvector + rolling per-session summary,
+  PLUS post-turn **automatic extraction** (PR #8): flash-lite pulls durable personal
+  facts from every completed turn (no tool call needed), dedups by embedding
+  distance (<0.15), never breaks the reply (best-effort, TESTING-skipped). Farmer
+  identity (account username) is injected as a system message every session.
   ([backend/app/agent/memory.py](backend/app/agent/memory.py)) Farm facts belong in the farm profile, not memory.
 - **RAG KB (Task 4)**: [backend/app/rag/](backend/app/rag/) — `chunker.py` (recursive splitter,
   keeps FRG `<!-- Page N -->` page ranges), `store.py` (idempotent per-source
@@ -217,7 +221,7 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 212 tests: unit (security/phone/tools/weather adapter/KB
+  (or `make test`). 221 tests: unit (security/phone/tools/weather adapter/KB
   chunker/czis adapter/geo gazetteer/unit
   conversion), integration (auth rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
