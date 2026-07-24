@@ -1298,7 +1298,14 @@ def build_financial_tool(user):
         """
         _emit("finance", f"calculating financial projection for {crop_name}")
         requested = str(crop_name or "").strip()
-        if requested.lower() not in finance_mod.supported_finance_crops():
+        # Preserve the focused path's Banglish/Bengali aliases (e.g.
+        # ``sarisha`` -> Mustard) while allowing the broader catalog's exact
+        # CZIS crop names to pass through unchanged.
+        try:
+            canonical = season_planner_mod.canonical_crop_name(requested)
+        except ValueError:
+            canonical = requested
+        if canonical.lower() not in finance_mod.supported_finance_crops():
             return json.dumps(
                 {
                     "status": "CROP_SEASON_MISMATCH",
@@ -1310,7 +1317,6 @@ def build_financial_tool(user):
                 },
                 ensure_ascii=False,
             )
-        canonical = requested
 
         async with AsyncSessionLocal() as session:
             farm = await _get_or_create_active_farm(session, user)

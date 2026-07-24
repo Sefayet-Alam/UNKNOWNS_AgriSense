@@ -165,6 +165,23 @@ async def test_finance_tool_supports_a_crop_outside_the_five_season_plan_crops(
 
 
 @pytest.mark.asyncio
+async def test_finance_tool_keeps_existing_focused_crop_aliases(
+    auth_client, db_session
+):
+    """Broad catalog support must not break the existing Banglish aliases."""
+    user = await _complete_farm(db_session)
+
+    payload = json.loads(
+        await build_financial_tool(user).ainvoke(
+            {"crop_name": "sarisha", "expected_yield_t_ha": 2.0}
+        )
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["selected_crop"]["name"] == "Mustard"
+
+
+@pytest.mark.asyncio
 async def test_finance_tool_rejects_crop_season_mismatch_before_network(
     auth_client, db_session, monkeypatch
 ):
