@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.agent.runner import _history_to_lc_messages
+from app.agent.messages import history_to_lc_messages as _history_to_lc_messages
 from app.models import ChatMessage
 
 pytestmark = pytest.mark.unit
@@ -64,6 +64,69 @@ def test_multi_tool_trace_produces_one_toolmessage_each():
     assert len(ai.tool_calls) == 2
     tool_msgs = [m for m in out[1:] if isinstance(m, ToolMessage)]
     assert [t.tool_call_id for t in tool_msgs] == ["hist_9_0", "hist_9_1"]
+
+
+def test_system_messages_carry_authoritative_datetime_and_context():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.agent.messages import build_system_messages
+
+    now = datetime(2026, 7, 24, 15, 30, tzinfo=ZoneInfo("Asia/Dhaka"))
+    msgs = build_system_messages(
+        "PROMPT", "old summary", ["likes mustard"], now=now
+    )
+    assert msgs[0].content == "PROMPT"
+    assert "2026-07-24" in msgs[1].content and "authoritative" in msgs[1].content
+    assert "old summary" in msgs[2].content
+    assert "likes mustard" in msgs[3].content
+    # No summary/memories -> only prompt + datetime.
+    assert len(build_system_messages("P", None, [], now=now)) == 2
+
+
+def test_tool_call_traces_and_fill_result_roundtrip():
+    from app.agent.messages import fill_trace_result, tool_call_traces
+
+    ai = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "get_weather", "args": {"days": 3}, "id": "c1", "type": "tool_call"}
+        ],
+    )
+    traces = tool_call_traces(ai)
+    assert traces == [{"tool": "get_weather", "args": {"days": 3}, "result": ""}]
+
+    filled = fill_trace_result(traces, 0, ToolMessage(content="rain", tool_call_id="c1"))
+    assert filled[0]["result"] == "rain"
+    assert traces[0]["result"] == ""  # original untouched (new list returned)
+    assert fill_trace_result(traces, 5, ToolMessage(content="x", tool_call_id="c1")) is None
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("আমি তানোরে শীতের ফসল করতে চাই", "bengali"),
+        ("vai amar jomi Naogaon side e. pani ase but beshi na", "bengali"),
+        ("accha, sech dile kobe dile bhalo hoy?", "bengali"),
+        ("Will it rain in my area in the next 3 days?", "english"),
+        ("What crop should I plant this winter season?", "english"),
+        ("ki obostha", "bengali"),  # short Banglish
+        ("mixed: dhan er jonno pani lagbe kobe?", "bengali"),
+    ],
+)
+def test_detect_reply_language(text, expected):
+    from app.agent.messages import detect_reply_language
+
+    assert detect_reply_language(text) == expected
+
+
+def test_reply_language_directive_wording():
+    from app.agent.messages import reply_language_directive
+
+    en = reply_language_directive("How are you?")
+    bn = reply_language_directive("bhai jomi ase 3 bigha")
+    assert "ENGLISH" in en.content
+    assert "BENGALI" in bn.content
 
 
 def test_mixed_conversation_order_preserved():
