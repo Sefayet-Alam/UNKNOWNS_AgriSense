@@ -30,6 +30,14 @@ async def test_plain_turn_frame_order_and_persistence(auth_client, fake_llm):
     assert types[-1] == "done"
     assert "error" not in types
 
+    # Language STATE: English message -> routing frame shows "reply: english".
+    routing = [
+        e["detail"]
+        for e in events
+        if e["type"] == "progress" and e.get("stage") == "routing"
+    ]
+    assert routing and "reply: english" in routing[0]
+
     # The user echo comes before the assistant message.
     message_events = [e for e in events if e["type"] == "message"]
     user_msg = next(e["message"] for e in message_events if e["message"]["role"] == "user")
@@ -174,6 +182,15 @@ async def test_weather_tool_turn_traces_real_adapter_values(
     types = _types(events)
     assert types[-1] == "done"
     assert "error" not in types
+
+    # Language STATE: classify detected Bengali from this message and the
+    # routing progress frame surfaces it (state -> per-node directive).
+    routing = [
+        e["detail"]
+        for e in events
+        if e["type"] == "progress" and e.get("stage") == "routing"
+    ]
+    assert routing and "reply: bengali" in routing[0]
 
     # Chip appears with the scripted args.
     chip = None

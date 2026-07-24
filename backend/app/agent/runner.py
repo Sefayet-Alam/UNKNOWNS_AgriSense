@@ -186,6 +186,14 @@ async def stream_agent_turn(
             + [soil_tool]
             + czis_tools
             + memory_tools,
+            # Dedicated crop-recommendation specialist: everything needed to
+            # ground a ranked shortlist (profile + soil survey + CZIS catalog/
+            # varieties + weather), same hard six-field gate.
+            "recommender": static_tools
+            + [weather_tool]
+            + farm_tools
+            + [soil_tool]
+            + czis_tools,
         }
         all_tool_names = sorted(
             {t.name for group in tool_groups.values() for t in group}
