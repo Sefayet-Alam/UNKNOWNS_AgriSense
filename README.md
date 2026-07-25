@@ -1,6 +1,9 @@
 # UNKNOWNS AgriSense AI
 
-**Team UNKNOWNS:** Abrar, Sefayet, Rahi
+**Team UNKNOWNS:** 
+1. Khandoker Sefayet Alam (Team Lead)
+2. Nazib Abrar, 
+3. Md. Raihanul Haque Rahi
 **Institution:** Rajshahi University of Engineering & Technology (RUET)
 **Live:** [https://agrisense.cortextech.dev](https://agrisense.cortextech.dev)
 
