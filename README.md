@@ -41,15 +41,15 @@ docker compose up --build
 | Proactive weather alerts | A background weather scan evaluates saved plans against forecast conditions, persists alerts, and exposes them to the agent. | Real Open-Meteo forecast data when available. |
 | Fertilizer and irrigation scheduler | `generate_input_schedule` creates growth-stage fertilizer timing, farm-scaled quantities, irrigation water balance, cost, and organic alternatives. | CZIS fertilizer data and BAMIS/FRG public references. Organic nutrient equivalents and retail costs are labelled assumptions. |
 | Scenario simulation | `simulate_scenario` recomputes baseline and revised financial, budget, irrigation, and yield-risk outputs for rainfall, budget, cost, price, or yield changes. | Deterministic computation. Base inputs retain their original CZIS, farmer, public-reference, or seeded-demo provenance. |
-| Bengali accessibility | Bengali-script messages receive Bengali replies. Banglish is detected and answered in Bengali script. | Generated language output grounded in the same tool results. |
 
 ## Tier 2: Bonus
 
 | Task | How it is implemented | Data status and source |
 |---|---|---|
-| Supplier marketplace | `find_suppliers` ranks suppliers by price, delivery time, distance, and rating for an input requirement. | Supplier prices, delivery, and ratings are seeded demo data. Distance is calculated from active-farm coordinates. |
-| Market-price intelligence | `get_market_price` returns price history, trend, volatility, and a sell-now, store, or wait decision. | Historical snapshot is seeded from typical DAM/TCB-level data. A configured live price adapter is best-effort and explicitly reports unavailability. |
+| Supplier marketplace | `find_suppliers` ranks suppliers by price, delivery time, distance, and rating for an input requirement. | Supplier prices, delivery, and ratings are dummy seeded demo data. Distance is calculated from active-farm coordinates. |
+| Market-price intelligence | `get_market_price` returns price history, trend, volatility, and a sell-now, store, or wait decision. | Market-price history and the decision inputs are dummy seeded demo data, not live market quotes. |
 | Leaf disease detection | Uploaded leaf images are classified by an on-device quantized TFLite model; the agent returns its label, confidence, and alternatives. | Local model inference. The result is a model prediction, not laboratory confirmation. |
+| Bengali and voice accessibility | Bengali-script messages receive Bengali replies. Banglish is answered in Bengali script. The chat composer records voice notes and transcribes them to text before sending them through the normal agent flow. | Language replies are generated from grounded tool results. Voice transcription uses the configured Gemini transcription model. |
 | BDApps payment | The billing UI and API implement a BDApps CaaS-compatible checkout, operator-balance deduction, and receipt flow. | Local sandbox/simulator by default. No carrier charge occurs in sandbox mode. |
 
 ## Architecture
