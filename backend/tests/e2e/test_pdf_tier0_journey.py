@@ -162,6 +162,10 @@ async def test_vague_opening_reaches_grounded_explained_costed_plan(
         session_id = events[0]["session_id"]
         all_events.append(events)
 
+    opening_tools = {trace["tool"] for trace in _completed_traces(all_events[0])}
+    assert opening_tools <= {"get_farm_profile", "update_farm_profile", "resolve_season"}
+    assert not opening_tools & {"web_search", "search_wikipedia"}
+
     # Intake is targeted and persisted; no recommendation happened early.
     opening_final = [
         event["message"]["content"]

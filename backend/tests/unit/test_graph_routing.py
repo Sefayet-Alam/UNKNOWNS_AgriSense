@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.agent.graph import (
     AGENTS,
+    MAX_TURNS,
     _current_turn_tool_rounds,
     classify_heuristic,
+    enforce_intake_admission,
+    research_is_eligible,
 )
 
 pytestmark = pytest.mark.unit
@@ -41,6 +44,9 @@ pytestmark = pytest.mark.unit
         ("Wheat", "planner"),
         ("গম", "planner"),
         ("সরিষা", "planner"),
+        # Finance coverage is no longer limited to the original five Rabi
+        # calendar crops; a bare catalog crop can be the farmer's selection.
+        ("lentil", "planner"),
         ("Calculate ROI and break-even for wheat", "finance"),
         ("Show me a cost breakdown for mustard", "finance"),
         ("If wheat sells at 42 taka, recalculate the profit", "finance"),
@@ -54,6 +60,67 @@ def test_weather_beats_intake_when_both_present():
     # "brishti" (weather) + "jomi" (intake) -> the advisor grounds the
     # weather answer instead of slot-filling.
     assert classify_heuristic("amar jomi te bristi hobe ki?") == "advisor"
+
+
+def test_incomplete_personalised_planning_cannot_escape_intake():
+    incomplete = {"missing_required_fields": ["farm_size", "budget"]}
+
+    assert (
+        enforce_intake_admission("planner", "help me plan my farm", incomplete)
+        == "intake"
+    )
+    assert (
+        enforce_intake_admission("recommender", "which crop should I grow?", incomplete)
+        == "intake"
+    )
+    # A model calling the opening an "advisor" request cannot bypass intake.
+    assert (
+        enforce_intake_admission("advisor", "Can you help me plan my farm?", incomplete)
+        == "intake"
+    )
+
+
+def test_complete_profile_keeps_specialist_intent():
+    assert enforce_intake_admission("recommender", "which crop?", {}) == "recommender"
+
+
+def test_tool_round_budget_is_six():
+    assert MAX_TURNS == 6
+
+
+def test_research_requires_a_successful_current_turn_domain_result():
+    assert not research_is_eligible([], "planner")
+    assert not research_is_eligible(
+        [
+            ToolMessage(
+                content='{"status":"PROFILE_INCOMPLETE"}',
+                name="generate_season_plan",
+                tool_call_id="call_plan",
+            )
+        ],
+        "planner",
+    )
+    assert research_is_eligible(
+        [
+            ToolMessage(
+                content='{"status":"ok"}',
+                name="generate_season_plan",
+                tool_call_id="call_plan",
+            )
+        ],
+        "planner",
+    )
+    # Replayed history may inform the reply but cannot unlock tools this turn.
+    assert not research_is_eligible(
+        [
+            ToolMessage(
+                content='{"status":"ok"}',
+                name="generate_season_plan",
+                tool_call_id="hist_42_0",
+            )
+        ],
+        "planner",
+    )
 
 
 def test_recommend_beats_intake_and_weather():

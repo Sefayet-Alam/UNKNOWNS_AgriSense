@@ -477,6 +477,6 @@ def rank_candidates(
         ),
         reverse=True,
     )
-    for index, crop in enumerate(ranked[: max(3, min(int(limit), 5))], 1):
+    for index, crop in enumerate(ranked[: max(3, min(int(limit), 50))], 1):
         crop["rank"] = index
-    return ranked[: max(3, min(int(limit), 5))]
+    return ranked[: max(3, min(int(limit), 50))]

@@ -86,8 +86,8 @@ async def test_research_tool_returns_honest_unavailable_status(monkeypatch):
     assert "Wikipedia is unavailable" in result
 
 
-def test_research_tools_are_enabled_for_the_season_planner():
-    """The planner node exposes the web + Wikipedia research tools."""
+def test_research_tools_are_available_but_not_forced_by_planner_or_finance():
+    """Research remains available, but no specialist is compelled to use it."""
     runner_source = inspect.getsource(runner_mod)
 
     assert "build_research_tools" in runner_source
@@ -102,32 +102,15 @@ def test_forced_tool_sequence_names_are_real_registered_tools():
     """
     from app.agent.graph import FORCED_TOOL_SEQUENCE, FORCED_UNORDERED_TOOLS
 
-    research_names = {t.name for t in build_research_tools()}
     kb_names = {t.name for t in tools_mod.build_kb_tools()}
 
     static_names = {t.name for t in tools_mod.build_static_tools()}
 
     assert FORCED_TOOL_SEQUENCE["recommender"] == ["rank_crop_candidates"]
-    # Recommender ALSO requires one web + one Wikipedia search, any order.
-    assert set(FORCED_UNORDERED_TOOLS["recommender"]) == {
-        "web_search",
-        "search_wikipedia",
-    }
-    assert set(FORCED_UNORDERED_TOOLS["recommender"]) <= research_names
-    # The planner's forced trio: KB retrieval then the two research tools.
-    assert FORCED_TOOL_SEQUENCE["planner"] == [
-        "search_knowledge_base",
-        "web_search",
-        "search_wikipedia",
-    ]
-    # Finance: price gathering -> deterministic projection -> calculator check.
-    assert FORCED_TOOL_SEQUENCE["finance"] == [
-        "web_search",
-        "search_knowledge_base",
-        "search_wikipedia",
-        "calculate_crop_financials",
-        "calculator",
-    ]
+    assert FORCED_UNORDERED_TOOLS == {}
+    # Validate the farm/crop with deterministic domain tools before an agent
+    # can elect to gather optional external context.
+    assert FORCED_TOOL_SEQUENCE["planner"] == ["generate_season_plan"]
+    assert FORCED_TOOL_SEQUENCE["finance"] == ["calculate_crop_financials"]
     assert "search_knowledge_base" in kb_names
-    assert {"web_search", "search_wikipedia"} <= research_names
     assert "calculator" in static_names

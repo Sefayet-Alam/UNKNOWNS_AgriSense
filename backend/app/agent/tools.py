@@ -544,7 +544,7 @@ def build_farm_tools(user):
 
         Returns the farm's location, area, soil, water, budget, season,
         preferences, and — critically — ``missing_required_fields``: the slots
-        still needed before crop planning (location, farm_size,
+        still needed before crop planning (location, farm_size, soil_type,
         water_availability, budget, season). Call this FIRST in a conversation
         to see what is already known so you never re-ask the farmer.
         """
@@ -1049,7 +1049,7 @@ def build_crop_recommendation_tool(user):
 
     @tool
     async def rank_crop_candidates(limit: int = 5) -> str:
-        """Rank 3-5 crops for the ACTIVE farm using a complete grounded flow.
+        """Rank grounded crops for the ACTIVE farm using a complete flow.
 
         This is the ONLY tool to use for a crop-choice recommendation. It first
         enforces the six-field profile gate, then combines the official CZIS
@@ -1057,7 +1057,8 @@ def build_crop_recommendation_tool(user):
         water/budget constraints and recorded upazila rotation economics.
 
         Args:
-            limit: Number of ranked candidates to return (3-5).
+            limit: Number of ranked candidates to return (3-50). The default
+                is 5 so ordinary farmer-facing replies stay concise.
 
         Every candidate contains the PDF-required suitability, water need, risk
         level and rough profit. Relay the rotation-profit warning exactly: CZIS
@@ -1068,7 +1069,7 @@ def build_crop_recommendation_tool(user):
         If a live source is unavailable, disclose the degraded status and never
         turn an Unknown value into an invented claim.
         """
-        requested_limit = max(3, min(int(limit), 5))
+        requested_limit = max(3, min(int(limit), 50))
         _emit("recommendation", "validating farm and ranking grounded crops")
         async with AsyncSessionLocal() as session:
             farm = await _get_or_create_active_farm(session, user)
@@ -1328,8 +1329,9 @@ def build_financial_tool(user):
         """Calculate itemized cost, yield, revenue, profit, ROI and break-even.
 
         Use for the selected crop and for financial what-if questions. Covers
-        seeded Rabi and annual Kharif catalog crops, while only five Rabi crops
-        have a dated calendar. Area and budget come from the active farm. By
+        the current finance-backed catalog. Only the five sourced Rabi crops
+        have a dated calendar or input schedule. Area and budget come from the
+        active farm. By
         default, yield is fetched from the live CZIS variety table. A
         farmer-provided expected yield overrides CZIS. Price and item costs use
         clearly labelled seeded demo assumptions unless the farmer supplies
@@ -1537,8 +1539,9 @@ def build_season_plan_tool(user):
     ) -> str:
         """Generate a grounded, DATED land-preparation-to-harvest calendar.
 
-        Use only after the farmer has selected a crop. Supported focused-path
-        crops: Wheat, Mustard, Potato, Maize and Boro dhan. The tool combines a
+        Use only after the farmer has selected a crop. Dated calendars are
+        currently sourced only for the focused Rabi path: Wheat, Mustard,
+        Potato, Maize and Boro dhan. The tool combines a
         Rajshahi BAMIS crop-weather calendar, FRG 2024 fertilizer timing, live
         CZIS farm-scaled fertilizer products, live Open-Meteo weather and RAG
         evidence. It returns sowing, fertilizer, irrigation, weed/pest and
@@ -2138,8 +2141,9 @@ def build_scheduler_tool(user):
         product sized by transparent nutrient equivalence (FRG IPNS basis, an
         approximation, not a precise dose); and an irrigation water balance from
         the BAMIS crop-water requirement minus effective rainfall giving the
-        application count and seeded cost. Supported crops: Wheat, Mustard,
-        Potato, Maize, Boro dhan (Rajshahi focused path).
+        application count and seeded cost. This sourced schedule is currently
+        limited to Wheat, Mustard, Potato, Maize and Boro dhan in the Rajshahi
+        focused path.
 
         Args:
             crop_name: Selected crop.
@@ -2414,8 +2418,9 @@ def build_scenario_tool(user):
           - cost_change_percent: scales non-overridden input costs.
           - price_change_percent: scales the sale price.
         Yield comes from live CZIS (or expected_yield_t_ha). All arithmetic is
-        deterministic; provenance is preserved. Supported crops: Wheat, Mustard,
-        Potato, Maize, Boro dhan.
+        deterministic; provenance is preserved. Rainfall-aware simulation is
+        currently limited to the five sourced Rabi calendar crops (Wheat,
+        Mustard, Potato, Maize and Boro dhan).
         """
         _emit("scenario", f"simulating what-if for {crop_name}")
         try:
@@ -2911,15 +2916,43 @@ def build_static_tools():
 
 
 # --------------------------------------------------------------------------- #
-# Optional external research tools (deliberately dormant)
+# Optional external research tools (profile-gated in production)
 # --------------------------------------------------------------------------- #
-def build_research_tools():
-    """Create optional web-reference tools without registering them anywhere.
+def build_research_tools(user=None):
+    """Create the optional web-reference tools, gated on a complete profile.
 
-    These are intentionally absent from ``runner.py``'s specialist tool
-    groups. Keeping the factory here lets us test and review their contracts
-    before granting an agent access to live, untrusted web content.
+    When ``user`` is provided (production wiring), both tools REFUSE to run
+    external searches until the active farm's six mandatory fields are locked
+    — no live web/Wikipedia call is made while intake is incomplete. When
+    ``user`` is None (contract tests / dormant use) the gate is skipped so the
+    raw search wrapper can be exercised in isolation.
     """
+
+    async def _profile_gate() -> Optional[str]:
+        """Return a PROFILE_INCOMPLETE gate string if intake is unfinished."""
+        if user is None:
+            return None
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            missing = _missing_slots(farm)
+        if not missing:
+            return None
+        return json.dumps(
+            {
+                "status": "PROFILE_INCOMPLETE",
+                "missing_required_fields": missing,
+                "message": (
+                    "External web and Wikipedia search are disabled until the "
+                    "active farm's six mandatory fields (location, farm_size, "
+                    "soil_type, water_availability, budget, season) are all set."
+                ),
+                "instruction": (
+                    "Do not web-search now. Collect the missing fields with the "
+                    "farm-profile tools first, then external research is allowed."
+                ),
+            },
+            ensure_ascii=False,
+        )
 
     @tool
     async def web_search(query: str, max_results: int = 5) -> str:
@@ -2930,7 +2963,10 @@ def build_research_tools():
         in results or treat them as authoritative, farmer-specific facts.
         Official CZIS, weather, BARC/FRG and deterministic tools remain the
         source of truth for farmer-facing recommendations and quantities.
+        BANNED until the active farm's six required fields are locked.
         """
+        if gate := await _profile_gate():
+            return gate
         _emit("research", "searching external web references")
         try:
             payload = await research_mod.search_web(query, max_results=max_results)
@@ -2956,7 +2992,10 @@ def build_research_tools():
         when useful, verify important agricultural claims with authoritative
         sources, and never use it as a replacement for live farm data or
         deterministic recommendation/finance tools.
+        BANNED until the active farm's six required fields are locked.
         """
+        if gate := await _profile_gate():
+            return gate
         _emit("research", "searching Wikipedia reference summaries")
         try:
             payload = await research_mod.search_wikipedia(

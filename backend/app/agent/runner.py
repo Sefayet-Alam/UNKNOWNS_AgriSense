@@ -245,7 +245,7 @@ async def stream_agent_turn(
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
-        research_tools = build_research_tools()
+        research_tools = build_research_tools(user)
         tool_groups = {
             "intake": static_tools + farm_tools + [soil_tool],
             # KB retrieval is an advisor tool (D1 Rev 3: capabilities land as
@@ -268,17 +268,15 @@ async def stream_agent_turn(
             + czis_tools
             + kb_tools
             + research_tools,
-            # Season-plan node: forced STRICT research trio (KB -> web ->
-            # Wikipedia) grounds the plan before generate_season_plan runs.
-            # See FORCED_TOOL_SEQUENCE in graph.py.
+            # Season-plan node validates the requested crop through its
+            # deterministic plan tool before optional research becomes usable.
             "planner": static_tools
             + farm_tools
             + [soil_tool, season_plan_tool, scheduler_tool, financial_tool, scenario_tool]
             + kb_tools
             + research_tools,
-            # Finance node: forced price-gathering (web -> KB -> Wikipedia) +
-            # deterministic projection + calculator verification. calculator is
-            # already in static_tools. See FORCED_TOOL_SEQUENCE in graph.py.
+            # Finance validates a deterministic projection before optional
+            # research becomes usable. calculator is already in static_tools.
             "finance": static_tools
             + farm_tools
             + [financial_tool, scenario_tool]

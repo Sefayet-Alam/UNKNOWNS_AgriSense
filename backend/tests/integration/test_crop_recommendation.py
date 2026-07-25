@@ -7,7 +7,11 @@ import pytest
 from sqlalchemy import select
 
 from app.agent import tools as tools_mod
-from app.agent.tools import _get_or_create_active_farm, build_crop_recommendation_tool
+from app.agent.tools import (
+    _get_or_create_active_farm,
+    build_crop_recommendation_tool,
+    build_research_tools,
+)
 from app.models import User
 from app.rag import ingest_document
 
@@ -30,6 +34,41 @@ async def _complete_farm(db_session):
     farm.phase = "ready_for_planning"
     await db_session.commit()
     return user, farm
+
+
+@pytest.mark.asyncio
+async def test_research_tools_are_banned_until_profile_is_complete(
+    auth_client, db_session, monkeypatch
+):
+    """web_search / search_wikipedia refuse while intake is incomplete."""
+    called = {"web": False, "wiki": False}
+
+    async def fake_web(query, max_results):
+        called["web"] = True
+        return {"source": "DuckDuckGo search", "results": []}
+
+    async def fake_wiki(query, **kwargs):
+        called["wiki"] = True
+        return {"source": "Wikipedia (en)", "results": []}
+
+    monkeypatch.setattr(tools_mod.research_mod, "search_web", fake_web)
+    monkeypatch.setattr(tools_mod.research_mod, "search_wikipedia", fake_wiki)
+
+    user, _farm = await _user_and_farm(db_session)  # incomplete by default
+    web_search, search_wikipedia = build_research_tools(user)
+
+    web = json.loads(await web_search.ainvoke({"query": "urea price"}))
+    wiki = json.loads(await search_wikipedia.ainvoke({"query": "wheat"}))
+    assert web["status"] == "PROFILE_INCOMPLETE"
+    assert wiki["status"] == "PROFILE_INCOMPLETE"
+    # The external providers were never actually called.
+    assert called == {"web": False, "wiki": False}
+
+    # Once the six fields are locked, the searches run.
+    await _complete_farm(db_session)
+    web2 = json.loads(await web_search.ainvoke({"query": "urea price"}))
+    assert web2["status"] == "ok"
+    assert called["web"] is True
 
 
 @pytest.mark.asyncio

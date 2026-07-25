@@ -120,6 +120,35 @@ def test_ranker_returns_pdf_required_fields_and_three_candidates():
     assert potato["rough_profit"]["total_cost_tk"] == 77_500
 
 
+def test_ranker_allows_up_to_fifty_eligible_candidates():
+    inputs = _inputs()
+    inputs["profile"]["season"] = "kharif-1"
+    names = ["Maize", "Brinjal", "Bitter Gourd", "Cucumber", "Mungbean", "Sesame"]
+    inputs["catalog"] = [
+        {"crop_id": index, "name": name, "season": "Kharif-1"}
+        for index, name in enumerate(names, 1)
+    ]
+    inputs["suitability"] = [
+        {"crop_id": index, "suite": "Suitable", "suite_code": "S"}
+        for index, _name in enumerate(names, 1)
+    ]
+    inputs["patterns"] = [
+        {
+            "pattern": f"{name}-Fallow-T. Aman dhan",
+            "kharif1": name,
+            "bcr_vc": "1.5",
+            "bcr_tc": "1.2",
+            "gm_tk_per_decimal": "500",
+        }
+        for name in names
+    ]
+
+    assert len(rank_candidates(**inputs, limit=5)) == 5
+    ranked = rank_candidates(**inputs, limit=50)
+    assert len(ranked) == 6
+    assert [crop["rank"] for crop in ranked] == [1, 2, 3, 4, 5, 6]
+
+
 def test_ranker_penalizes_high_water_crop_without_irrigation_and_honors_exclusion():
     inputs = _inputs(irrigation=False)
     inputs["profile"]["excluded_crops"] = ["potato"]
