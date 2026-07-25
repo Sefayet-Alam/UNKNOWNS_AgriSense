@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { BdAppsCheckout } from "@/components/billing/BdAppsCheckout";
+import { CaasSandboxCheckout } from "@/components/billing/CaasSandboxCheckout";
 import { LeafMark } from "@/components/ui/LeafMark";
 import {
   apiBillingPlans,
@@ -113,6 +114,7 @@ function ProfileContent() {
   >(["plus", "pro"]);
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingMsg, setBillingMsg] = useState("");
+  const [caasOpen, setCaasOpen] = useState(false);
   const [checkout, setCheckout] = useState<{
     id: PaidTierId;
     name: string;
@@ -383,13 +385,7 @@ function ProfileContent() {
                       ) : canUpgrade && availableForCheckout ? (
                         <button
                           type="button"
-                          onClick={() =>
-                            setCheckout({
-                              id: t.id as PaidTierId,
-                              name: t.name,
-                              amount,
-                            })
-                          }
+                          onClick={() => t.id === "plus" ? setCaasOpen(true) : setCheckout({ id: t.id as PaidTierId, name: t.name, amount })}
                           className="atlas-button w-full"
                         >
                           {discountedUpgrade
@@ -467,6 +463,7 @@ function ProfileContent() {
           }}
         />
       )}
+      {caasOpen && <CaasSandboxCheckout onClose={() => setCaasOpen(false)} onSuccess={() => { apiSubscription().then((active) => { setSubscription(active); setTier(active.plan_id); }); }} />}
     </main>
   );
 }

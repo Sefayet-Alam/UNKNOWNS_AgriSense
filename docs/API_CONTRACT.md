@@ -116,6 +116,19 @@ update its plan immediately and must not require a second continuation button.
 Res 200: `{ "subscription": Subscription, "status_code": str, "status_detail": str }`
 BDApps mode calls `/subscription/send` with action `"0"`.
 
+### GET /api/billing/caas/quote
+Authenticated Tier 2 CaaS sandbox quote. Returns the fixed AgriSense Plus checkout (BDT 199),
+the authenticated subscriber ID, and the current virtual operator balance (BDT 500 on first use).
+It is a local BDApps-compatible simulator and never calls a carrier endpoint.
+
+### POST /api/billing/caas/debit
+Body: `{ "product_id": "plus_subscription", "confirm": true }`.
+
+The server owns the plan price and subscriber identity, persists the receipt, deducts virtual
+operator balance, activates Plus, and returns `S1000`, external/internal/reference transaction IDs,
+balance before/after, and a redacted BDApps Direct Debit request trace. The response never contains
+an API key.
+
 ## BDApps callbacks (public; authenticated by provisioned application values)
 
 ### POST /api/bdapps/sms/receive

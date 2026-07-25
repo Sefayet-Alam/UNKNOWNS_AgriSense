@@ -16,11 +16,15 @@ from ..adapters.billing import (
     provider_name_for_plan,
 )
 from ..config import settings
+from ..adapters.caas_sandbox import PRODUCTS, current_balance, debit, subscriber_id
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import OtpChallenge, Subscription, User
 from ..schemas import (
     BillingCancelOut,
+    CaasDebitOut,
+    CaasDebitRequest,
+    CaasQuoteOut,
     BillingOtpStartOut,
     BillingOtpStartRequest,
     BillingOtpVerifyRequest,
@@ -70,6 +74,63 @@ PLANS = {
     ),
 }
 PRO_UPGRADE_PRICE_BDT = 249
+
+
+@router.get("/caas/quote", response_model=CaasQuoteOut)
+async def caas_quote(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    product = PRODUCTS["plus_subscription"]
+    return CaasQuoteOut(
+        product_id="plus_subscription",
+        product_name=str(product["name"]),
+        amount_bdt=int(product["amount_bdt"]),
+        subscriber_id=subscriber_id(user.phone),
+        balance_bdt=await current_balance(db, user.id),
+    )
+
+
+@router.post("/caas/debit", response_model=CaasDebitOut)
+async def caas_debit(
+    payload: CaasDebitRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail="Confirm the sandbox debit first.")
+    try:
+        receipt = await debit(db, user, payload.product_id)
+    except ValueError as exc:
+        detail = str(exc)
+        raise HTTPException(status_code=400, detail=detail) from exc
+    row = receipt.transaction
+    subscription = await _subscription_for(db, user.id)
+    if subscription is None:
+        subscription = Subscription(user_id=user.id)
+        db.add(subscription)
+    subscription.plan_id = "plus"
+    subscription.status = "active"
+    subscription.provider = "bdapps"
+    subscription.provider_status = "SANDBOX_DIRECT_DEBIT"
+    subscription.subscriber_id = user.phone
+    subscription.amount_bdt = row.amount_bdt
+    subscription.billing_cycle = "monthly"
+    subscription.started_at = _now()
+    subscription.cancelled_at = None
+    await db.commit()
+    return CaasDebitOut(
+        status_code=row.status_code,
+        status_detail=row.status_detail,
+        external_trx_id=row.external_trx_id,
+        internal_trx_id=row.internal_trx_id,
+        reference_id=row.reference_id,
+        timestamp=row.created_at,
+        amount_bdt=row.amount_bdt,
+        balance_before_bdt=row.balance_before_bdt,
+        balance_after_bdt=row.balance_after_bdt,
+        request_trace=receipt.request_trace,
+    )
 
 
 def _now() -> datetime:
@@ -193,6 +254,7 @@ async def subscription_status(
         subscription is not None
         and subscription.provider == "bdapps"
         and subscription.status == "active"
+        and subscription.provider_status != "SANDBOX_DIRECT_DEBIT"
     ):
         try:
             result = await get_billing_provider(
@@ -404,6 +466,18 @@ async def cancel_subscription(
     subscription = await _subscription_for(db, user.id)
     if subscription is None or subscription.status != "active":
         raise HTTPException(status_code=400, detail="No active paid subscription.")
+
+    if subscription.provider_status == "SANDBOX_DIRECT_DEBIT":
+        subscription.status = "cancelled"
+        subscription.provider_status = "SANDBOX_CANCELLED"
+        subscription.cancelled_at = _now()
+        await db.commit()
+        await db.refresh(subscription)
+        return BillingCancelOut(
+            subscription=_subscription_out(subscription, user.phone),
+            status_code="S1000",
+            status_detail="Sandbox subscription cancelled.",
+        )
 
     provider = _provider_or_502(
         subscription.plan_id,
