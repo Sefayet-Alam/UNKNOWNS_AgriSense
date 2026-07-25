@@ -1,4 +1,4 @@
-# UNKNOWNS AgriSense AI
+# UNKNOWNS AgriSense
 
 **Team UNKNOWNS:** 
 1. Khandoker Sefayet Alam (Team Lead)
