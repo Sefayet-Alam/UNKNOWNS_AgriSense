@@ -1,96 +1,50 @@
-# Argi — Agentic Chat (agri-tech)
+# UNKNOWNS AgriSense AI
 
-Full-stack scaffold: **FastAPI** backend + **Next.js** frontend + **Postgres/pgvector**, wired together with Docker Compose. JWT auth (access/refresh with **rotation + blacklisting**), and an agentic chat interface built on **LangGraph + LangChain** (OpenRouter default, Ollama optional) with streaming, inline tool-call display, and long-term memory (pgvector semantic recall + rolling per-session summary).
+**Team UNKNOWNS:** Abrar, Sefayet, Rahi
+**Institution:** Rajshahi University of Engineering & Technology (RUET)
+**Live:** [https://agrisense.cortextech.dev](https://agrisense.cortextech.dev)
 
-## Layout
-```
-.
-├── docker-compose.yml      # spins up db + backend + frontend
-├── .env.example            # copy to .env (gitignored)
-├── docs/API_CONTRACT.md    # frozen API + SSE contract
-├── backend/                # FastAPI + LangGraph agent (own Dockerfile)
-└── frontend/               # Next.js login/register/chat (own Dockerfile)
-```
+## Setup
 
-## Quick start
 ```bash
 cp .env.example .env
-# edit .env: set JWT_SECRET_KEY and OPENROUTER_API_KEY
+# Set JWT_SECRET_KEY and OPENROUTER_API_KEY in .env
 docker compose up --build
 ```
 
-Backend startup runs Alembic and then verifies/restores the committed 287-chunk
-FRG 2024 vector seed before serving. The restore uses committed embeddings and
-does not spend embedding API calls; complete databases are left untouched.
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8080`
+- API docs: `http://localhost:8080/docs`
 
-- Frontend: http://localhost:3000
-- Backend:  http://localhost:8080  (docs at /docs)
-- Postgres: localhost:5433
+## Tier 0: Core
 
-> Host ports 8080/5433 are used (instead of 8000/5432) to avoid clashing with
-> other local services. Change the mappings in `docker-compose.yml` and
-> `NEXT_PUBLIC_API_URL` in `.env` together if you want different ports.
-
-The database lives **only** in docker-compose (pgvector image). Backend and frontend each build from their own Dockerfile.
-
-## Screens
-1. **Login / reset password** — mobile-number auth with mock OTP recovery.
-2. **Register** — name, mobile, Bangladesh address and password. The cascading
-   division/district/upazila list is generated from the canonical
-   `docs/upazilas.csv` dataset.
-3. **Chat** — session sidebar + streaming agentic chat with tool-call traces.
-4. **Profile / billing** — persisted subscription, cancel, and password change.
-
-## Hackathon Tier 0 path
-
-The focused demo path is: targeted six-field farm intake → live weather and
-official point-suitability crop ranking → selected-crop dated calendar → an
-itemized financial projection. The planner combines BAMIS crop calendars, the
-BARC Fertilizer Recommendation Guide 2024 knowledge base, live BARC CZIS crop,
-variety and farm-scaled fertilizer results, and live Open-Meteo weather. Native
-tool calls, arguments and raw results are visible in the chat trace.
-
-Financial arithmetic is deterministic (`Decimal`) and exposes itemized cost,
-expected yield, revenue, net profit, ROI, break-even yield and break-even price.
-Changing area, yield, sale price, cost items or a cost percentage recomputes the
-dependent values. The tool also returns internal math checks.
-
-The backend suite includes whole-product SSE journeys, not only unit tests: a
-five-turn vague-opening-to-costed-plan flow, complete plan and finance flows for
-all five focused crops, missing-profile hard gates for every crop, live-source
-failure drills, and persisted raw-trace checks.
-
-## Agricultural data: real vs generated/demo
-
-| Data or behavior | Classification | Notes |
+| Task | How it is implemented | Data status and source |
 |---|---|---|
-| Weather | **Real/live** | Open-Meteo forecast at the active farm coordinates; outage is surfaced, never filled in. |
-| Crop point suitability | **Real/live** | Official BARC CZIS GeoServer response. |
-| Variety yield and farm-scaled fertilizer | **Real/live** | Official BARC CZIS endpoints; the raw yield range and fertilizer response remain in the trace. |
-| Crop calendar and fertilizer guidance | **Real/public reference** | BAMIS Rajshahi crop-weather calendars and FRG 2024; FRG is retrieved through the pgvector RAG store. |
-| Soil default | **Real/public reference, bundled snapshot** | Upazila survey default; labelled as an assumption that the farmer must confirm. |
-| Financial sale price and cultivation cost defaults | **Generated/seeded demo assumptions** | Not a market board or supplier quote. Every such value is labelled `seeded_demo_value`; farmer estimates override it. |
-| Financial formulas | **Real deterministic computation** | Server-side `Decimal` math with inspectable identities and break-even values. |
-| Billing | See below | Mock by default; real BDApps is configurable. |
+| Agent model and multi-step reasoning | LangGraph routes each turn through intake, advisor, recommender, planner, or finance specialists. The primary agent model is configured by `OPENROUTER_MODEL`, default `google/gemini-2.5-flash`; intent classification and extraction use `OPENROUTER_MODEL_LITE`, default `google/gemini-2.5-flash-lite`. A request is limited to six live tool rounds. | LLM output is generated. Tool-derived facts are separated from model text. |
+| Conversational intake and memory | The active farm persists location, farm size, soil type, water availability, budget, and season. The agent asks only for missing fields. Incomplete recommendation, plan, and finance requests are deterministically routed back to intake. Farm profiles, session summaries, and semantic long-term memory persist across chats. | Farmer-provided data is real user input. Soil can be an upazila-level public-survey default and is marked for farmer confirmation. |
+| Live weather grounding | `get_weather` resolves the active farm coordinates and retrieves forecast or recent historical weather. Returned rainfall, temperature, wind, ET0, and forecast dates are used in advice. | Real live Open-Meteo API data. Failure returns `WEATHER_UNAVAILABLE`; no forecast is invented. |
+| Crop recommendation | `rank_crop_candidates` combines farm profile, BARC CZIS point suitability, water fit, budget fit, forecast risk, local cropping-pattern economics, and finance assumptions. It returns at least three eligible candidates with suitability, water need, risk, and rough profit. | CZIS suitability is real live data when available. Cropping patterns and soil are bundled public-data snapshots. Rough crop costs and sale prices are seeded demo assumptions unless the farmer supplies overrides. |
+| Crop varieties and fertilizer | The agent retrieves CZIS varieties and farm-scaled fertilizer recommendations for the active farm coordinates. | Real live BARC CZIS data when available. Outages are surfaced as structured unavailable results. |
+| Dated season plan | `generate_season_plan` produces land preparation, sowing, fertilizer, irrigation, weed, pest, and harvest events for a selected crop. | BAMIS crop-weather calendars and BARC FRG 2024 are public reference data. Live weather and CZIS fertilizer results are added when available. Sourced dated calendars currently cover wheat, mustard, potato, maize, and Boro dhan. |
+| Financial projection | A server-side Decimal engine calculates itemized cost, expected yield, revenue, net profit, ROI, break-even yield, and break-even price. Changing area, yield, sale price, or cost inputs recomputes the output. | Arithmetic is deterministic. Yield comes from CZIS variety data or a farmer estimate. Default costs and prices come from the 67-crop seeded finance-assumptions catalog and are labelled as demo values. |
+| RAG knowledge base | FRG 2024 and curated agronomy notes are recursively split with `RecursiveCharacterTextSplitter` using 1,800-character chunks, 200-character overlap, and paragraph, line, sentence, word separators. Page ranges are retained. Retrieval uses pgvector, top 3 matches, and a 0.35 similarity floor. The embedding model is `openai/text-embedding-3-small` through OpenRouter by default, 1,536 dimensions. | FRG 2024, BAMIS, and curated extension material are public reference data. Retrieved passages are treated as untrusted reference text; final fertilizer quantities come from deterministic CZIS tools. |
+| Visible agent trace and explainability | Streaming chat stores and displays each tool name, arguments, raw result, and progress event. Responses name the farm inputs and retrieved evidence behind recommendations. | Trace values are the actual returned tool payloads. |
 
-## Billing: real vs mock
+## Tier 1: Advanced
 
-- Default `BILLING_PROVIDER=mock`: OTP is `1234`; subscription state is real
-  Postgres data, but no operator charge occurs.
-- `BILLING_PROVIDER=bdapps`: the backend uses the real BDApps OTP and
-  Subscription APIs with server-only credentials. While there are zero complete
-  BDApps credential pairs, it automatically exposes the local OTP `1234` flow.
-  As soon as any app pair is complete, mock activation is disabled globally and
-  only fully credentialed tariffs remain selectable. Configure
-  `.env.example`; never expose passwords through `NEXT_PUBLIC_*` variables.
-- In development mode, an active Plus subscriber can upgrade directly to Pro
-  for the loyalty price of BDT 249/month; no manual cancellation is required.
-  A real carrier upgrade at that price requires a separate BDT 249 BDApps
-  subscription application because BDApps tariffs are fixed per application.
+| Task | How it is implemented | Data status and source |
+|---|---|---|
+| Persistent memory | Farm profiles, chat sessions, rolling summaries, and semantic long-term memory are stored in PostgreSQL and pgvector. | Farmer-provided profile and preference data. |
+| Proactive weather alerts | A background weather scan evaluates saved plans against forecast conditions, persists alerts, and exposes them to the agent. | Real Open-Meteo forecast data when available. |
+| Fertilizer and irrigation scheduler | `generate_input_schedule` creates growth-stage fertilizer timing, farm-scaled quantities, irrigation water balance, cost, and organic alternatives. | CZIS fertilizer data and BAMIS/FRG public references. Organic nutrient equivalents and retail costs are labelled assumptions. |
+| Scenario simulation | `simulate_scenario` recomputes baseline and revised financial, budget, irrigation, and yield-risk outputs for rainfall, budget, cost, price, or yield changes. | Deterministic computation. Base inputs retain their original CZIS, farmer, public-reference, or seeded-demo provenance. |
+| Leaf disease detection | Uploaded leaf images are classified by an on-device quantized TFLite model; the agent returns its label, confidence, and alternatives. | Local model inference. The result is a model prediction, not laboratory confirmation. |
+| Bengali accessibility | Bengali-script messages receive Bengali replies. Banglish is detected and answered in Bengali script. | Generated language output grounded in the same tool results. |
 
-## LLM setup
-- `OPENROUTER_API_KEY` + `OPENROUTER_MODEL` — the default chat provider.
-- Ollama (`OLLAMA_BASE_URL`, `OLLAMA_MODEL`) is available as a secondary provider.
-- Embeddings for long-term memory default to `EMBEDDINGS_PROVIDER=fake` (deterministic, offline). Switch to `ollama` + `nomic-embed-text` for real semantic recall.
+## Tier 2: Bonus
 
-See `docs/API_CONTRACT.md` for the full API + streaming event protocol.
+| Task | How it is implemented | Data status and source |
+|---|---|---|
+| Supplier marketplace | `find_suppliers` ranks suppliers by price, delivery time, distance, and rating for an input requirement. | Supplier prices, delivery, and ratings are seeded demo data. Distance is calculated from active-farm coordinates. |
+| Market-price intelligence | `get_market_price` returns price history, trend, volatility, and a sell-now, store, or wait decision. | Historical snapshot is seeded from typical DAM/TCB-level data. A configured live price adapter is best-effort and explicitly reports unavailability. |
+| BDApps payment | The billing UI and API implement a BDApps CaaS-compatible checkout, operator-balance deduction, and receipt flow. | Local sandbox/simulator by default. No carrier charge occurs in sandbox mode. |
