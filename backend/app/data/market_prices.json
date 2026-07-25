@@ -1,0 +1,155 @@
+{
+  "version": "seeded-demo-v1",
+  "source_note": "Seeded historical market-price snapshot grounded in TYPICAL Bangladesh wholesale price levels (DAM / TCB style). Illustrative demo data, NOT a live feed. Prices in BDT/kg, roughly biweekly. Replace with a live DAM/TCB feed via the market_price adapter for production.",
+  "currency": "BDT",
+  "unit": "kg",
+  "crops": {
+    "potato": {
+      "display": "Potato",
+      "aliases": ["potato", "alu", "আলু"],
+      "perishable": true,
+      "storable": true,
+      "storage_cost_bdt_per_kg_per_month": 1.5,
+      "shelf_life_months": 5,
+      "series": [
+        {"date": "2026-02-15", "price": 15.0},
+        {"date": "2026-03-01", "price": 16.0},
+        {"date": "2026-03-15", "price": 18.0},
+        {"date": "2026-04-01", "price": 20.0},
+        {"date": "2026-04-15", "price": 22.0},
+        {"date": "2026-05-01", "price": 24.0},
+        {"date": "2026-05-15", "price": 26.0},
+        {"date": "2026-06-01", "price": 27.0},
+        {"date": "2026-06-15", "price": 28.0},
+        {"date": "2026-07-01", "price": 29.0},
+        {"date": "2026-07-20", "price": 30.0}
+      ]
+    },
+    "wheat": {
+      "display": "Wheat",
+      "aliases": ["wheat", "gom", "গম"],
+      "perishable": false,
+      "storable": true,
+      "storage_cost_bdt_per_kg_per_month": 0.8,
+      "shelf_life_months": 12,
+      "series": [
+        {"date": "2026-02-15", "price": 33.0},
+        {"date": "2026-03-01", "price": 33.0},
+        {"date": "2026-03-15", "price": 34.0},
+        {"date": "2026-04-01", "price": 34.0},
+        {"date": "2026-04-15", "price": 35.0},
+        {"date": "2026-05-01", "price": 35.0},
+        {"date": "2026-05-15", "price": 36.0},
+        {"date": "2026-06-01", "price": 36.0},
+        {"date": "2026-06-15", "price": 36.5},
+        {"date": "2026-07-01", "price": 37.0},
+        {"date": "2026-07-20", "price": 37.0}
+      ]
+    },
+    "mustard": {
+      "display": "Mustard",
+      "aliases": ["mustard", "sarisha", "সরিষা"],
+      "perishable": false,
+      "storable": true,
+      "storage_cost_bdt_per_kg_per_month": 1.0,
+      "shelf_life_months": 9,
+      "series": [
+        {"date": "2026-02-15", "price": 55.0},
+        {"date": "2026-03-01", "price": 58.0},
+        {"date": "2026-03-15", "price": 60.0},
+        {"date": "2026-04-01", "price": 62.0},
+        {"date": "2026-04-15", "price": 63.0},
+        {"date": "2026-05-01", "price": 64.0},
+        {"date": "2026-05-15", "price": 65.0},
+        {"date": "2026-06-01", "price": 66.0},
+        {"date": "2026-06-15", "price": 67.0},
+        {"date": "2026-07-01", "price": 68.0},
+        {"date": "2026-07-20", "price": 68.0}
+      ]
+    },
+    "maize": {
+      "display": "Maize",
+      "aliases": ["maize", "corn", "ভুট্টা"],
+      "perishable": false,
+      "storable": true,
+      "storage_cost_bdt_per_kg_per_month": 0.8,
+      "shelf_life_months": 8,
+      "series": [
+        {"date": "2026-02-15", "price": 26.0},
+        {"date": "2026-03-01", "price": 26.5},
+        {"date": "2026-03-15", "price": 27.0},
+        {"date": "2026-04-01", "price": 27.5},
+        {"date": "2026-04-15", "price": 28.0},
+        {"date": "2026-05-01", "price": 28.5},
+        {"date": "2026-05-15", "price": 29.0},
+        {"date": "2026-06-01", "price": 29.0},
+        {"date": "2026-06-15", "price": 29.5},
+        {"date": "2026-07-01", "price": 30.0},
+        {"date": "2026-07-20", "price": 30.0}
+      ]
+    },
+    "boro paddy": {
+      "display": "Boro paddy",
+      "aliases": ["boro paddy", "boro dhan", "paddy", "dhan", "rice", "ধান", "বোরো ধান"],
+      "perishable": false,
+      "storable": true,
+      "storage_cost_bdt_per_kg_per_month": 0.7,
+      "shelf_life_months": 10,
+      "series": [
+        {"date": "2026-02-15", "price": 30.0},
+        {"date": "2026-03-01", "price": 30.0},
+        {"date": "2026-03-15", "price": 29.0},
+        {"date": "2026-04-01", "price": 28.0},
+        {"date": "2026-04-15", "price": 28.0},
+        {"date": "2026-05-01", "price": 29.0},
+        {"date": "2026-05-15", "price": 30.0},
+        {"date": "2026-06-01", "price": 31.0},
+        {"date": "2026-06-15", "price": 31.0},
+        {"date": "2026-07-01", "price": 32.0},
+        {"date": "2026-07-20", "price": 32.0}
+      ]
+    },
+    "onion": {
+      "display": "Onion",
+      "aliases": ["onion", "peyaj", "পেঁয়াজ"],
+      "perishable": true,
+      "storable": true,
+      "storage_cost_bdt_per_kg_per_month": 2.0,
+      "shelf_life_months": 3,
+      "series": [
+        {"date": "2026-02-15", "price": 40.0},
+        {"date": "2026-03-01", "price": 45.0},
+        {"date": "2026-03-15", "price": 55.0},
+        {"date": "2026-04-01", "price": 70.0},
+        {"date": "2026-04-15", "price": 85.0},
+        {"date": "2026-05-01", "price": 80.0},
+        {"date": "2026-05-15", "price": 70.0},
+        {"date": "2026-06-01", "price": 60.0},
+        {"date": "2026-06-15", "price": 55.0},
+        {"date": "2026-07-01", "price": 52.0},
+        {"date": "2026-07-20", "price": 50.0}
+      ]
+    },
+    "tomato": {
+      "display": "Tomato",
+      "aliases": ["tomato", "tomato", "টমেটো"],
+      "perishable": true,
+      "storable": false,
+      "storage_cost_bdt_per_kg_per_month": 0.0,
+      "shelf_life_months": 0,
+      "series": [
+        {"date": "2026-02-15", "price": 30.0},
+        {"date": "2026-03-01", "price": 35.0},
+        {"date": "2026-03-15", "price": 45.0},
+        {"date": "2026-04-01", "price": 60.0},
+        {"date": "2026-04-15", "price": 55.0},
+        {"date": "2026-05-01", "price": 45.0},
+        {"date": "2026-05-15", "price": 40.0},
+        {"date": "2026-06-01", "price": 36.0},
+        {"date": "2026-06-15", "price": 33.0},
+        {"date": "2026-07-01", "price": 31.0},
+        {"date": "2026-07-20", "price": 30.0}
+      ]
+    }
+  }
+}

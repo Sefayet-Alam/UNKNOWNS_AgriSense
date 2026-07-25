@@ -39,6 +39,8 @@ from .tools import (
     build_financial_tool,
     build_research_tools,
     build_disease_tool,
+    build_market_price_tool,
+    build_marketplace_tool,
     build_scenario_tool,
     build_scheduler_tool,
     build_season_plan_tool,
@@ -238,6 +240,8 @@ async def stream_agent_turn(
         alerts_tool = build_alerts_tool(user)
         scheduler_tool = build_scheduler_tool(user)
         scenario_tool = build_scenario_tool(user)
+        marketplace_tool = build_marketplace_tool(user)
+        market_price_tool = build_market_price_tool(user)
         czis_tools = build_czis_tools(user)
         memory_tools = build_memory_tools(user.id, db)
         kb_tools = build_kb_tools()
@@ -249,7 +253,7 @@ async def stream_agent_turn(
             "advisor": static_tools
             + [weather_tool]
             + farm_tools
-            + [soil_tool, patterns_tool, disease_tool, alerts_tool, scheduler_tool]
+            + [soil_tool, patterns_tool, disease_tool, alerts_tool, scheduler_tool, marketplace_tool, market_price_tool]
             + czis_tools
             + kb_tools
             + memory_tools,

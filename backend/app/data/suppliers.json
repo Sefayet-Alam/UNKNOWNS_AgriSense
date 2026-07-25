@@ -1,0 +1,115 @@
+{
+  "version": "seeded-demo-v1",
+  "source_note": "Seeded demo agri-input supplier catalog for an inspectable prototype. Prices (BDT), delivery days and ratings are ILLUSTRATIVE demo values, not live quotes. Distances are computed from real coordinates (haversine) between the farm and each supplier.",
+  "price_basis": "Prices approximate Bangladesh retail levels for subsidised fertilizers and common seed; confirm locally before purchase.",
+  "suppliers": [
+    {
+      "id": "sup-001", "name": "Rajshahi Agro Depot", "district": "Rajshahi", "upazila": "Paba",
+      "latitude": 24.4611, "longitude": 88.6501, "rating": 4.6, "delivery_days": 1,
+      "products": [
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 27.0, "unit": "kg"},
+        {"product": "TSP", "category": "fertilizer", "price_bdt": 28.0, "unit": "kg"},
+        {"product": "MoP", "category": "fertilizer", "price_bdt": 20.0, "unit": "kg"},
+        {"product": "DAP", "category": "fertilizer", "price_bdt": 21.0, "unit": "kg"},
+        {"product": "Wheat seed (BARI Gom 33)", "category": "seed", "price_bdt": 60.0, "unit": "kg"},
+        {"product": "Potato seed", "category": "seed", "price_bdt": 45.0, "unit": "kg"}
+      ]
+    },
+    {
+      "id": "sup-002", "name": "Paba Krishi Bhandar", "district": "Rajshahi", "upazila": "Paba",
+      "latitude": 24.4800, "longitude": 88.6300, "rating": 4.1, "delivery_days": 1,
+      "products": [
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 26.5, "unit": "kg"},
+        {"product": "TSP", "category": "fertilizer", "price_bdt": 27.5, "unit": "kg"},
+        {"product": "MoP", "category": "fertilizer", "price_bdt": 20.5, "unit": "kg"},
+        {"product": "Mustard seed (BARI Sarisha 14)", "category": "seed", "price_bdt": 120.0, "unit": "kg"},
+        {"product": "Zinc Sulphate", "category": "fertilizer", "price_bdt": 220.0, "unit": "kg"}
+      ]
+    },
+    {
+      "id": "sup-003", "name": "Rajshahi City Seed House", "district": "Rajshahi", "upazila": "Boalia",
+      "latitude": 24.3745, "longitude": 88.6042, "rating": 4.8, "delivery_days": 2,
+      "products": [
+        {"product": "Wheat seed (BARI Gom 33)", "category": "seed", "price_bdt": 58.0, "unit": "kg"},
+        {"product": "Maize seed (hybrid)", "category": "seed", "price_bdt": 340.0, "unit": "kg"},
+        {"product": "Potato seed", "category": "seed", "price_bdt": 43.0, "unit": "kg"},
+        {"product": "Boro rice seed (BRRI dhan29)", "category": "seed", "price_bdt": 65.0, "unit": "kg"},
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 28.0, "unit": "kg"}
+      ]
+    },
+    {
+      "id": "sup-004", "name": "Naogaon Fertilizer Traders", "district": "Naogaon", "upazila": "Naogaon Sadar",
+      "latitude": 24.7936, "longitude": 88.9318, "rating": 4.0, "delivery_days": 2,
+      "products": [
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 26.0, "unit": "kg"},
+        {"product": "TSP", "category": "fertilizer", "price_bdt": 27.0, "unit": "kg"},
+        {"product": "MoP", "category": "fertilizer", "price_bdt": 19.5, "unit": "kg"},
+        {"product": "DAP", "category": "fertilizer", "price_bdt": 20.5, "unit": "kg"},
+        {"product": "Gypsum", "category": "fertilizer", "price_bdt": 12.0, "unit": "kg"}
+      ]
+    },
+    {
+      "id": "sup-005", "name": "Natore Agri Center", "district": "Natore", "upazila": "Natore Sadar",
+      "latitude": 24.4103, "longitude": 89.0000, "rating": 3.8, "delivery_days": 3,
+      "products": [
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 25.5, "unit": "kg"},
+        {"product": "MoP", "category": "fertilizer", "price_bdt": 19.0, "unit": "kg"},
+        {"product": "Potato seed", "category": "seed", "price_bdt": 42.0, "unit": "kg"},
+        {"product": "Maize seed (hybrid)", "category": "seed", "price_bdt": 330.0, "unit": "kg"}
+      ]
+    },
+    {
+      "id": "sup-006", "name": "Chapai Nawabganj Krishi Ghor", "district": "Chapainawabganj", "upazila": "Chapainawabganj Sadar",
+      "latitude": 24.5965, "longitude": 88.2775, "rating": 4.3, "delivery_days": 3,
+      "products": [
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 27.0, "unit": "kg"},
+        {"product": "TSP", "category": "fertilizer", "price_bdt": 28.5, "unit": "kg"},
+        {"product": "Mustard seed (BARI Sarisha 14)", "category": "seed", "price_bdt": 115.0, "unit": "kg"},
+        {"product": "Wheat seed (BARI Gom 33)", "category": "seed", "price_bdt": 62.0, "unit": "kg"}
+      ]
+    },
+    {
+      "id": "sup-007", "name": "Bogura Green Agro", "district": "Bogura", "upazila": "Bogura Sadar",
+      "latitude": 24.8481, "longitude": 89.3720, "rating": 4.7, "delivery_days": 3,
+      "products": [
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 26.8, "unit": "kg"},
+        {"product": "DAP", "category": "fertilizer", "price_bdt": 20.0, "unit": "kg"},
+        {"product": "Potato seed", "category": "seed", "price_bdt": 44.0, "unit": "kg"},
+        {"product": "Maize seed (hybrid)", "category": "seed", "price_bdt": 325.0, "unit": "kg"},
+        {"product": "Cypermethrin pesticide", "category": "pesticide", "price_bdt": 480.0, "unit": "litre"}
+      ]
+    },
+    {
+      "id": "sup-008", "name": "BADC Authorised Dealer, Rajshahi", "district": "Rajshahi", "upazila": "Motihar",
+      "latitude": 24.3600, "longitude": 88.6400, "rating": 4.9, "delivery_days": 4,
+      "products": [
+        {"product": "Wheat seed (BARI Gom 33)", "category": "seed", "price_bdt": 55.0, "unit": "kg"},
+        {"product": "Boro rice seed (BRRI dhan29)", "category": "seed", "price_bdt": 60.0, "unit": "kg"},
+        {"product": "Potato seed", "category": "seed", "price_bdt": 40.0, "unit": "kg"},
+        {"product": "Mustard seed (BARI Sarisha 14)", "category": "seed", "price_bdt": 110.0, "unit": "kg"}
+      ]
+    },
+    {
+      "id": "sup-009", "name": "National Agro Supplies (Dhaka)", "district": "Dhaka", "upazila": "Tejgaon",
+      "latitude": 23.7639, "longitude": 90.4074, "rating": 4.2, "delivery_days": 5,
+      "products": [
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 25.0, "unit": "kg"},
+        {"product": "TSP", "category": "fertilizer", "price_bdt": 26.5, "unit": "kg"},
+        {"product": "MoP", "category": "fertilizer", "price_bdt": 18.5, "unit": "kg"},
+        {"product": "DAP", "category": "fertilizer", "price_bdt": 19.5, "unit": "kg"},
+        {"product": "Zinc Sulphate", "category": "fertilizer", "price_bdt": 200.0, "unit": "kg"},
+        {"product": "Maize seed (hybrid)", "category": "seed", "price_bdt": 315.0, "unit": "kg"}
+      ]
+    },
+    {
+      "id": "sup-010", "name": "Sirajganj Krishi Bazar", "district": "Sirajganj", "upazila": "Sirajganj Sadar",
+      "latitude": 24.4534, "longitude": 89.7007, "rating": 3.6, "delivery_days": 4,
+      "products": [
+        {"product": "Urea", "category": "fertilizer", "price_bdt": 26.2, "unit": "kg"},
+        {"product": "MoP", "category": "fertilizer", "price_bdt": 19.8, "unit": "kg"},
+        {"product": "Boro rice seed (BRRI dhan29)", "category": "seed", "price_bdt": 63.0, "unit": "kg"},
+        {"product": "Cypermethrin pesticide", "category": "pesticide", "price_bdt": 500.0, "unit": "litre"}
+      ]
+    }
+  ]
+}

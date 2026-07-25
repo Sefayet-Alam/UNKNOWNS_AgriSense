@@ -45,8 +45,9 @@ weather-triggered advice (✅ DONE on the `feat/proactive_weather_sms` branch),
 **scenario simulation ("what if rainfall drops 30%?" → revised numbers) (✅ DONE)**.
 
 ### Tier 2 — Bonus (only after Tier 0 solid)
-Marketplace/supplier comparison (mock catalog OK), market price intelligence
-(sell/store/wait), **leaf-photo disease detection (✅ DONE)**, **bdapps CaaS
+**Marketplace/supplier comparison (✅ DONE — seeded catalog, real-distance
+ranking)**, **market price intelligence (✅ DONE — current+historical +
+sell/store/wait)**, **leaf-photo disease detection (✅ DONE)**, **bdapps CaaS
 Payment Gateway** (sandbox — docs:
 https://dev.bdapps.com/API_Documentation/bdapps_tap_api.html),
 **Bengali/voice interaction (✅ DONE — voice-note transcription; Bengali replies
@@ -147,6 +148,30 @@ that runs end-to-end in a 4-minute demo.
   crop ranker, fertilizer split allocation, season calendar, and Decimal finance).
   Core rule: LLM never
   computes farmer-facing numbers.
+- **Supplier marketplace (Tier 2)**: pure
+  [backend/app/engines/marketplace.py](backend/app/engines/marketplace.py) +
+  advisor tool `find_suppliers(product, sort_by?)`. Seeded catalog
+  [backend/app/data/suppliers.json](backend/app/data/suppliers.json) (10 agri-input
+  shops across Rajshahi division + Dhaka, with real coordinates). Ranks offers by
+  a transparent weighted score over **price, delivery time, distance and rating**
+  (default weights 0.40/0.20/0.25/0.15, overridable; `sort_by` forces a single
+  dimension). Prices/delivery/ratings are labelled **seeded demo values**;
+  **distance is genuine** (haversine from the active farm's coordinates). Every
+  result exposes its score components; `NO_SUPPLIER_MATCH`/`LOCATION_UNRESOLVED`
+  sentinels.
+- **Market price intelligence (Tier 2)**: pure
+  [backend/app/engines/market_price.py](backend/app/engines/market_price.py) +
+  advisor tool `get_market_price(crop)`. Seeded historical series
+  [backend/app/data/market_prices.json](backend/app/data/market_prices.json)
+  (7 crops, ~biweekly, grounded in typical DAM/TCB BDT/kg levels, clearly
+  labelled snapshot). Returns current price, history min/max/avg, recent **trend**
+  (OLS BDT/kg & %/month), volatility, and a deterministic
+  **sell_now/store/wait** recommendation whose reasoning is numeric (trend rate
+  vs storage cost & perishability — the engine decides, the LLM explains).
+  Best-effort **live-attempt adapter**
+  [backend/app/adapters/market_price.py](backend/app/adapters/market_price.py)
+  (`MARKET_PRICE_API_URL`, injectable, `MarketPriceError`) degrades to the
+  snapshot (`live_price: LIVE_UNAVAILABLE`) — never invents a live quote.
 - **Leaf-disease detection (Tier 2)**: on-device, bundled multi-head TFLite model
   [backend/app/data/crop_disease_int8.tflite](backend/app/data/crop_disease_int8.tflite)
   (int8, 224×224 float input; heads = crop classifier + potato/rice/tomato
@@ -285,11 +310,13 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
 - **Tests** (regression guard, run before/after changes): from `backend/`,
   `docker compose exec backend sh -c "pip install -r requirements-dev.txt && \
   TEST_DATABASE_URL=postgresql+asyncpg://argi:argi_dev_password@db:5432/argi_test pytest -q"`
-  (or `make test`). 388 tests: unit (security/phone/tools/weather adapter/KB
+  (or `make test`). 453 tests: unit (security/phone/tools/weather adapter/KB
   chunker/czis adapter/geo gazetteer/unit
   conversion, plus gold-number scheduler engine: fertilizer cost/organic
   equivalence + irrigation water balance, plus Tier-2 leaf-disease engine gold
-  tests + Gemini transcription adapter tests), integration (auth
+  tests + Gemini transcription adapter tests, plus Tier-2 marketplace engine
+  (haversine + weighted ranking) and market-price engine (trend + sell/store/wait
+  gold cases) + market-price live-adapter tests), integration (auth
   rotation/blacklist, chat ownership, farm tools +
   cross-user isolation), streaming (SSE tool_trace→message_update→done, weather
   chip, multi-turn intake, and six recommendation SSE journeys covering success,
@@ -303,7 +330,10 @@ docker compose down -v && docker compose up -d --build   # full reset (wipes db)
   rainfall-drop irrigation cost + yield risk, unknown-water no-invention,
   cost/price levers, profile gate), plus Tier-2 upload endpoint
   (image/audio/transcription-outage/limits/auth) and disease-tool (diagnosis
-  relay, crop hint, missing/non-image attachment, model outage) coverage. LLM +
+  relay, crop hint, missing/non-image attachment, model outage) coverage, plus
+  Tier-2 marketplace-tool (rank/sort/location-gate/no-match) and market-price-tool
+  (analysis+recommendation, alias resolve, unknown crop, live degradation)
+  coverage. LLM +
   HTTP are faked — no network. Isolated against a separate `argi_test` db.
   Realtime transport is **SSE, not WebSocket**. Add tests with any new feature.
   NOTE: the container has no source volume mount — `docker compose up -d --build

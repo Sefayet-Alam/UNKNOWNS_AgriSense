@@ -192,6 +192,36 @@ uploaded image is **still visible** in the history (not just live).
 
 ---
 
+## 14A. Tier 2 — Supplier marketplace
+
+Catalog carries: fertilizers (Urea/TSP/MoP/DAP/Gypsum/Zinc), seeds
+(wheat/potato/mustard/maize/boro), pesticides.
+
+| # | Type this (Account A, farm location set) | PASS criteria |
+|---|---|---|
+|14A.1| `Where can I buy urea near me?` | Trace shows `find_suppliers`; ranked suppliers each with price, **real distance (km)**, delivery days, rating and a score. Prices/ratings flagged as seeded; distance stated as real. |
+|14A.2| `Cheapest wheat seed supplier` | Ranking favours lowest price (or the agent sorts by price); cheapest listed first. |
+|14A.3| `Nearest fertilizer shop` | Nearest-by-distance supplier surfaces (uses your farm coordinates). |
+|14A.4| **Edge — no match:** `Where can I buy a tractor engine?` | `NO_SUPPLIER_MATCH` — no seeded supplier carries it; agent says so, invents nothing. |
+|14A.5| **Edge — no location:** on a farm with no coordinates | `LOCATION_UNRESOLVED` — asks to set the location first. |
+
+---
+
+## 14B. Tier 2 — Market price intelligence (sell / store / wait)
+
+Crops with price data: potato, wheat, mustard, maize, boro paddy, onion, tomato.
+
+| # | Type this | PASS criteria |
+|---|---|---|
+|14B.1| `What is the potato price and should I sell or store?` | Trace shows `get_market_price`; current price + history (min/max/avg), a **trend** (%/month), and a **STORE/WAIT/SELL-NOW** call with the numbers behind it (trend vs storage cost). Prices flagged as a seeded DAM/TCB snapshot. |
+|14B.2| `Should I sell my tomatoes now?` | Recommends **SELL NOW** — tomato is perishable/not storable; reasoning says so. |
+|14B.3| `Is the onion price going up?` | Reports the **falling** recent trend and recommends selling; cites the %/month. |
+|14B.4| `আলুর দাম কেমন?` (Bengali, alias) | Resolves "আলু" → Potato; answers in Bengali with the same numbers. |
+|14B.5| **Edge — unknown crop:** `What's the jackfruit price?` | `UNKNOWN_CROP`; lists the crops that do have price data — no invented price. |
+|14B.6| **Live degradation:** (default, no live feed) | The `live_price` is `LIVE_UNAVAILABLE` and the answer uses the labelled snapshot — never a fabricated "live" number. |
+
+---
+
 ## 15. Source-outage / fail-closed edge cases
 
 These prove the agent **degrades honestly** and never invents data. You can
@@ -245,4 +275,6 @@ Copy this checklist for a demo dry-run:
 - [ ] Scenario: baseline vs revised numbers with deltas
 - [ ] Leaf photo → diagnosis + confidence, image shown in thread (live + reload)
 - [ ] Voice note → transcript → answer
+- [ ] Suppliers ranked by price/distance(real)/delivery/rating
+- [ ] Market price → trend + sell/store/wait with numeric reasoning
 - [ ] Outages degrade honestly (no invented numbers)
