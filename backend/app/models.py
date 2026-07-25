@@ -268,6 +268,29 @@ class Subscription(Base):
     )
 
 
+class CaasTransaction(Base):
+    """Durable receipt for the BDApps-compatible local CaaS sandbox."""
+
+    __tablename__ = "caas_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    product_id: Mapped[str] = mapped_column(String(64))
+    external_trx_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    internal_trx_id: Mapped[str] = mapped_column(String(80), unique=True)
+    reference_id: Mapped[str] = mapped_column(String(80), unique=True)
+    amount_bdt: Mapped[int] = mapped_column(Integer)
+    balance_before_bdt: Mapped[int] = mapped_column(Integer)
+    balance_after_bdt: Mapped[int] = mapped_column(Integer)
+    status_code: Mapped[str] = mapped_column(String(16), default="S1000")
+    status_detail: Mapped[str] = mapped_column(String(255), default="Success.")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now()
+    )
+
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 

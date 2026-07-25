@@ -11,6 +11,8 @@ import type {
   AuthUser,
   BillingOtpStart,
   BillingPlansResponse,
+  CaasQuote,
+  CaasReceipt,
   MessagesResponse,
   SessionsResponse,
   Subscription,
@@ -298,6 +300,19 @@ export async function apiCancelSubscription(): Promise<{
     method: "POST",
   });
   return json(res);
+}
+
+export async function apiCaasQuote(): Promise<CaasQuote> {
+  const res = await apiFetch("/api/billing/caas/quote", { method: "GET" });
+  return json<CaasQuote>(res);
+}
+
+export async function apiCaasDebit(productId: string): Promise<CaasReceipt> {
+  const res = await apiFetch("/api/billing/caas/debit", {
+    method: "POST",
+    body: JSON.stringify({ product_id: productId, confirm: true }),
+  });
+  return json<CaasReceipt>(res);
 }
 
 // ---------------------------------------------------------------------------
