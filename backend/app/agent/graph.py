@@ -136,7 +136,17 @@ NODE_DIRECTIVES = {
         "attachment id), call classify_leaf_disease with that id, then relay "
         "the on-device diagnosis label and confidence exactly and advise next "
         "steps; never guess the disease yourself. Confirm treatment with local "
-        "extension staff."
+        "extension staff. "
+        "To help buy inputs (fertilizer/seed/pesticide) — 'where can I buy "
+        "urea', 'cheapest seed supplier', 'nearest shop' — call find_suppliers "
+        "and relay the ranked options with their price, distance, delivery and "
+        "rating; state that prices/ratings are seeded demo values and distance "
+        "is real. "
+        "For market-price questions — 'what is the potato price', 'should I sell "
+        "or store my wheat', 'is the price going up' — call get_market_price and "
+        "relay the current price, the trend, and the sell-now/store/wait "
+        "recommendation with the numbers behind it; say prices are a seeded "
+        "DAM/TCB-level snapshot, not a live quote."
     ),
     "recommender": (
         "CURRENT NODE: CROP RECOMMENDER. Your ONLY job: recommend crops for "

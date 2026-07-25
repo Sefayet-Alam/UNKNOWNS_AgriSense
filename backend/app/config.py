@@ -93,6 +93,11 @@ class Settings(BaseSettings):
     KB_CHUNK_SIZE_CHARS: int = 1800
     KB_CHUNK_OVERLAP_CHARS: int = 200
 
+    # ---- Market prices (Tier 2) ----
+    # Optional live DAM/TCB-style price endpoint. Empty = use the seeded
+    # historical snapshot only (the adapter degrades honestly to it).
+    MARKET_PRICE_API_URL: str = ""
+
     # ---- Agent memory tuning ----
     HISTORY_LIMIT: int = 40
     MEMORY_TOP_K: int = 5

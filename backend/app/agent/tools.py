@@ -20,12 +20,15 @@ from .. import patterns as patterns_mod
 from .. import soil as soil_mod
 from ..adapters import czis as czis_mod
 from ..adapters import czis_suitability as czis_suitability_mod
+from ..adapters import market_price as market_price_api
 from ..adapters import research as research_mod
 from ..adapters import weather as weather_mod
 from ..config import settings
 from ..engines import crop_ranker as crop_ranker_mod
 from ..engines import finance as finance_mod
 from ..engines import leaf_disease as leaf_disease_mod
+from ..engines import market_price as market_price_mod
+from ..engines import marketplace as marketplace_mod
 from ..engines import scheduler as scheduler_mod
 from ..engines import season_planner as season_planner_mod
 from ..database import AsyncSessionLocal
@@ -2675,6 +2678,90 @@ def build_scenario_tool(user):
         )
 
     return simulate_scenario
+
+
+# --------------------------------------------------------------------------- #
+# Supplier marketplace (Tier 2): match an input need to seeded suppliers ranked
+# by price, delivery time, real distance and rating.
+# --------------------------------------------------------------------------- #
+def build_marketplace_tool(user):
+    """Return the supplier match-and-rank tool for this farmer."""
+
+    @tool
+    async def find_suppliers(
+        product: str, sort_by: str = "score", max_results: int = 5
+    ) -> str:
+        """Find and rank agri-input suppliers for a product need.
+
+        ``product`` is a fertilizer/seed/pesticide name or category (e.g.
+        "Urea", "wheat seed", "pesticide"). Suppliers are ranked by a weighted
+        score over price, delivery time, real distance (from the active farm's
+        coordinates) and rating. ``sort_by`` may be score (default), price,
+        distance, delivery, or rating. Prices/delivery/ratings are seeded demo
+        values (distance is real) — relay them as such, never as live quotes.
+        """
+        _emit("marketplace", f"ranking suppliers for {product}")
+        async with AsyncSessionLocal() as session:
+            farm = await _get_or_create_active_farm(session, user)
+            lat, lon = farm.latitude, farm.longitude
+            label = farm.union_name or farm.upazila_name or farm.district_name
+        if lat is None or lon is None:
+            return json.dumps(
+                {
+                    "status": "LOCATION_UNRESOLVED",
+                    "message": "Set the farm location first so distances can be computed.",
+                },
+                ensure_ascii=False,
+            )
+        result = marketplace_mod.rank_suppliers(
+            product, lat, lon, sort_by=sort_by, max_results=max_results
+        )
+        result["farm_location"] = label
+        return json.dumps(result, ensure_ascii=False)
+
+    return find_suppliers
+
+
+# --------------------------------------------------------------------------- #
+# Market price intelligence (Tier 2): current + historical prices and a
+# sell-now / store / wait recommendation with numeric reasoning.
+# --------------------------------------------------------------------------- #
+def build_market_price_tool(user):
+    """Return the market-price + sell/store/wait advisory tool."""
+
+    @tool
+    async def get_market_price(crop: str) -> str:
+        """Current & historical market price + a sell-now/store/wait call.
+
+        For a crop (e.g. potato, wheat, mustard, maize, boro paddy, onion,
+        tomato) returns the current price, historical min/max/average, the recent
+        trend (BDT/kg and %/month), volatility, and a deterministic
+        sell_now/store/wait recommendation with numeric reasoning (trend vs
+        storage cost & perishability). Prices are a seeded snapshot grounded in
+        typical DAM/TCB levels — relay them as such, not a live quote. Relay the
+        recommendation and the numbers behind it exactly.
+        """
+        _emit("market", f"analysing market price for {crop}")
+        key = market_price_mod.resolve_crop(crop)
+        if key is None:
+            return json.dumps(
+                {
+                    "status": "UNKNOWN_CROP",
+                    "requested": crop,
+                    "supported": market_price_mod.supported_crops(),
+                },
+                ensure_ascii=False,
+            )
+        result = market_price_mod.analyze_crop(key)
+        # Best-effort live current price; degrade to the snapshot on any failure.
+        try:
+            result["live_price"] = await market_price_api.fetch_live_price(result["crop"])
+        except market_price_api.MarketPriceError as exc:
+            result["live_price"] = {"status": "LIVE_UNAVAILABLE", "note": str(exc)}
+        result["status"] = "ok"
+        return json.dumps(result, ensure_ascii=False)
+
+    return get_market_price
 
 
 def build_czis_tools(user):
