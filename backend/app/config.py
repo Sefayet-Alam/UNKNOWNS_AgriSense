@@ -87,7 +87,14 @@ class Settings(BaseSettings):
     # OpenRouter model slug (vendor-prefixed); routed to OpenAI upstream.
     KB_EMBED_MODEL: str = "openai/text-embedding-3-small"
     KB_EMBEDDING_DIM: int = 1536  # text-embedding-3-small native dim
-    KB_TOP_K: int = 5
+    # Lowered 5 -> 3: text-embedding-3-small clusters same-domain (agronomy)
+    # chunks tightly, so a large k drags in wrong-crop neighbours.
+    KB_TOP_K: int = 3
+    # Minimum cosine similarity (1 - distance) for a retrieved chunk to be
+    # returned at all. Empirically, on-topic FRG hits score ~0.5-0.62 and
+    # clearly off-topic queries score ~0.1; 0.35 keeps real agronomy matches
+    # and drops noise instead of always padding to k.
+    KB_MIN_SIMILARITY: float = 0.35
     # Recursive chunking: ~1800 chars ≈ 450 tokens/chunk → top-5 ≈ 2.2k tokens
     # of retrieved context per tool call (decent grounding, no context blowout).
     KB_CHUNK_SIZE_CHARS: int = 1800

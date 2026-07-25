@@ -55,3 +55,21 @@ def test_plain_text_without_markers_has_no_pages():
     assert len(chunks) == 1
     assert chunks[0].page_start is None
     assert chunks[0].page_end is None
+
+
+def test_filter_by_similarity_drops_below_floor():
+    from app.rag import filter_by_similarity
+
+    hits = [
+        {"content": "a", "similarity": 0.62},
+        {"content": "b", "similarity": 0.41},
+        {"content": "c", "similarity": 0.28},  # below default 0.35 floor
+        {"content": "d", "similarity": 0.10},  # clearly off-topic
+    ]
+    kept = filter_by_similarity(hits)
+    assert [h["content"] for h in kept] == ["a", "b"]
+    # An explicit override tightens or loosens the floor.
+    assert len(filter_by_similarity(hits, 0.60)) == 1
+    assert len(filter_by_similarity(hits, 0.0)) == 4
+    # A wholly off-topic result set returns nothing (caller reports KB_EMPTY).
+    assert filter_by_similarity([{"content": "x", "similarity": 0.12}]) == []
