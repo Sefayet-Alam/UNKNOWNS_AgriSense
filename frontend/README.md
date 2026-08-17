@@ -3,6 +3,22 @@
 Agentic agri-tech chat client. Next.js 14 (App Router) + TypeScript + Tailwind +
 @tanstack/react-query + streaming SSE chat.
 
+## Screenshots
+
+![AgriSense landing page](../docs/screenshots/landing-page.png)
+
+| Planning workflow | Field context |
+|---|---|
+| ![AgriSense planning workflow](../docs/screenshots/planning-workflow.png) | ![AgriSense field context](../docs/screenshots/field-context.png) |
+
+| Create an account | Log in |
+|---|---|
+| ![AgriSense account creation](../docs/screenshots/create-account.png) | ![AgriSense login](../docs/screenshots/login.png) |
+
+| Conversational farm intake | Live weather and agent trace |
+|---|---|
+| ![AgriSense conversational farm intake](../docs/screenshots/agent-chat-intake.png) | ![AgriSense live weather response and agent trace](../docs/screenshots/agent-chat-weather-trace.png) |
+
 ## Run
 
 ```bash
