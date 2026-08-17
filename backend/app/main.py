@@ -92,6 +92,11 @@ app.include_router(geo_router.router)
 app.include_router(uploads_router.router)
 
 
+@app.get("/", include_in_schema=False)
+async def root():
+    return {"name": "AgriSense API", "status": "ok", "docs": "/docs"}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
