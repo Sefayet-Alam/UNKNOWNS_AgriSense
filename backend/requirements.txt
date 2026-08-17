@@ -1,6 +1,8 @@
 # ---- Web framework ----
 fastapi>=0.115,<1.0
-uvicorn[standard]>=0.30,<1.0
+# Plain Uvicorn keeps Docker/local serving intact and avoids bundling optional
+# uvloop/watchfiles/httptools binaries into the size-limited Vercel function.
+uvicorn>=0.30,<1.0
 python-multipart>=0.0.9
 
 # ---- Config / validation ----

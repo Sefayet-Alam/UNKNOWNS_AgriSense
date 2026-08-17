@@ -34,6 +34,7 @@ from ..engines import season_planner as season_planner_mod
 from ..database import AsyncSessionLocal
 from ..engines import units as units_mod
 from ..models import Attachment, Farm, SeasonPlan, WeatherAlert
+from ..storage import StorageError, load_bytes
 from . import memory as memory_mod
 
 log = logging.getLogger("agrisense.tools")
@@ -2012,9 +2013,8 @@ def build_disease_tool(user):
             path = row.path
 
         try:
-            with open(path, "rb") as handle:
-                image_bytes = handle.read()
-        except OSError as exc:
+            image_bytes = await load_bytes(path)
+        except StorageError as exc:
             return json.dumps(
                 {"status": "ATTACHMENT_UNREADABLE", "error": str(exc)},
                 ensure_ascii=False,

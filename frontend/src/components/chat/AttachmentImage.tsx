@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { apiFetch } from "@/lib/api";
+import { apiAttachmentContent } from "@/lib/api";
 
 /**
  * Renders a user-uploaded image by fetching it with the Bearer token (an
@@ -16,7 +16,7 @@ export function AttachmentImage({ id }: { id: number }) {
     let objectUrl = "";
     (async () => {
       try {
-        const res = await apiFetch(`/api/uploads/${id}/content`);
+        const res = await apiAttachmentContent(id);
         if (!res.ok) return;
         const blob = await res.blob();
         objectUrl = URL.createObjectURL(blob);

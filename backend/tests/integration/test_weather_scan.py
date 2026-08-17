@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from app.agent.tools import _get_or_create_active_farm, build_alerts_tool
 from app.models import SeasonPlan, User, WeatherAlert
+from app.routers import alerts as alerts_router
 from app.services import weather_scan as scan_mod
 
 TODAY = date(2026, 11, 10)
@@ -283,6 +284,31 @@ async def test_scan_now_endpoint_runs_a_pass_and_returns_the_report(
     body = resp.json()
     assert body["status"] == "completed"
     assert body["report"]["farms_skipped_incomplete"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_cron_endpoint_requires_and_accepts_vercel_bearer_secret(
+    client, monkeypatch
+):
+    monkeypatch.setattr(alerts_router.settings, "CRON_SECRET", "cron-test-secret")
+
+    async def fake_scan():
+        return {"farms_scanned": 2, "alerts_created": 1}
+
+    monkeypatch.setattr(alerts_router, "run_weather_scan", fake_scan)
+
+    denied = await client.get("/api/alerts/cron")
+    assert denied.status_code == 401
+
+    allowed = await client.get(
+        "/api/alerts/cron",
+        headers={"Authorization": "Bearer cron-test-secret"},
+    )
+    assert allowed.status_code == 200
+    assert allowed.json() == {
+        "status": "completed",
+        "report": {"farms_scanned": 2, "alerts_created": 1},
+    }
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,9 @@ docker compose up --build
 - Backend API: `http://localhost:8080`
 - API docs: `http://localhost:8080/docs`
 
+For the free serverless deployment (Vercel frontend + FastAPI, Neon pgvector,
+and private Vercel Blob), see [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md).
+
 ## Tier 0: Core
 
 | Task | How it is implemented | Data status and source |

@@ -2,8 +2,37 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def normalize_database_url(value: str) -> str:
+    """Return a SQLAlchemy asyncpg URL, including Neon-compatible SSL args.
+
+    Docker already supplies ``postgresql+asyncpg://``. Managed Postgres
+    providers (including Neon through Vercel) normally supply
+    ``postgresql://...?sslmode=require&channel_binding=require``.  asyncpg
+    expects ``ssl=require`` and does not accept libpq's ``channel_binding``
+    query parameter, so normalize only those provider-specific differences.
+    """
+    raw = str(value).strip()
+    if raw.startswith("postgres://"):
+        raw = "postgresql://" + raw[len("postgres://") :]
+    if raw.startswith("postgresql://"):
+        raw = "postgresql+asyncpg://" + raw[len("postgresql://") :]
+
+    parsed = urlsplit(raw)
+    query = []
+    for key, item in parse_qsl(parsed.query, keep_blank_values=True):
+        if key == "channel_binding":
+            continue
+        if key == "sslmode":
+            key = "ssl"
+        query.append((key, item))
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)
+    )
 
 
 class Settings(BaseSettings):
@@ -65,6 +94,11 @@ class Settings(BaseSettings):
     # ---- Uploads (leaf photos + voice notes) ----
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_MB: int = 10
+    # When configured, uploads use Vercel Blob; when empty, the existing local
+    # filesystem behavior remains unchanged for Docker and development.
+    BLOB_READ_WRITE_TOKEN: str = ""
+    BLOB_ACCESS: str = "private"
+    VERCEL_BLOB_API_URL: str = "https://vercel.com/api/blob"
     DISEASE_MODEL_PATH: str = "app/data/crop_disease_int8.tflite"
     DISEASE_CLASS_NAMES_PATH: str = "app/data/class_names.json"
 
@@ -119,6 +153,8 @@ class Settings(BaseSettings):
     SMS_DRY_RUN: bool = True
     WEATHER_SCAN_ENABLED: bool = True
     WEATHER_SCAN_INTERVAL_HOURS: int = 24
+    # Vercel Cron sends this as ``Authorization: Bearer <CRON_SECRET>``.
+    CRON_SECRET: str = ""
 
     # ---- Logging ----
     LOG_LEVEL: str = "INFO"
@@ -131,6 +167,9 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    def model_post_init(self, __context) -> None:
+        self.DATABASE_URL = normalize_database_url(self.DATABASE_URL)
 
 
 @lru_cache

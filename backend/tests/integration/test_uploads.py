@@ -110,8 +110,73 @@ async def test_uploaded_image_can_be_fetched_back(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_direct_blob_upload_is_finalized_without_changing_attachment_contract(
+    auth_client, db_session, monkeypatch
+):
+    from app.models import User
+
+    user = (await db_session.execute(select(User))).scalar_one()
+    blob_url = (
+        "https://store123.private.blob.vercel-storage.com/"
+        f"uploads/{user.id}/leaf.png"
+    )
+    image = _png_bytes()
+
+    monkeypatch.setattr(uploads_router, "is_configured_blob_url", lambda url: True)
+
+    async def fake_load(url):
+        assert url == blob_url
+        return image
+
+    monkeypatch.setattr(uploads_router, "load_bytes", fake_load)
+    resp = await auth_client.post(
+        "/api/uploads/from-blob",
+        json={"url": blob_url, "mime_type": "image/png"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    row = (
+        await db_session.execute(select(Attachment).where(Attachment.id == body["id"]))
+    ).scalar_one()
+    assert row.path == blob_url
+    assert row.kind == "image"
+
+    access = await auth_client.get(f"/api/uploads/{body['id']}/blob-access")
+    assert access.status_code == 200
+    assert access.json() == {"url": blob_url, "mime_type": "image/png"}
+
+
+@pytest.mark.asyncio
+async def test_direct_blob_upload_cannot_finalize_another_users_path(
+    auth_client, monkeypatch
+):
+    monkeypatch.setattr(uploads_router, "is_configured_blob_url", lambda url: True)
+    resp = await auth_client.post(
+        "/api/uploads/from-blob",
+        json={
+            "url": (
+                "https://store123.private.blob.vercel-storage.com/"
+                "uploads/999999/leaf.png"
+            ),
+            "mime_type": "image/png",
+        },
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_content_missing_attachment_is_404(auth_client):
     resp = await auth_client.get("/api/uploads/999999/content")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_local_attachment_has_no_blob_access_url(auth_client):
+    up = await auth_client.post(
+        "/api/uploads",
+        files={"file": ("leaf.png", _png_bytes(), "image/png")},
+    )
+    resp = await auth_client.get(f"/api/uploads/{up.json()['id']}/blob-access")
     assert resp.status_code == 404
 
 

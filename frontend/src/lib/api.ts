@@ -1,5 +1,7 @@
 // Central API client: base URL, bearer attach, and 401 -> refresh(rotation) -> retry-once.
 
+import { upload as uploadBlob } from "@vercel/blob/client";
+
 import {
   clearTokens,
   getAccess,
@@ -355,6 +357,40 @@ export interface UploadResult {
 }
 
 export async function apiUpload(file: File): Promise<UploadResult> {
+  if (process.env.NEXT_PUBLIC_UPLOAD_STORAGE === "vercel-blob") {
+    // A cheap /me request also refreshes an expired access token through the
+    // existing single-flight rotation path before the Blob token request.
+    const user = await apiMe();
+    const access = getAccess();
+    if (!access) throw new ApiError(401, "Authentication required");
+    const extensionByMime: Record<string, string> = {
+      "image/jpeg": "jpg",
+      "image/jpg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+      "audio/mpeg": "mp3",
+      "audio/mp3": "mp3",
+      "audio/mp4": "m4a",
+      "audio/ogg": "ogg",
+      "audio/wav": "wav",
+      "audio/x-wav": "wav",
+      "audio/webm": "webm",
+    };
+    const extension = extensionByMime[file.type.toLowerCase()] || "bin";
+    const pathname = `uploads/${user.id}/${crypto.randomUUID()}.${extension}`;
+    const blob = await uploadBlob(pathname, file, {
+      access: "private",
+      handleUploadUrl: "/api/blob/upload",
+      headers: { Authorization: `Bearer ${access}` },
+      contentType: file.type,
+    });
+    const finalized = await apiFetch("/api/uploads/from-blob", {
+      method: "POST",
+      body: JSON.stringify({ url: blob.url, mime_type: file.type }),
+    });
+    return json<UploadResult>(finalized);
+  }
+
   const form = new FormData();
   form.append("file", file);
   const res = await apiFetch("/api/uploads", { method: "POST", body: form });
@@ -369,4 +405,23 @@ export async function apiUpload(file: File): Promise<UploadResult> {
     throw new ApiError(res.status, detail);
   }
   return json<UploadResult>(res);
+}
+
+export async function apiAttachmentContent(id: number): Promise<Response> {
+  if (process.env.NEXT_PUBLIC_UPLOAD_STORAGE !== "vercel-blob") {
+    return apiFetch(`/api/uploads/${id}/content`);
+  }
+
+  const open = () => {
+    const access = getAccess();
+    return fetch(`/api/blob/download/${id}`, {
+      headers: access ? { Authorization: `Bearer ${access}` } : {},
+    });
+  };
+  let response = await open();
+  if (response.status === 401) {
+    await refreshTokens();
+    response = await open();
+  }
+  return response;
 }

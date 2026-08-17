@@ -39,9 +39,10 @@ def setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(level)
 
-    if os.environ.get("TESTING") or "pytest" in sys.modules:
-        # Test runs share the bind-mounted log dir with the real app —
-        # console-only so mocked-failure tests don't pollute prod logs.
+    if os.environ.get("TESTING") or "pytest" in sys.modules or os.environ.get("VERCEL"):
+        # Test runs share the bind-mounted log dir with the real app, while
+        # Vercel Functions have a read-only filesystem. Both use console-only
+        # logging (Vercel captures stdout/stderr in deployment logs).
         console = logging.StreamHandler()
         console.setLevel(level)
         console.setFormatter(formatter)

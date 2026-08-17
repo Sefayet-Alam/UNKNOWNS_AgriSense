@@ -53,7 +53,14 @@ async def lifespan(app: FastAPI):
     # DDL. The only startup work is the proactive weather-scan loop
     # (disabled under TESTING so the suite stays offline/deterministic).
     scan_task: asyncio.Task | None = None
-    if settings.WEATHER_SCAN_ENABLED and not os.environ.get("TESTING"):
+    # A container can own a continuous task; a serverless function cannot.
+    # Vercel invokes the authenticated /api/alerts/cron route from vercel.json.
+    is_serverless = bool(os.environ.get("VERCEL"))
+    if (
+        settings.WEATHER_SCAN_ENABLED
+        and not os.environ.get("TESTING")
+        and not is_serverless
+    ):
         scan_task = asyncio.create_task(_weather_scan_loop())
         log.info(
             "proactive weather scan enabled (every %sh, first pass in %ss)",

@@ -16,6 +16,7 @@ venv/
 # Node / Next
 node_modules/
 .next/
+.vercel/
 out/
 npm-debug.log*
 yarn-error.log*

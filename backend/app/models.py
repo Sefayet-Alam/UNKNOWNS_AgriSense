@@ -369,10 +369,10 @@ class KnowledgeChunk(Base):
 class Attachment(Base):
     """A farmer-uploaded file: a leaf photo (image) or a voice note (audio).
 
-    Stored on disk under ``UPLOAD_DIR/{user_id}/`` with only the path kept in the
-    row (user-scoped). Audio rows carry the Gemini transcript so the voice note
-    can flow through the normal text pipeline; image rows are read back by the
-    on-device disease classifier.
+    Stored on disk under ``UPLOAD_DIR/{user_id}/`` or in Vercel Blob, with the
+    path/URL kept in the row (user-scoped API access). Audio rows carry the
+    Gemini transcript so the voice note can flow through the normal text
+    pipeline; image rows are read back by the on-device disease classifier.
     """
 
     __tablename__ = "attachments"
