@@ -1,11 +1,31 @@
 # UNKNOWNS AgriSense
 
-**Team UNKNOWNS:** 
+**Team UNKNOWNS:**
+
 1. Khandoker Sefayet Alam (Team Lead)
-2. Nazib Abrar, 
+2. Nazib Abrar
 3. Md. Raihanul Haque Rahi
+
 **Institution:** Rajshahi University of Engineering & Technology (RUET)
-**Live:** [https://agrisense.cortextech.dev](https://agrisense.cortextech.dev)
+
+## Live deployment
+
+| Service | Production URL |
+|---|---|
+| Web application | [agrisense-web-nine.vercel.app](https://agrisense-web-nine.vercel.app) |
+| Backend API | [agrisense-api-psi.vercel.app](https://agrisense-api-psi.vercel.app) |
+| Interactive API docs | [agrisense-api-psi.vercel.app/docs](https://agrisense-api-psi.vercel.app/docs) |
+| Health check | [agrisense-api-psi.vercel.app/health](https://agrisense-api-psi.vercel.app/health) |
+
+Production runs entirely on free serverless services: the Next.js frontend and
+FastAPI backend are separate Vercel projects, PostgreSQL and pgvector run on Neon,
+and private user uploads use Vercel Blob. The backend is exposed through
+`backend/api/index.py`; `backend/vercel.json` rewrites API traffic to that Python
+function and schedules the daily alert cron.
+
+The Neon schema is managed by Alembic and is currently migrated through
+`0011_caas_sandbox_transactions`. Vercel secrets are configured in each project's
+Environment Variables settings and are never committed to Git.
 
 ## Setup
 
@@ -19,8 +39,8 @@ docker compose up --build
 - Backend API: `http://localhost:8080`
 - API docs: `http://localhost:8080/docs`
 
-For the free serverless deployment (Vercel frontend + FastAPI, Neon pgvector,
-and private Vercel Blob), see [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md).
+For setup, environment variables, database initialization, deployment, and
+acceptance checks, see [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md).
 
 ## Tier 0: Core
 

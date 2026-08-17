@@ -1,16 +1,17 @@
 # Frontend handoff — AgriSense
 
-Last updated by: Codex (Jul 25, 2026).
+Last updated by: Codex (Aug 18, 2026).
 
 ## Current branch and rules
 
-- Branch: `feat/bdapps-plus`, tracking `origin/feat/bdapps-plus` and currently ahead by 13 commits.
-- Current worktree already contains uncommitted billing/profile changes; do not overwrite them.
-- Latest `origin/main` was merged cleanly at `4c0ea17`, bringing in regenerated agent graph docs
-  from `b64b6f5`.
+- Branch: `main`, tracking `origin/main` at `e22f126`.
+- The current worktree contains documentation-only deployment/handover edits; do not overwrite
+  them.
 - Never commit or push without Sefayet's explicit approval.
-- Browser API base is `NEXT_PUBLIC_API_URL` (`http://localhost:8080` under compose).
-- `docker-compose.yml` and `docs/API_CONTRACT.md` are authoritative.
+- Browser API base is `NEXT_PUBLIC_API_URL`: `http://localhost:8080` under Compose and
+  `https://agrisense-api-psi.vercel.app` in the production Vercel build.
+- `docker-compose.yml`, `docs/VERCEL_DEPLOYMENT.md`, and `docs/API_CONTRACT.md` are authoritative
+  for local runtime, hosted deployment, and API/SSE behavior respectively.
 
 ## Billing and passwords
 
@@ -78,8 +79,27 @@ Last updated by: Codex (Jul 25, 2026).
   shared by registration and profile address editing. Do not restore the older CZIS snapshot,
   which mixed metropolitan/thana records into the upazila dropdown.
 
+## Production deployment
+
+- Live frontend: `https://agrisense-web-nine.vercel.app`
+- Live backend: `https://agrisense-api-psi.vercel.app`
+- The frontend is a Vercel Next.js project rooted at `frontend/`; the backend is a separate
+  Vercel FastAPI project rooted at `backend/`.
+- The browser must use the stable frontend domain. Generated deployment/preview domains are not
+  in backend `CORS_ORIGINS` unless deliberately added.
+- `NEXT_PUBLIC_API_URL` is a build-time value. Changing it requires a new frontend deployment;
+  changing it only at runtime does not rewrite an already-built client bundle.
+- Production auth persists to Neon PostgreSQL. The database is migrated through Alembic revision
+  `0011_caas_sandbox_transactions`; Sefayet confirmed registration and sign-in work end to end.
+- Private image/audio uploads use Vercel Blob when its frontend and backend variables are present.
+  Local Docker continues to use the existing disk-storage path.
+
 ## Verification
 
+- Aug 18 Vercel/Neon pass: stable frontend and backend are deployed and return `200`; backend API
+  docs and health work; CORS accepts the stable frontend; a nonexistent valid-shaped login reaches
+  Neon and returns `401` rather than `500`; production registration and sign-in were confirmed by
+  Sefayet. No VPS or paid host is required.
 - Jul 25 push/PR: branch `feat/bdapps-plus` was fetched, confirmed up to date with `origin/main`,
   committed as `2925629` (`feat: finalize bdapps plus mobile polish`), pushed to origin, and opened
   as PR #16 into `main`: `https://github.com/abrar-nazib/UNKNOWNS_AgriSense/pull/16`. Verification:

@@ -250,6 +250,34 @@ that runs end-to-end in a 4-minute demo.
   session id and never abort the stream on the session-frame echo — that killed
   the first reply of every new chat.
 
+## Hosted deployment (verified Aug 18, 2026)
+
+- **Live frontend:** `https://agrisense-web-nine.vercel.app`
+- **Live backend:** `https://agrisense-api-psi.vercel.app`
+- **API docs:** `https://agrisense-api-psi.vercel.app/docs`
+- The public GitHub monorepo is imported as two Vercel projects. Their Root
+  Directories are `frontend` and `backend`; do not combine them into one Vercel
+  project.
+- The backend runs as a Vercel Python Function through
+  [backend/api/index.py](backend/api/index.py). [backend/vercel.json](backend/vercel.json)
+  rewrites backend traffic to `/api/index`, includes the bundled application data,
+  allows the long agent function duration, and schedules the daily alert cron.
+- Production PostgreSQL + pgvector is a pooled Neon database. Its Alembic schema
+  was initialized and verified at `0011_caas_sandbox_transactions (head)`.
+  Serverless functions use SQLAlchemy `NullPool`; Docker/local behavior is unchanged.
+- `NEXT_PUBLIC_API_URL` is baked into the frontend build and points to the stable
+  backend domain. Backend `CORS_ORIGINS` includes the stable frontend domain.
+  Generated Vercel preview URLs are not automatically trusted CORS origins.
+- Registration, database-backed login, health (`200`), API docs (`200`), and the
+  production CORS preflight were verified after the Neon migration; Sefayet also
+  confirmed account creation and sign-in work from the live frontend.
+- Production secrets live only in Vercel Environment Variables. Never copy the
+  local Docker `.env` wholesale: its database host and localhost URLs are not valid
+  in Vercel. The Neon `DATABASE_URL` is sensitive and must never be committed.
+- Full setup and acceptance checks are in
+  [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md). Docker Compose remains the
+  local and self-hosted alternative; the live hackathon demo needs no VPS.
+
 ## Remaining hardening (PDF is the source of truth)
 
 - **The judging source of truth is

@@ -7,8 +7,8 @@
 > follow-up questions on any of it.
 >
 > **How to use it.** Read §1–§3 first (the pitch and the mental model). Then read
-> §5 (agent) and §7 (RAG) properly — those are where hard questions land. §17 is a
-> rapid-fire Q&A bank. §18 is a 90-second whiteboard script. §19 is a glossary for
+> §5 (agent) and §7 (RAG) properly — those are where hard questions land. §19 is a
+> rapid-fire Q&A bank. §20 is a 90-second whiteboard script. §21 is a glossary for
 > every term used here.
 >
 > **The one rule that explains this entire codebase:**
@@ -66,6 +66,10 @@
 
 If they want one sentence: *"A grounded, tool-using agricultural agent where the
 language model orchestrates and explains but never calculates."*
+
+**Live demo:** [agrisense-web-nine.vercel.app](https://agrisense-web-nine.vercel.app)
+
+**API and OpenAPI docs:** [agrisense-api-psi.vercel.app](https://agrisense-api-psi.vercel.app) · [agrisense-api-psi.vercel.app/docs](https://agrisense-api-psi.vercel.app/docs)
 
 ---
 
@@ -167,7 +171,7 @@ questions.** Everything below is a zoom-in on one box of this diagram.
 | Embeddings | `openai/text-embedding-3-small` (1536-dim) via OpenRouter | Strong quality/cost ratio; same credential as chat |
 | Vision | On-device quantized **TFLite** leaf-disease model | Runs locally, no API cost, no network dependency |
 | Speech | Gemini transcription | Bengali + English voice notes |
-| Infra | Docker Compose (db + backend + frontend), nginx in prod | One command to reproduce the whole system |
+| Infra | Docker Compose locally; Vercel + Neon + private Vercel Blob in production | One-command local reproducibility with a zero-VPS serverless demo deployment |
 
 ### Layout
 
@@ -1197,10 +1201,12 @@ only tracks JSON columns on reassignment. That's a real bug I hit.
 
 ### Migrations
 
-Alembic owns the schema; `entrypoint.sh` runs `alembic upgrade head` at container
-start, then `seed_rag_data --if-needed`. No `create_all` anywhere — dev and prod
-apply the identical migration chain, so "works on my machine" schema drift is
-impossible.
+Alembic owns the schema. In Docker, `entrypoint.sh` runs `alembic upgrade head` at
+container start, then `seed_rag_data --if-needed`. For the serverless production
+deployment, the same migration chain is run once against the pooled Neon
+`DATABASE_URL` before deploying the Vercel function. The current production schema
+is at `0011_caas_sandbox_transactions`. No `create_all` exists anywhere, so local
+and hosted environments use the same versioned schema rather than drifting.
 
 The history includes **merge revisions** (`0004_merge_billing_user_union`,
 `0006_merge_kb_bdapps`, `0010_merge_market_research`) — parallel branches during a
@@ -1294,9 +1300,11 @@ from engines, so injected text cannot change a number the farmer acts on.**
 
 ### Secrets
 
-`.env` is gitignored and holds real keys; `.env.example` is blank and documents
-every variable. The BDApps API key is server-only and never reaches the frontend.
-Uploaded files are gitignored, never committed.
+`.env` is gitignored and holds local keys; `.env.example` is blank and documents
+every variable. Production secrets live in the appropriate Vercel project's
+Environment Variables settings. `DATABASE_URL`, JWT/OpenRouter credentials, and
+the BDApps API key are backend-only and never reach the browser. Uploaded files are
+gitignored locally and use private Vercel Blob storage in production.
 
 ---
 
@@ -1480,9 +1488,27 @@ key needed for the RAG store**.
 substitution, not a runtime env var — changing it requires rebuilding the frontend
 image. That bites people.
 
-Production: `docker-compose.prod.yml` + nginx (`deploy/nginx/agrisense.conf`) as
-reverse proxy and TLS terminator, with `X-Accel-Buffering: no` respected so SSE
-isn't buffered.
+**Live production deployment:** the public GitHub monorepo is imported twice in
+Vercel. `frontend/` is the Next.js project and `backend/` is the FastAPI project.
+`backend/api/index.py` exposes the existing ASGI app as a Vercel Python Function,
+while `backend/vercel.json` rewrites all backend paths to that function and defines
+the daily alert cron. Neon supplies managed PostgreSQL + pgvector, and private
+Vercel Blob replaces persistent local upload storage. The stable production URLs
+are:
+
+- Frontend: `https://agrisense-web-nine.vercel.app`
+- Backend: `https://agrisense-api-psi.vercel.app`
+- API docs: `https://agrisense-api-psi.vercel.app/docs`
+
+`NEXT_PUBLIC_API_URL` points the frontend build at the stable backend domain, and
+the backend `CORS_ORIGINS` explicitly includes the stable frontend domain. Generated
+preview deployment URLs are intentionally not treated as production origins.
+
+The repository still includes `docker-compose.prod.yml` and
+`deploy/nginx/agrisense.conf` as a self-hosted alternative, with nginx configured
+not to buffer SSE. The hackathon deployment itself requires no VPS and stays within
+the free Vercel/Neon quotas; those quotas are appropriate for a demo rather than a
+high-traffic production workload.
 
 ---
 
@@ -1776,9 +1802,12 @@ gate and degradation path. Zero network calls in the suite. Only prose generatio
 non-deterministic, and that's the one thing that doesn't need a gold assertion.
 
 **Q: What's the deployment story?**
-`docker compose up --build`. db (pgvector, healthchecked) → backend (Alembic upgrade,
-then `seed_rag_data --if-needed`, then uvicorn) → frontend. Named volume for
-Postgres, bind-mounted logs, nginx + TLS in prod with SSE buffering disabled.
+There are two paths. Locally, `docker compose up --build` starts pgvector, migrates
+and seeds the backend, then starts the frontend. The live demo uses two Vercel
+projects from the same monorepo: Next.js from `frontend/`, FastAPI from `backend/`,
+Neon for PostgreSQL + pgvector, and private Vercel Blob for uploads. Alembic was run
+against Neon before deployment; the frontend targets the stable backend URL and
+that exact frontend origin is allowlisted in CORS. No VPS or paid host is required.
 
 **Q: How would this scale to 100k farmers?**
 Backend is stateless — scale horizontally behind a load balancer (the seed advisory
